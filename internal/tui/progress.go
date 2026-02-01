@@ -11,9 +11,9 @@ import (
 func (m Model) viewProgress() string {
 	var b strings.Builder
 
-	// Title (centered)
+	// Title
 	title := fmt.Sprintf("⏳  %s in progress...", m.Operation.String())
-	b.WriteString(RenderCenteredTitle(title, m.width))
+	b.WriteString(TitleStyle.Render(title))
 	b.WriteString("\n\n")
 
 	// Spinner animation would go here
@@ -109,9 +109,9 @@ func (m Model) viewResults() string {
 
 	var b strings.Builder
 
-	// Title (centered)
+	// Title
 	title := fmt.Sprintf("✓  %s Complete", m.Operation.String())
-	b.WriteString(RenderCenteredTitle(title, m.width))
+	b.WriteString(TitleStyle.Render(title))
 	b.WriteString("\n\n")
 
 	if m.err != nil {
@@ -201,8 +201,8 @@ func (m Model) viewResults() string {
 func (m Model) viewListTable() string {
 	var b strings.Builder
 
-	// Title (centered)
-	b.WriteString(RenderCenteredTitle("󰋗  List", m.width))
+	// Title
+	b.WriteString(TitleStyle.Render("󰋗  List"))
 	b.WriteString("\n\n")
 
 	// Subtitle with OS info (like main menu)

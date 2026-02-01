@@ -169,20 +169,6 @@ func RenderHelp(keys ...string) string {
 	return HelpStyle.Render(result)
 }
 
-// RenderCenteredTitle renders a title centered within the given width
-func RenderCenteredTitle(title string, width int) string {
-	styled := TitleStyle.Render(title)
-	titleWidth := lipgloss.Width(styled)
-
-	// Calculate padding needed for centering
-	if width <= titleWidth {
-		return styled
-	}
-
-	padding := (width - titleWidth) / 2
-	return lipgloss.NewStyle().PaddingLeft(padding).Render(styled)
-}
-
 // RenderCursor renders a cursor indicator for list items
 func RenderCursor(isSelected bool) string {
 	if isSelected {

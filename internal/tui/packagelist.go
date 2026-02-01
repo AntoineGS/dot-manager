@@ -57,8 +57,8 @@ func (m Model) updatePackageSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewPackageSelect() string {
 	var b strings.Builder
 
-	// Title (centered)
-	b.WriteString(RenderCenteredTitle("󰏖  Select Packages to Install", m.width))
+	// Title
+	b.WriteString(TitleStyle.Render("󰏖  Select Packages to Install"))
 	b.WriteString("\n\n")
 
 	// Count selected

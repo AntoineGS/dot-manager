@@ -31,14 +31,14 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewConfirm() string {
 	var b strings.Builder
 
-	// Title (centered)
+	// Title
 	icon := "󰁯"
 	switch m.Operation {
 	case OpInstallPackages:
 		icon = "󰏖"
 	}
 	title := fmt.Sprintf("%s  Confirm %s", icon, m.Operation.String())
-	b.WriteString(RenderCenteredTitle(title, m.width))
+	b.WriteString(TitleStyle.Render(title))
 	b.WriteString("\n\n")
 
 	// Warning for dry run

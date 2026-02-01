@@ -71,9 +71,9 @@ func (m Model) updatePathSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewPathSelect() string {
 	var b strings.Builder
 
-	// Title (centered)
+	// Title
 	title := fmt.Sprintf("󰋗  Select paths to %s", strings.ToLower(m.Operation.String()))
-	b.WriteString(RenderCenteredTitle(title, m.width))
+	b.WriteString(TitleStyle.Render(title))
 	b.WriteString("\n\n")
 
 	// Count selected

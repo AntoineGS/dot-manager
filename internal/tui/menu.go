@@ -71,8 +71,8 @@ func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewMenu() string {
 	var b strings.Builder
 
-	// Title (centered)
-	b.WriteString(RenderCenteredTitle("󰣇  dot-manager", m.width))
+	// Title
+	b.WriteString(TitleStyle.Render("󰣇  dot-manager"))
 	b.WriteString("\n\n")
 
 	// Subtitle with info
