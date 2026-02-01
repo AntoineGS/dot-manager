@@ -79,6 +79,11 @@ type AddForm struct {
 	isFolder           bool
 	focusIndex         int // 0=name, 1=linuxTarget, 2=windowsTarget, 3=backup, 4=isFolder toggle
 	err                string
+
+	// Autocomplete state
+	suggestions      []string
+	suggestionCursor int
+	showSuggestions  bool
 }
 
 type Model struct {
