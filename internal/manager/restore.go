@@ -44,6 +44,31 @@ func (m *Manager) restorePath(spec config.PathSpec, target string) error {
 }
 
 func (m *Manager) restoreFolder(name, source, target string) error {
+	// Skip if already a symlink
+	if isSymlink(target) {
+		m.logVerbose("Already a symlink: %s", target)
+		return nil
+	}
+
+	// Check if we need to adopt: target exists but backup doesn't
+	if !pathExists(source) && pathExists(target) {
+		m.log("Adopting folder %s -> %s", target, source)
+		if !m.DryRun {
+			// Create backup parent directory
+			backupParent := filepath.Dir(source)
+			if !pathExists(backupParent) {
+				if err := os.MkdirAll(backupParent, 0755); err != nil {
+					return fmt.Errorf("creating backup parent directory: %w", err)
+				}
+			}
+			// Move target to backup location
+			if err := os.Rename(target, source); err != nil {
+				return fmt.Errorf("adopting folder (moving to backup): %w", err)
+			}
+		}
+	}
+
+	// Now check if backup exists
 	if !pathExists(source) {
 		m.logVerbose("Source folder does not exist: %s", source)
 		return nil
@@ -60,14 +85,8 @@ func (m *Manager) restoreFolder(name, source, target string) error {
 		}
 	}
 
-	// Skip if already a symlink
-	if isSymlink(target) {
-		m.logVerbose("Already a symlink: %s", target)
-		return nil
-	}
-
-	// Remove existing folder
-	if pathExists(target) {
+	// Remove existing folder (if still there after adopt check)
+	if pathExists(target) && !isSymlink(target) {
 		m.log("Removing folder %s", target)
 		if !m.DryRun {
 			if err := removeAll(target); err != nil {
@@ -84,6 +103,15 @@ func (m *Manager) restoreFolder(name, source, target string) error {
 }
 
 func (m *Manager) restoreFiles(name string, files []string, source, target string) error {
+	// Create backup directory if it doesn't exist (needed for adopting)
+	if !pathExists(source) {
+		if !m.DryRun {
+			if err := os.MkdirAll(source, 0755); err != nil {
+				return fmt.Errorf("creating backup directory: %w", err)
+			}
+		}
+	}
+
 	// Create target directory if it doesn't exist
 	if !pathExists(target) {
 		m.log("Creating directory %s", target)
@@ -98,19 +126,36 @@ func (m *Manager) restoreFiles(name string, files []string, source, target strin
 		srcFile := filepath.Join(source, file)
 		dstFile := filepath.Join(target, file)
 
-		if !pathExists(srcFile) {
-			m.logVerbose("Source file does not exist: %s", srcFile)
-			continue
-		}
-
 		// Skip if already a symlink
 		if isSymlink(dstFile) {
 			m.logVerbose("Already a symlink: %s", dstFile)
 			continue
 		}
 
-		// Remove existing file
-		if pathExists(dstFile) {
+		// Check if we need to adopt: target exists but backup doesn't
+		if !pathExists(srcFile) && pathExists(dstFile) {
+			m.log("Adopting file %s -> %s", dstFile, srcFile)
+			if !m.DryRun {
+				// Move target file to backup location
+				if err := os.Rename(dstFile, srcFile); err != nil {
+					// If rename fails (cross-device), try copy and delete
+					if err := copyFile(dstFile, srcFile); err != nil {
+						return fmt.Errorf("adopting file (copying to backup): %w", err)
+					}
+					if err := os.Remove(dstFile); err != nil {
+						return fmt.Errorf("adopting file (removing original): %w", err)
+					}
+				}
+			}
+		}
+
+		if !pathExists(srcFile) {
+			m.logVerbose("Source file does not exist: %s", srcFile)
+			continue
+		}
+
+		// Remove existing file (if still there after adopt check)
+		if pathExists(dstFile) && !isSymlink(dstFile) {
 			m.log("Removing file %s", dstFile)
 			if !m.DryRun {
 				if err := os.Remove(dstFile); err != nil {
