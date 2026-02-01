@@ -168,3 +168,73 @@ func RenderHelp(keys ...string) string {
 	}
 	return HelpStyle.Render(result)
 }
+
+// RenderCenteredTitle renders a title centered within the given width
+func RenderCenteredTitle(title string, width int) string {
+	styled := TitleStyle.Render(title)
+	titleWidth := lipgloss.Width(styled)
+
+	// Calculate padding needed for centering
+	if width <= titleWidth {
+		return styled
+	}
+
+	padding := (width - titleWidth) / 2
+	return lipgloss.NewStyle().PaddingLeft(padding).Render(styled)
+}
+
+// RenderCursor renders a cursor indicator for list items
+func RenderCursor(isSelected bool) string {
+	if isSelected {
+		return "▸ "
+	}
+	return "  "
+}
+
+// RenderCheckbox renders a checkbox indicator
+func RenderCheckbox(isChecked bool) string {
+	if isChecked {
+		return CheckedStyle.Render("[✓]")
+	}
+	return UncheckedStyle.Render("[ ]")
+}
+
+// RenderScrollIndicators renders scroll indicators if needed
+// Returns (topIndicator, bottomIndicator) strings with newlines included
+func RenderScrollIndicators(start, end, total int) (string, string) {
+	var top, bottom string
+
+	if start > 0 {
+		top = SubtitleStyle.Render("  ↑ more above") + "\n"
+	}
+	if end < total {
+		bottom = SubtitleStyle.Render("  ↓ more below") + "\n"
+	}
+
+	return top, bottom
+}
+
+// CalculateVisibleRange calculates the visible range for a scrollable list
+func CalculateVisibleRange(offset, viewHeight, total int) (start, end int) {
+	start = offset
+	end = offset + viewHeight
+	if end > total {
+		end = total
+	}
+	return start, end
+}
+
+// RenderOSInfo renders the OS information subtitle
+func RenderOSInfo(osName string, isRoot, isArch, dryRun bool) string {
+	osInfo := "OS: " + osName
+	if isRoot {
+		osInfo += " (root)"
+	}
+	if isArch {
+		osInfo += " • Arch Linux"
+	}
+	if dryRun {
+		osInfo += " • " + WarningStyle.Render("DRY RUN")
+	}
+	return SubtitleStyle.Render(osInfo)
+}

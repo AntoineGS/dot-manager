@@ -57,9 +57,8 @@ func (m Model) updatePackageSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewPackageSelect() string {
 	var b strings.Builder
 
-	// Title
-	title := TitleStyle.Render("󰏖  Select Packages to Install")
-	b.WriteString(title)
+	// Title (centered)
+	b.WriteString(RenderCenteredTitle("󰏖  Select Packages to Install", m.width))
 	b.WriteString("\n\n")
 
 	// Count selected
@@ -76,24 +75,13 @@ func (m Model) viewPackageSelect() string {
 	b.WriteString("\n\n")
 
 	// Package list with scrolling
-	visibleStart := m.scrollOffset
-	visibleEnd := m.scrollOffset + m.viewHeight
-	if visibleEnd > len(m.Packages) {
-		visibleEnd = len(m.Packages)
-	}
+	visibleStart, visibleEnd := CalculateVisibleRange(m.scrollOffset, m.viewHeight, len(m.Packages))
 
 	for i := visibleStart; i < visibleEnd; i++ {
 		pkg := m.Packages[i]
-
-		cursor := "  "
-		if i == m.packageCursor {
-			cursor = "▸ "
-		}
-
-		checkbox := UncheckedStyle.Render("[ ]")
-		if pkg.Selected {
-			checkbox = CheckedStyle.Render("[✓]")
-		}
+		isSelected := i == m.packageCursor
+		cursor := RenderCursor(isSelected)
+		checkbox := RenderCheckbox(pkg.Selected)
 
 		// Format: [✓] package-name (method)
 		methodInfo := fmt.Sprintf("(%s)", pkg.Method)
@@ -104,7 +92,7 @@ func (m Model) viewPackageSelect() string {
 			SubtitleStyle.Render(methodInfo),
 		)
 
-		if i == m.packageCursor {
+		if isSelected {
 			b.WriteString(SelectedListItemStyle.Render(line))
 		} else {
 			b.WriteString(line)

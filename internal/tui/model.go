@@ -238,8 +238,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Screen = ScreenResults
 		return m, nil
 
-	case ProcessPathMsg:
-		return m, m.processNextPath(msg.Index)
 	}
 
 	return m, nil
@@ -318,10 +316,6 @@ func (m Model) View() string {
 type OperationCompleteMsg struct {
 	Results []ResultItem
 	Err     error
-}
-
-type ProcessPathMsg struct {
-	Index int
 }
 
 // detectPathState determines the state of a path item

@@ -71,9 +71,9 @@ func (m Model) updatePathSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewPathSelect() string {
 	var b strings.Builder
 
-	// Title
+	// Title (centered)
 	title := fmt.Sprintf("󰋗  Select paths to %s", strings.ToLower(m.Operation.String()))
-	b.WriteString(TitleStyle.Render(title))
+	b.WriteString(RenderCenteredTitle(title, m.width))
 	b.WriteString("\n\n")
 
 	// Count selected
@@ -88,35 +88,20 @@ func (m Model) viewPathSelect() string {
 	b.WriteString("\n\n")
 
 	// Path list
-	endIdx := m.scrollOffset + m.viewHeight
-	if endIdx > len(m.Paths) {
-		endIdx = len(m.Paths)
-	}
+	startIdx, endIdx := CalculateVisibleRange(m.scrollOffset, m.viewHeight, len(m.Paths))
+	topIndicator, bottomIndicator := RenderScrollIndicators(startIdx, endIdx, len(m.Paths))
 
-	// Show scroll indicator at top
-	if m.scrollOffset > 0 {
-		b.WriteString(SubtitleStyle.Render("  ↑ more above"))
-		b.WriteString("\n")
-	}
+	b.WriteString(topIndicator)
 
-	for i := m.scrollOffset; i < endIdx; i++ {
+	for i := startIdx; i < endIdx; i++ {
 		item := m.Paths[i]
-
-		// Cursor
-		cursor := "  "
-		if i == m.pathCursor {
-			cursor = "▸ "
-		}
-
-		// Checkbox
-		checkbox := UncheckedStyle.Render("[ ]")
-		if item.Selected {
-			checkbox = CheckedStyle.Render("[✓]")
-		}
+		isSelected := i == m.pathCursor
+		cursor := RenderCursor(isSelected)
+		checkbox := RenderCheckbox(item.Selected)
 
 		// Name
 		nameStyle := ListItemStyle
-		if i == m.pathCursor {
+		if isSelected {
 			nameStyle = SelectedListItemStyle
 		}
 		name := nameStyle.Render(item.Spec.Name)
@@ -138,7 +123,7 @@ func (m Model) viewPathSelect() string {
 		b.WriteString("\n")
 
 		// Show target on selected line
-		if i == m.pathCursor {
+		if isSelected {
 			targetLine := fmt.Sprintf("      %s → %s",
 				PathBackupStyle.Render(truncatePath(m.resolvePath(item.Spec.Backup), 30)),
 				PathTargetStyle.Render(truncatePath(item.Target, 30)),
@@ -148,11 +133,7 @@ func (m Model) viewPathSelect() string {
 		}
 	}
 
-	// Show scroll indicator at bottom
-	if endIdx < len(m.Paths) {
-		b.WriteString(SubtitleStyle.Render("  ↓ more below"))
-		b.WriteString("\n")
-	}
+	b.WriteString(bottomIndicator)
 
 	// Help
 	b.WriteString("\n")

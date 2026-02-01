@@ -11,9 +11,9 @@ import (
 func (m Model) viewProgress() string {
 	var b strings.Builder
 
-	// Title
+	// Title (centered)
 	title := fmt.Sprintf("⏳  %s in progress...", m.Operation.String())
-	b.WriteString(TitleStyle.Render(title))
+	b.WriteString(RenderCenteredTitle(title, m.width))
 	b.WriteString("\n\n")
 
 	// Spinner animation would go here
@@ -109,9 +109,9 @@ func (m Model) viewResults() string {
 
 	var b strings.Builder
 
-	// Title
+	// Title (centered)
 	title := fmt.Sprintf("✓  %s Complete", m.Operation.String())
-	b.WriteString(TitleStyle.Render(title))
+	b.WriteString(RenderCenteredTitle(title, m.width))
 	b.WriteString("\n\n")
 
 	if m.err != nil {
@@ -156,10 +156,8 @@ func (m Model) viewResults() string {
 		}
 	}
 
-	if start > 0 {
-		b.WriteString(SubtitleStyle.Render("↑ more above"))
-		b.WriteString("\n")
-	}
+	topIndicator, bottomIndicator := RenderScrollIndicators(start, end, len(m.results))
+	b.WriteString(topIndicator)
 
 	for i := start; i < end; i++ {
 		result := m.results[i]
@@ -188,10 +186,7 @@ func (m Model) viewResults() string {
 		}
 	}
 
-	if end < len(m.results) {
-		b.WriteString(SubtitleStyle.Render("↓ more below"))
-		b.WriteString("\n")
-	}
+	b.WriteString(bottomIndicator)
 
 	// Help
 	b.WriteString("\n")
@@ -206,19 +201,12 @@ func (m Model) viewResults() string {
 func (m Model) viewListTable() string {
 	var b strings.Builder
 
-	// Title
-	b.WriteString(TitleStyle.Render("󰋗  List"))
+	// Title (centered)
+	b.WriteString(RenderCenteredTitle("󰋗  List", m.width))
 	b.WriteString("\n\n")
 
 	// Subtitle with OS info (like main menu)
-	osInfo := fmt.Sprintf("OS: %s", m.Platform.OS)
-	if m.Platform.IsRoot {
-		osInfo += " (root)"
-	}
-	if m.Platform.IsArch {
-		osInfo += " • Arch Linux"
-	}
-	b.WriteString(SubtitleStyle.Render(osInfo))
+	b.WriteString(RenderOSInfo(m.Platform.OS, m.Platform.IsRoot, m.Platform.IsArch, false))
 	b.WriteString("\n\n")
 
 	// Summary
@@ -309,12 +297,7 @@ func (m Model) viewListTable() string {
 	for i := start; i < end; i++ {
 		item := m.Paths[i]
 		isSelected := i == m.listCursor
-
-		// Cursor indicator
-		cursor := "  "
-		if isSelected {
-			cursor = "▸ "
-		}
+		cursor := RenderCursor(isSelected)
 
 		// Determine type
 		var typeStr string
@@ -481,10 +464,4 @@ func unexpandHome(path string) string {
 		return "~" + path[len(home):]
 	}
 	return path
-}
-
-func (m Model) processNextPath(index int) tea.Cmd {
-	// This would be used for animated progress
-	// For now, we process all at once in startOperation
-	return nil
 }

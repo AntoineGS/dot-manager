@@ -71,35 +71,22 @@ func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewMenu() string {
 	var b strings.Builder
 
-	// Title
-	title := TitleStyle.Render("󰣇  dot-manager")
-	b.WriteString(title)
+	// Title (centered)
+	b.WriteString(RenderCenteredTitle("󰣇  dot-manager", m.width))
 	b.WriteString("\n\n")
 
 	// Subtitle with info
-	osInfo := fmt.Sprintf("OS: %s", m.Platform.OS)
-	if m.Platform.IsRoot {
-		osInfo += " (root)"
-	}
-	if m.Platform.IsArch {
-		osInfo += " • Arch Linux"
-	}
-	if m.DryRun {
-		osInfo += " • " + WarningStyle.Render("DRY RUN")
-	}
-	b.WriteString(SubtitleStyle.Render(osInfo))
+	b.WriteString(RenderOSInfo(m.Platform.OS, m.Platform.IsRoot, m.Platform.IsArch, m.DryRun))
 	b.WriteString("\n\n")
 
 	// Menu items
 	b.WriteString("Select an operation:\n\n")
 
 	for i, item := range menuItems {
-		cursor := "  "
-		style := MenuItemStyle
 		selected := i == m.menuCursor
-
+		cursor := RenderCursor(selected)
+		style := MenuItemStyle
 		if selected {
-			cursor = "▸ "
 			style = SelectedMenuItemStyle
 		}
 

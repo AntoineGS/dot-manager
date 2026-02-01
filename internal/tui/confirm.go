@@ -31,14 +31,14 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewConfirm() string {
 	var b strings.Builder
 
-	// Title
+	// Title (centered)
 	icon := "󰁯"
 	switch m.Operation {
 	case OpInstallPackages:
 		icon = "󰏖"
 	}
 	title := fmt.Sprintf("%s  Confirm %s", icon, m.Operation.String())
-	b.WriteString(TitleStyle.Render(title))
+	b.WriteString(RenderCenteredTitle(title, m.width))
 	b.WriteString("\n\n")
 
 	// Warning for dry run
@@ -186,8 +186,8 @@ func (m Model) restoreFolder(source, target string) (bool, string) {
 		}
 	}
 
-	sourceExists := fileExists(source)
-	targetExists := fileExists(target)
+	sourceExists := pathExists(source)
+	targetExists := pathExists(target)
 	adopted := false
 
 	// Check if we need to adopt: target exists but backup doesn't
@@ -249,11 +249,6 @@ func (m Model) restoreFolder(source, target string) (bool, string) {
 	return true, fmt.Sprintf("Created symlink: %s → %s", target, source)
 }
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
 func (m Model) restoreFiles(files []string, source, target string) (bool, string) {
 	// Create backup directory if needed (for adopting)
 	if _, err := os.Stat(source); os.IsNotExist(err) {
@@ -290,8 +285,8 @@ func (m Model) restoreFiles(files []string, source, target string) (bool, string
 			}
 		}
 
-		srcExists := fileExists(srcFile)
-		dstExists := fileExists(dstFile)
+		srcExists := pathExists(srcFile)
+		dstExists := pathExists(dstFile)
 
 		// Check if we need to adopt: target exists but backup doesn't
 		if !srcExists && dstExists {

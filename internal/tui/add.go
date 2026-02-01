@@ -262,9 +262,8 @@ func (m *Model) acceptSuggestion() {
 func (m Model) viewAddForm() string {
 	var b strings.Builder
 
-	// Title
-	title := TitleStyle.Render("󰐕  Add Path Configuration")
-	b.WriteString(title)
+	// Title (centered)
+	b.WriteString(RenderCenteredTitle("󰐕  Add Path Configuration", m.width))
 	b.WriteString("\n\n")
 
 	// Instructions
