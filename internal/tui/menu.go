@@ -84,13 +84,20 @@ func (m Model) viewMenu() string {
 	for i, item := range menuItems {
 		cursor := "  "
 		style := MenuItemStyle
+		selected := i == m.menuCursor
 
-		if i == m.menuCursor {
+		if selected {
 			cursor = "▸ "
 			style = SelectedMenuItemStyle
 		}
 
-		line := fmt.Sprintf("%s %s  %s", item.icon, item.name, mutedText(item.desc))
+		var line string
+		if selected {
+			// Don't apply muted style when selected - it breaks contrast
+			line = fmt.Sprintf("%s %s  %s", item.icon, item.name, item.desc)
+		} else {
+			line = fmt.Sprintf("%s %s  %s", item.icon, item.name, mutedText(item.desc))
+		}
 		b.WriteString(cursor + style.Render(line) + "\n")
 	}
 
@@ -140,5 +147,5 @@ func (m Model) resolvePath(path string) string {
 }
 
 func mutedText(s string) string {
-	return SubtitleStyle.Render(s)
+	return MutedTextStyle.Render(s)
 }

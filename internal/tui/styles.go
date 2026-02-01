@@ -31,6 +31,10 @@ var (
 			Italic(true).
 			MarginBottom(1)
 
+	// Inline muted text (no margins, for use within lines)
+	MutedTextStyle = lipgloss.NewStyle().
+			Foreground(mutedColor)
+
 	// Menu styles
 	MenuItemStyle = lipgloss.NewStyle().
 			Padding(0, 2)
