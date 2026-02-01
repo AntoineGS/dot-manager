@@ -1,14 +1,16 @@
-# dot-manager configuration
-# Copy this file to ~/.config/dot-manager/config.yaml and customize
+# dot-manager configuration example
+# Place this file as 'dot-manager.yaml' in the root of your configurations repository
 
 version: 1
 
-# Root directory where backup files are stored (relative paths in 'backup' are resolved from here)
-backup_root: "~/gits/configurations"
+# Root directory for backups
+# Use "." to mean the directory containing this config file (recommended)
+# Or specify an absolute/relative path
+backup_root: "."
 
 # Regular user paths (used when not running as root)
 paths:
-  # Cross-platform configurations
+  # Example: Neovim configuration (entire folder)
   - name: "neovim"
     files: []  # empty = entire folder
     backup: "./Both/Neovim/nvim"
@@ -16,305 +18,41 @@ paths:
       linux: "~/.config/nvim"
       windows: "~/AppData/Local/nvim"
 
-  - name: "starship-config"
+  # Example: Shell config files (specific files)
+  - name: "bash"
+    files: [".bashrc", ".bash_profile"]
+    backup: "./Linux/Bash"
+    targets:
+      linux: "~"
+
+  # Example: Cross-platform config
+  - name: "starship"
     files: ["starship.toml"]
     backup: "./Both/Starship"
     targets:
       linux: "~/.config"
       windows: "~/.config"
 
-  - name: "starship-cache"
-    files: ["init.nu"]
-    backup: "./Both/Starship"
-    targets:
-      linux: "~/.cache/starship"
-      windows: "~/.cache/starship"
-
-  - name: "nushell"
-    files: ["env.nu", "config.nu"]
-    backup: "./Both/Nushell"
-    targets:
-      linux: "~/.config/nushell"
-      windows: "~/AppData/Roaming/nushell"
-
-  - name: "nushell-themes"
-    files: []
-    backup: "./Both/Nushell/themes"
-    targets:
-      linux: "~/.config/nushell/themes"
-      windows: "~/AppData/Roaming/nushell/themes"
-
-  - name: "wezterm"
-    files: [".wezterm.lua"]
-    backup: "./Both/Wezterm"
-    targets:
-      linux: "~"
-      windows: "~"
-
-  - name: "zoxide"
-    files: [".zoxide.nu"]
-    backup: "./Both/Zoxide"
-    targets:
-      linux: "~"
-      windows: "~"
-
-  - name: "carapace"
-    files: ["init.nu"]
-    backup: "./Both/Carapace"
-    targets:
-      linux: "~/.cache/carapace"
-      windows: "~/.cache/carapace"
-
-  - name: "yazi"
-    files: []
-    backup: "./Both/Yazi"
-    targets:
-      linux: "~/.config/yazi"
-      windows: "~/AppData/Roaming/yazi/config"
-
-  - name: "ideavimrc"
-    files: [".ideavimrc"]
-    backup: "./Both/IntelliJ"
-    targets:
-      windows: "~"
-
-  - name: "vscode"
-    files: ["settings.json", "keybindings.json"]
-    backup: "./Both/VSCode/User"
-    targets:
-      windows: "~/AppData/Roaming/Code/User"
-
-  - name: "glazewm"
-    files: ["config.yaml"]
-    backup: "./Both/GlazeWM"
-    targets:
-      windows: "~/.glzr/glazewm"
-
-  - name: "posting"
-    files: []
-    backup: "./Both/posting"
-    targets:
-      linux: "~/.config/posting"
-
-  # Windows-specific configurations
-  - name: "powershell"
-    files: ["$PWSH_PROFILE_FILE"]
-    backup: "./Windows/PowerShell"
-    targets:
-      windows: "$PWSH_PROFILE_PATH"
-
-  - name: "komorebi"
-    files: ["komorebi.json"]
-    backup: "./Windows/Komorebi"
-    targets:
-      windows: "~"
-
-  - name: "whkd"
-    files: ["whkdrc"]
-    backup: "./Windows/Komorebi"
-    targets:
-      windows: "~/.config"
-
-  - name: "yasb"
-    files: ["config.yaml", "styles.css"]
-    backup: "./Windows/Yasb"
-    targets:
-      windows: "~/.config/yasb"
-
-  - name: "windows-terminal"
-    files: ["settings.json"]
-    backup: "./Windows/WindowsTerminal"
-    targets:
-      windows: "~/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState"
-
-  - name: "total-commander"
-    files: ["wincmd.ini"]
-    backup: "./Windows/TotalCommander"
-    targets:
-      windows: "~/AppData/Roaming/GHISLER"
-
-  - name: "everything"
-    files: ["Everything-1.5a.ini"]
-    backup: "./Windows/TotalCommander"
-    targets:
-      windows: "~/AppData/Roaming/Everything"
-
-  # Linux-specific configurations
-  - name: "bash"
-    files: [".bashrc"]
-    backup: "./Linux/Bash"
-    targets:
-      linux: "~"
-
-  - name: "zsh"
-    files: [".zshenv", ".zshrc"]
-    backup: "./Linux/zsh"
-    targets:
-      linux: "~"
-
-  - name: "tmux"
-    files: [".tmux.conf"]
-    backup: "./Linux/tmux"
-    targets:
-      linux: "~"
-
-  - name: "hyprland"
-    files: []
-    backup: "./Linux/hypr"
-    targets:
-      linux: "~/.config/hypr"
-
-  - name: "rustdesk-service"
-    files: ["watch-rustdesk-submap.service"]
-    backup: "./Linux/hypr"
-    targets:
-      linux: "~/.config/systemd/user"
-
-  - name: "waybar"
-    files: []
-    backup: "./Linux/waybar"
-    targets:
-      linux: "~/.config/waybar"
-
-  - name: "walker"
-    files: []
-    backup: "./Linux/walker"
-    targets:
-      linux: "~/.config/walker"
-
-  - name: "fsearch"
-    files: []
-    backup: "./Linux/fsearch"
-    targets:
-      linux: "~/.config/fsearch"
-
-  - name: "elephant"
-    files: []
-    backup: "./Linux/elephant"
-    targets:
-      linux: "~/.config/elephant"
-
-  - name: "uwsm"
-    files: []
-    backup: "./Linux/uwsm/default"
-    targets:
-      linux: "~/.config/uwsm/default"
-
-  - name: "qmk"
-    files: []
-    backup: "./Linux/qmk"
-    targets:
-      linux: "~/.config/qmk"
-
-  - name: "warp"
-    files: ["user_preferences.json"]
-    backup: "./Linux/Warp"
-    targets:
-      linux: "~/.config/warp-terminal"
-
-  - name: "teams-for-linux"
-    files: ["config.json"]
-    backup: "./Linux/teams-for-linux"
-    targets:
-      linux: "~/.config/teams-for-linux"
-
-  - name: "fzf"
-    files: []
-    backup: "./Linux/fzf"
-    targets:
-      linux: "~/.config/fzf"
-
-  - name: "ghostty"
-    files: []
-    backup: "./Linux/ghostty"
-    targets:
-      linux: "~/.config/ghostty"
-
-  - name: "xcompose"
-    files: [".Xcompose"]
-    backup: "./Linux/Xcompose"
-    targets:
-      linux: "~"
-      windows: "~"
-
-  - name: "lnxlink"
-    files: ["config.yaml"]
-    backup: "./Linux/lnxlink"
-    targets:
-      linux: "~/.config/lnxlink"
-
-  - name: "mimeapps"
-    files: ["mimeapps.list"]
-    backup: "./Linux/os"
-    targets:
-      linux: "~/.config"
-
-  # QMK keyboard firmware
-  - name: "qmk-piantor"
-    files: []
-    backup: "./Linux/QMK/piantor_pro/AntoineGS"
-    targets:
-      linux: "~/qmk_firmware/keyboards/beekeeb/piantor_pro/keymaps/AntoineGS"
-
-  - name: "qmk-trackball"
-    files: []
-    backup: "./Linux/QMK/trackball_nano/AntoineGS"
-    targets:
-      linux: "~/qmk_firmware/keyboards/ploopyco/trackball_nano/keymaps/AntoineGS"
-
-  - name: "qmk-sofle"
-    files: []
-    backup: "./Linux/QMK/sofle_choc/AntoineGS"
-    targets:
-      linux: "~/qmk_firmware/keyboards/sofle_choc/keymaps/AntoineGS"
-
 # Root paths (used when running as root/sudo)
 root_paths:
   - name: "pacman-hooks"
-    files: ["pkg-backup-aur.hook", "pkg-backup-pacman.hook"]
+    files: ["my-hook.hook"]
     backup: "./Linux/pacman"
     targets:
       linux: "/usr/share/libalpm/hooks"
 
-  - name: "systemd-units"
-    files: ["units-backup.service", "units-backup.timer"]
-    backup: "./Linux/systemd"
-    targets:
-      linux: "/etc/systemd/system"
-
-# Post-restore hooks
+# Post-restore hooks (optional)
 hooks:
   post_restore:
     linux:
+      # Clone zsh plugins on non-Arch systems
       - type: "zsh-plugins"
-        skip_on_arch: true  # Skip on Arch Linux (managed by pacman)
+        skip_on_arch: true
         plugins:
           - name: "oh-my-zsh"
             repo: "https://github.com/ohmyzsh/ohmyzsh.git"
             path: "/usr/share/oh-my-zsh"
-          - name: "zsh-vi-mode"
-            repo: "https://github.com/jeffreytse/zsh-vi-mode.git"
-            path: "/usr/share/zsh/plugins/zsh-vi-mode"
-          - name: "zsh-autosuggestions"
-            repo: "https://github.com/zsh-users/zsh-autosuggestions.git"
-            path: "/usr/share/zsh/plugins/zsh-autosuggestions"
-          - name: "fzf-tab-completion"
-            repo: "https://github.com/lincheney/fzf-tab-completion.git"
-            path: "/usr/share/fzf-tab-completion"
-          - name: "zsh-transient-prompt"
-            repo: "https://github.com/olets/zsh-transient-prompt.git"
-            path: "/usr/share/zsh/plugins/zsh-transient-prompt"
-          - name: "tmux-plugin-manager"
-            repo: "https://github.com/tmux-plugins/tpm.git"
-            path: "/usr/share/tmux-plugin-manager"
-          - name: "fzf"
-            repo: "https://github.com/junegunn/fzf.git"
-            path: "/usr/share/fzf"
-        fzf_symlinks:
-          - target: "shell/completion.zsh"
-            link: "completion.zsh"
-          - target: "shell/key-bindings.zsh"
-            link: "key-bindings.zsh"
 
+      # Install terminfo
       - type: "ghostty-terminfo"
         source: "./Linux/ghostty/xterm-ghostty.terminfo"
