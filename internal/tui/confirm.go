@@ -3,9 +3,11 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/AntoineGS/dot-manager/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -17,7 +19,11 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.results = nil
 		return m, m.startOperation()
 	case "n", "N", "esc":
-		m.Screen = ScreenPathSelect
+		if m.Operation == OpInstallPackages {
+			m.Screen = ScreenPackageSelect
+		} else {
+			m.Screen = ScreenPathSelect
+		}
 	}
 	return m, nil
 }
@@ -27,20 +33,15 @@ func (m Model) viewConfirm() string {
 
 	// Title
 	icon := "󰁯"
-	if m.Operation == OpBackup {
+	switch m.Operation {
+	case OpBackup:
 		icon = "󰆓"
+	case OpInstallPackages:
+		icon = "󰏖"
 	}
 	title := fmt.Sprintf("%s  Confirm %s", icon, m.Operation.String())
 	b.WriteString(TitleStyle.Render(title))
 	b.WriteString("\n\n")
-
-	// Count selected
-	selected := 0
-	for _, p := range m.Paths {
-		if p.Selected {
-			selected++
-		}
-	}
 
 	// Warning for dry run
 	if m.DryRun {
@@ -48,31 +49,72 @@ func (m Model) viewConfirm() string {
 		b.WriteString("\n\n")
 	}
 
-	// Summary
-	action := "create symlinks for"
-	if m.Operation == OpBackup {
-		action = "backup"
-	}
-
-	summary := fmt.Sprintf("You are about to %s %d path(s):", action, selected)
-	b.WriteString(summary)
-	b.WriteString("\n\n")
-
-	// List selected paths (up to 10)
-	count := 0
-	for _, item := range m.Paths {
-		if item.Selected {
-			count++
-			if count <= 10 {
-				marker := CheckedStyle.Render("  ✓ ")
-				b.WriteString(marker + item.Spec.Name)
-				b.WriteString("\n")
+	// Handle packages differently
+	if m.Operation == OpInstallPackages {
+		// Count selected packages
+		selected := 0
+		for _, pkg := range m.Packages {
+			if pkg.Selected {
+				selected++
 			}
 		}
-	}
-	if count > 10 {
-		b.WriteString(SubtitleStyle.Render(fmt.Sprintf("  ... and %d more", count-10)))
-		b.WriteString("\n")
+
+		summary := fmt.Sprintf("You are about to install %d package(s):", selected)
+		b.WriteString(summary)
+		b.WriteString("\n\n")
+
+		// List selected packages (up to 10)
+		count := 0
+		for _, pkg := range m.Packages {
+			if pkg.Selected {
+				count++
+				if count <= 10 {
+					marker := CheckedStyle.Render("  ✓ ")
+					methodInfo := SubtitleStyle.Render(fmt.Sprintf(" (%s)", pkg.Method))
+					b.WriteString(marker + pkg.Spec.Name + methodInfo)
+					b.WriteString("\n")
+				}
+			}
+		}
+		if count > 10 {
+			b.WriteString(SubtitleStyle.Render(fmt.Sprintf("  ... and %d more", count-10)))
+			b.WriteString("\n")
+		}
+	} else {
+		// Count selected paths
+		selected := 0
+		for _, p := range m.Paths {
+			if p.Selected {
+				selected++
+			}
+		}
+
+		// Summary
+		action := "create symlinks for"
+		if m.Operation == OpBackup {
+			action = "backup"
+		}
+
+		summary := fmt.Sprintf("You are about to %s %d path(s):", action, selected)
+		b.WriteString(summary)
+		b.WriteString("\n\n")
+
+		// List selected paths (up to 10)
+		count := 0
+		for _, item := range m.Paths {
+			if item.Selected {
+				count++
+				if count <= 10 {
+					marker := CheckedStyle.Render("  ✓ ")
+					b.WriteString(marker + item.Spec.Name)
+					b.WriteString("\n")
+				}
+			}
+		}
+		if count > 10 {
+			b.WriteString(SubtitleStyle.Render(fmt.Sprintf("  ... and %d more", count-10)))
+			b.WriteString("\n")
+		}
 	}
 
 	// Confirmation prompt
@@ -96,25 +138,42 @@ func (m Model) startOperation() tea.Cmd {
 	return func() tea.Msg {
 		var results []ResultItem
 
-		for _, item := range m.Paths {
-			if !item.Selected {
-				continue
+		if m.Operation == OpInstallPackages {
+			// Handle package installation
+			for _, pkg := range m.Packages {
+				if !pkg.Selected {
+					continue
+				}
+
+				success, message := m.performPackageInstall(pkg)
+				results = append(results, ResultItem{
+					Name:    pkg.Spec.Name,
+					Success: success,
+					Message: message,
+				})
 			}
+		} else {
+			// Handle path operations
+			for _, item := range m.Paths {
+				if !item.Selected {
+					continue
+				}
 
-			var success bool
-			var message string
+				var success bool
+				var message string
 
-			if m.Operation == OpRestore {
-				success, message = m.performRestore(item)
-			} else {
-				success, message = m.performBackup(item)
+				if m.Operation == OpRestore {
+					success, message = m.performRestore(item)
+				} else {
+					success, message = m.performBackup(item)
+				}
+
+				results = append(results, ResultItem{
+					Name:    item.Spec.Name,
+					Success: success,
+					Message: message,
+				})
 			}
-
-			results = append(results, ResultItem{
-				Name:    item.Spec.Name,
-				Success: success,
-				Message: message,
-			})
 		}
 
 		return OperationCompleteMsg{
@@ -345,6 +404,134 @@ func (m Model) performBackup(item PathItem) (bool, string) {
 		return m.backupFolder(item.Target, backupPath)
 	}
 	return m.backupFiles(item.Spec.Files, item.Target, backupPath)
+}
+
+func (m Model) performPackageInstall(pkg PackageItem) (bool, string) {
+	if m.DryRun {
+		return true, fmt.Sprintf("Would install via %s", pkg.Method)
+	}
+
+	// Try package managers first
+	if pkgName, ok := pkg.Spec.Managers[pkg.Method]; ok {
+		return m.installWithManager(pkg.Method, pkgName)
+	}
+
+	// Try custom command
+	if cmd, ok := pkg.Spec.Custom[m.Platform.OS]; ok {
+		return m.runCustomCommand(cmd)
+	}
+
+	// Try URL install
+	if urlSpec, ok := pkg.Spec.URL[m.Platform.OS]; ok {
+		return m.installFromURL(urlSpec)
+	}
+
+	return false, "No installation method available"
+}
+
+func (m Model) installWithManager(manager, pkgName string) (bool, string) {
+	var cmd *exec.Cmd
+
+	switch manager {
+	case "pacman":
+		cmd = exec.Command("sudo", "pacman", "-S", "--noconfirm", pkgName)
+	case "yay":
+		cmd = exec.Command("yay", "-S", "--noconfirm", pkgName)
+	case "paru":
+		cmd = exec.Command("paru", "-S", "--noconfirm", pkgName)
+	case "apt":
+		cmd = exec.Command("sudo", "apt-get", "install", "-y", pkgName)
+	case "dnf":
+		cmd = exec.Command("sudo", "dnf", "install", "-y", pkgName)
+	case "brew":
+		cmd = exec.Command("brew", "install", pkgName)
+	case "winget":
+		cmd = exec.Command("winget", "install", "--accept-package-agreements", "--accept-source-agreements", pkgName)
+	case "scoop":
+		cmd = exec.Command("scoop", "install", pkgName)
+	case "choco":
+		cmd = exec.Command("choco", "install", "-y", pkgName)
+	default:
+		return false, fmt.Sprintf("Unknown package manager: %s", manager)
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Sprintf("Installation failed: %v", err)
+	}
+
+	return true, fmt.Sprintf("Installed via %s", manager)
+}
+
+func (m Model) runCustomCommand(command string) (bool, string) {
+	var cmd *exec.Cmd
+	if m.Platform.OS == "windows" {
+		cmd = exec.Command("powershell", "-Command", command)
+	} else {
+		cmd = exec.Command("sh", "-c", command)
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Sprintf("Custom command failed: %v", err)
+	}
+
+	return true, "Installed via custom command"
+}
+
+func (m Model) installFromURL(urlSpec config.URLInstallSpec) (bool, string) {
+	// Create temp file
+	tmpFile, err := os.CreateTemp("", "dot-manager-*")
+	if err != nil {
+		return false, fmt.Sprintf("Failed to create temp file: %v", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	// Download file
+	var downloadCmd *exec.Cmd
+	if m.Platform.OS == "windows" {
+		downloadCmd = exec.Command("powershell", "-Command",
+			fmt.Sprintf("Invoke-WebRequest -Uri '%s' -OutFile '%s'", urlSpec.URL, tmpPath))
+	} else {
+		downloadCmd = exec.Command("curl", "-fsSL", "-o", tmpPath, urlSpec.URL)
+	}
+
+	if err := downloadCmd.Run(); err != nil {
+		return false, fmt.Sprintf("Download failed: %v", err)
+	}
+
+	// Make executable on Unix
+	if m.Platform.OS != "windows" {
+		os.Chmod(tmpPath, 0755)
+	}
+
+	// Run install command
+	command := strings.ReplaceAll(urlSpec.Command, "{file}", tmpPath)
+
+	var installCmd *exec.Cmd
+	if m.Platform.OS == "windows" {
+		installCmd = exec.Command("powershell", "-Command", command)
+	} else {
+		installCmd = exec.Command("sh", "-c", command)
+	}
+
+	installCmd.Stdout = os.Stdout
+	installCmd.Stderr = os.Stderr
+	installCmd.Stdin = os.Stdin
+
+	if err := installCmd.Run(); err != nil {
+		return false, fmt.Sprintf("Install command failed: %v", err)
+	}
+
+	return true, "Installed via URL"
 }
 
 func (m Model) backupFolder(source, backup string) (bool, string) {

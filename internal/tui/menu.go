@@ -15,6 +15,7 @@ var menuItems = []struct {
 }{
 	{OpRestore, "Restore", "Create symlinks from targets to backup sources", "󰁯"},
 	{OpBackup, "Backup", "Copy files from targets to backup directory", "󰆓"},
+	{OpInstallPackages, "Install Packages", "Install packages using various package managers", "󰏖"},
 	{OpList, "List", "Display all configured paths", "󰋗"},
 }
 
@@ -34,6 +35,19 @@ func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// List doesn't need path selection
 			m.Screen = ScreenResults
 			m.results = m.generateListResults()
+			return m, nil
+		}
+		if m.Operation == OpInstallPackages {
+			if len(m.Packages) == 0 {
+				m.Screen = ScreenResults
+				m.results = []ResultItem{{
+					Name:    "No packages",
+					Success: false,
+					Message: "No installable packages found in configuration",
+				}}
+				return m, nil
+			}
+			m.Screen = ScreenPackageSelect
 			return m, nil
 		}
 		m.Screen = ScreenPathSelect

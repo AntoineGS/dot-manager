@@ -10,11 +10,35 @@ import (
 )
 
 type Config struct {
-	Version    int        `yaml:"version"`
-	BackupRoot string     `yaml:"backup_root"`
-	Paths      []PathSpec `yaml:"paths"`
-	RootPaths  []PathSpec `yaml:"root_paths"`
-	Hooks      Hooks      `yaml:"hooks"`
+	Version         int              `yaml:"version"`
+	BackupRoot      string           `yaml:"backup_root"`
+	Paths           []PathSpec       `yaml:"paths"`
+	RootPaths       []PathSpec       `yaml:"root_paths"`
+	Hooks           Hooks            `yaml:"hooks"`
+	Packages        PackagesConfig   `yaml:"packages"`
+}
+
+// PackagesConfig holds package installation configuration
+type PackagesConfig struct {
+	DefaultManager  string           `yaml:"default_manager,omitempty"`
+	ManagerPriority []string         `yaml:"manager_priority,omitempty"`
+	Items           []PackageSpec    `yaml:"items"`
+}
+
+// PackageSpec defines a package to install
+type PackageSpec struct {
+	Name        string            `yaml:"name"`
+	Description string            `yaml:"description,omitempty"`
+	Managers    map[string]string `yaml:"managers,omitempty"`  // manager -> package name
+	Custom      map[string]string `yaml:"custom,omitempty"`    // os -> command
+	URL         map[string]URLInstallSpec `yaml:"url,omitempty"` // os -> url install
+	Tags        []string          `yaml:"tags,omitempty"`
+}
+
+// URLInstallSpec defines URL-based installation
+type URLInstallSpec struct {
+	URL     string `yaml:"url"`
+	Command string `yaml:"command"` // Use {file} as placeholder for downloaded file
 }
 
 type PathSpec struct {
