@@ -61,6 +61,8 @@ type Model struct {
 	packageCursor int
 	scrollOffset  int
 	viewHeight    int
+	listCursor    int  // Cursor for list table view
+	showingDetail bool // Whether detail popup is showing
 
 	// Results
 	results    []ResultItem
@@ -204,7 +206,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "ctrl+c", "q":
+	case "ctrl+c":
+		return m, tea.Quit
+
+	case "q":
+		// Let the List view handle q (goes back to menu, not quit)
+		if m.Screen == ScreenResults && m.Operation == OpList {
+			return m.updateResults(msg)
+		}
 		if m.Screen == ScreenResults || m.Screen == ScreenMenu {
 			return m, tea.Quit
 		}
@@ -213,6 +222,10 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "esc":
+		// Let the Results screen handle ESC when in List view
+		if m.Screen == ScreenResults && m.Operation == OpList {
+			return m.updateResults(msg)
+		}
 		if m.Screen != ScreenMenu && !m.processing {
 			m.Screen = ScreenMenu
 		}

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,10 +24,39 @@ func (m Model) viewProgress() string {
 }
 
 func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle detail popup separately
+	if m.Operation == OpList && m.showingDetail {
+		switch msg.String() {
+		case "esc", "enter", "h", "left":
+			m.showingDetail = false
+			return m, nil
+		case "q":
+			m.showingDetail = false
+			m.Screen = ScreenMenu
+			return m, nil
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
-	case "enter", "q", "esc":
+	case "q":
 		if m.Operation == OpList {
 			m.Screen = ScreenMenu
+			return m, nil
+		}
+		return m, tea.Quit
+	case "esc", "h", "left":
+		if m.Operation == OpList {
+			m.Screen = ScreenMenu
+			return m, nil
+		}
+		return m, tea.Quit
+	case "enter", "l", "right":
+		if m.Operation == OpList {
+			// Open detail popup for selected item
+			if len(m.Paths) > 0 {
+				m.showingDetail = true
+			}
 			return m, nil
 		}
 		return m, tea.Quit
@@ -40,20 +70,42 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pathCursor = 0
 		m.scrollOffset = 0
 		return m, nil
+	case "up", "k":
+		if m.Operation == OpList {
+			if m.listCursor > 0 {
+				m.listCursor--
+				// Scroll up if cursor goes above visible area
+				if m.listCursor < m.scrollOffset {
+					m.scrollOffset = m.listCursor
+				}
+			}
+		}
+		return m, nil
+	case "down", "j":
+		if m.Operation == OpList {
+			if m.listCursor < len(m.Paths)-1 {
+				m.listCursor++
+				// Scroll down if cursor goes below visible area
+				if m.listCursor >= m.scrollOffset+m.viewHeight {
+					m.scrollOffset = m.listCursor - m.viewHeight + 1
+				}
+			}
+		}
+		return m, nil
 	}
 	return m, nil
 }
 
 func (m Model) viewResults() string {
+	// Use table view for List operation
+	if m.Operation == OpList {
+		return m.viewListTable()
+	}
+
 	var b strings.Builder
 
 	// Title
-	var title string
-	if m.Operation == OpList {
-		title = "󰋗  Configuration Paths"
-	} else {
-		title = fmt.Sprintf("✓  %s Complete", m.Operation.String())
-	}
+	title := fmt.Sprintf("✓  %s Complete", m.Operation.String())
 	b.WriteString(TitleStyle.Render(title))
 	b.WriteString("\n\n")
 
@@ -73,17 +125,15 @@ func (m Model) viewResults() string {
 		}
 	}
 
-	if m.Operation != OpList {
-		summary := fmt.Sprintf("%d successful", successCount)
-		if failCount > 0 {
-			summary += fmt.Sprintf(", %d failed", failCount)
-		}
-		if m.DryRun {
-			summary = WarningStyle.Render("[DRY RUN] ") + summary
-		}
-		b.WriteString(SubtitleStyle.Render(summary))
-		b.WriteString("\n\n")
+	summary := fmt.Sprintf("%d successful", successCount)
+	if failCount > 0 {
+		summary += fmt.Sprintf(", %d failed", failCount)
 	}
+	if m.DryRun {
+		summary = WarningStyle.Render("[DRY RUN] ") + summary
+	}
+	b.WriteString(SubtitleStyle.Render(summary))
+	b.WriteString("\n\n")
 
 	// Results list
 	maxVisible := m.viewHeight
@@ -112,10 +162,7 @@ func (m Model) viewResults() string {
 		var icon string
 		var nameStyle func(string) string
 
-		if m.Operation == OpList {
-			icon = "󰋗 "
-			nameStyle = func(s string) string { return PathNameStyle.Render(s) }
-		} else if result.Success {
+		if result.Success {
 			icon = SuccessStyle.Render("✓ ")
 			nameStyle = func(s string) string { return SuccessStyle.Render(s) }
 		} else {
@@ -143,19 +190,290 @@ func (m Model) viewResults() string {
 
 	// Help
 	b.WriteString("\n")
-	if m.Operation == OpList {
+	b.WriteString(RenderHelp(
+		"r", "new operation",
+		"q/enter", "quit",
+	))
+
+	return BaseStyle.Render(b.String())
+}
+
+func (m Model) viewListTable() string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString(TitleStyle.Render("󰋗  Configuration Paths"))
+	b.WriteString("\n\n")
+
+	// Calculate column widths based on terminal width
+	// Reserve space for: padding (4) + cursor (2) + separators (6) + minimum content
+	availWidth := m.width - 12
+	if availWidth < 60 {
+		availWidth = 60
+	}
+
+	// Column widths: Name (20%), Type (10%), Backup (35%), Target (35%)
+	nameWidth := availWidth * 20 / 100
+	if nameWidth < 12 {
+		nameWidth = 12
+	}
+	typeWidth := 8
+	pathWidth := (availWidth - nameWidth - typeWidth) / 2
+
+	// Total table width: cursor(2) + name + sep(2) + type + sep(2) + backup + sep(2) + target
+	tableWidth := 2 + nameWidth + 2 + typeWidth + 2 + pathWidth + 2 + pathWidth
+
+	// Summary
+	b.WriteString(SubtitleStyle.Render(fmt.Sprintf("%d configured paths", len(m.Paths))))
+	b.WriteString("\n\n")
+
+	// Table header (with space for cursor)
+	headerStyle := PathNameStyle.Bold(true)
+	header := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s",
+		nameWidth, "Name",
+		typeWidth, "Type",
+		pathWidth, "Backup",
+		pathWidth, "Target")
+	b.WriteString(headerStyle.Render(header))
+	b.WriteString("\n")
+
+	// Header separator
+	separator := "  " + strings.Repeat("─", nameWidth) + "──" +
+		strings.Repeat("─", typeWidth) + "──" +
+		strings.Repeat("─", pathWidth) + "──" +
+		strings.Repeat("─", pathWidth)
+	b.WriteString(MutedTextStyle.Render(separator))
+	b.WriteString("\n")
+
+	// Calculate detail height if showing
+	detailHeight := 0
+	if m.showingDetail && m.listCursor < len(m.Paths) {
+		detailHeight = m.calcDetailHeight(m.Paths[m.listCursor])
+	}
+
+	// We want to output exactly viewHeight lines for the table area
+	// When detail is showing, we show fewer rows + detail lines
+	// When detail is not showing, we show more rows + padding
+	totalContentLines := m.viewHeight
+
+	// Calculate how many rows we can show
+	maxVisible := totalContentLines
+	if m.showingDetail {
+		maxVisible = totalContentLines - detailHeight
+		if maxVisible < 1 {
+			maxVisible = 1
+		}
+	}
+	if maxVisible > len(m.Paths) {
+		maxVisible = len(m.Paths)
+	}
+
+	// Keep the same scroll offset - don't change start when toggling detail
+	start := m.scrollOffset
+
+	// Ensure cursor is visible within the reduced window when detail is showing
+	if m.showingDetail {
+		cursorPosInWindow := m.listCursor - start
+		if cursorPosInWindow >= maxVisible {
+			// Cursor would be hidden, adjust start to show cursor at bottom of reduced window
+			start = m.listCursor - maxVisible + 1
+		}
+		if cursorPosInWindow < 0 {
+			start = m.listCursor
+		}
+	}
+
+	end := start + maxVisible
+	if end > len(m.Paths) {
+		end = len(m.Paths)
+	}
+
+	// Track lines output for padding
+	linesOutput := 0
+
+	for i := start; i < end; i++ {
+		item := m.Paths[i]
+		isSelected := i == m.listCursor
+
+		// Cursor indicator
+		cursor := "  "
+		if isSelected {
+			cursor = "▸ "
+		}
+
+		// Determine type
+		var typeStr string
+		if item.Spec.IsFolder() {
+			typeStr = "folder"
+		} else {
+			typeStr = fmt.Sprintf("%d files", len(item.Spec.Files))
+		}
+
+		// Truncate paths if needed (show config-style values with ~)
+		name := truncateStr(item.Spec.Name, nameWidth)
+		backup := truncateStr(item.Spec.Backup, pathWidth)
+		target := truncateStr(unexpandHome(item.Spec.Targets[m.Platform.OS]), pathWidth)
+
+		// Build row
+		row := fmt.Sprintf("%-*s  ", nameWidth, name)
+		row += fmt.Sprintf("%-*s  ", typeWidth, typeStr)
+		row += fmt.Sprintf("%-*s  ", pathWidth, backup)
+		row += fmt.Sprintf("%-*s", pathWidth, target)
+
+		// Apply styling based on selection
+		if isSelected {
+			b.WriteString(SelectedListItemStyle.Render(cursor + row))
+		} else {
+			b.WriteString(cursor + PathTargetStyle.Render(row))
+		}
+		b.WriteString("\n")
+		linesOutput++
+
+		// Show inline detail panel below selected row
+		if isSelected && m.showingDetail {
+			b.WriteString(m.renderInlineDetail(item, tableWidth))
+			linesOutput += detailHeight
+		}
+	}
+
+	// Pad to maintain constant height
+	for linesOutput < totalContentLines {
+		b.WriteString("\n")
+		linesOutput++
+	}
+
+	// Scroll indicators (always show line, even if empty, for consistent height)
+	scrollInfo := ""
+	if start > 0 || end < len(m.Paths) {
+		scrollInfo = fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.Paths))
+		if start > 0 {
+			scrollInfo = "↑ " + scrollInfo
+		}
+		if end < len(m.Paths) {
+			scrollInfo = scrollInfo + " ↓"
+		}
+	}
+	b.WriteString(SubtitleStyle.Render(scrollInfo))
+	b.WriteString("\n")
+
+	// Help
+	b.WriteString("\n")
+	if m.showingDetail {
 		b.WriteString(RenderHelp(
-			"enter/esc", "back to menu",
-			"q", "quit",
+			"h/←/esc", "close",
+			"q", "back",
 		))
 	} else {
 		b.WriteString(RenderHelp(
-			"r", "new operation",
-			"q/enter", "quit",
+			"j/k", "navigate",
+			"l/→", "details",
+			"h/←", "back",
+			"q", "menu",
 		))
 	}
 
 	return BaseStyle.Render(b.String())
+}
+
+func (m Model) calcDetailHeight(item PathItem) int {
+	// Calculate how many lines the detail panel takes
+	lines := 0
+
+	// Type line
+	lines++
+
+	// Files line (only for non-folders)
+	if !item.Spec.IsFolder() {
+		lines++
+	}
+
+	// Backup line
+	lines++
+
+	// Targets header
+	lines++
+
+	// One line per target OS
+	lines += len(item.Spec.Targets)
+
+	// Bottom border
+	lines++
+
+	return lines
+}
+
+func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
+	var detail strings.Builder
+
+	// Type and files
+	if item.Spec.IsFolder() {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Type: "))
+		detail.WriteString(WarningStyle.Render("folder"))
+		detail.WriteString("\n")
+	} else {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Type: "))
+		detail.WriteString(fmt.Sprintf("%d files", len(item.Spec.Files)))
+		detail.WriteString("\n")
+
+		// Files list
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Files: "))
+		detail.WriteString(strings.Join(item.Spec.Files, ", "))
+		detail.WriteString("\n")
+	}
+
+	// Backup path
+	detail.WriteString("    │ ")
+	detail.WriteString(MutedTextStyle.Render("Backup: "))
+	detail.WriteString(PathBackupStyle.Render(item.Spec.Backup))
+	detail.WriteString("\n")
+
+	// Targets by OS
+	detail.WriteString("    │ ")
+	detail.WriteString(MutedTextStyle.Render("Targets:"))
+	detail.WriteString("\n")
+	for os, target := range item.Spec.Targets {
+		detail.WriteString("    │   ")
+		osLabel := fmt.Sprintf("%-8s ", os+":")
+		detail.WriteString(MutedTextStyle.Render(osLabel))
+		detail.WriteString(PathTargetStyle.Render(unexpandHome(target)))
+		detail.WriteString("\n")
+	}
+
+	// Bottom line extending to table width
+	detail.WriteString("    └")
+	bottomWidth := tableWidth - 5
+	if bottomWidth < 10 {
+		bottomWidth = 10
+	}
+	detail.WriteString(strings.Repeat("─", bottomWidth))
+	detail.WriteString("\n")
+
+	return detail.String()
+}
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}
+
+// unexpandHome converts expanded home directory paths back to ~ for display
+func unexpandHome(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
 
 func (m Model) processNextPath(index int) tea.Cmd {

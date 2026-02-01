@@ -32,9 +32,11 @@ func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", " ":
 		m.Operation = menuItems[m.menuCursor].op
 		if m.Operation == OpList {
-			// List doesn't need path selection
+			// List doesn't need path selection, show table view
 			m.Screen = ScreenResults
-			m.results = m.generateListResults()
+			m.scrollOffset = 0
+			m.listCursor = 0
+			m.showingDetail = false
 			return m, nil
 		}
 		if m.Operation == OpInstallPackages {
@@ -110,33 +112,6 @@ func (m Model) viewMenu() string {
 	))
 
 	return BaseStyle.Render(b.String())
-}
-
-func (m Model) generateListResults() []ResultItem {
-	var results []ResultItem
-
-	for _, item := range m.Paths {
-		var fileInfo string
-		if item.Spec.IsFolder() {
-			fileInfo = "[folder]"
-		} else {
-			fileInfo = strings.Join(item.Spec.Files, ", ")
-		}
-
-		msg := fmt.Sprintf("%s\n  backup: %s\n  target: %s",
-			fileInfo,
-			m.resolvePath(item.Spec.Backup),
-			item.Target,
-		)
-
-		results = append(results, ResultItem{
-			Name:    item.Spec.Name,
-			Success: true,
-			Message: msg,
-		})
-	}
-
-	return results
 }
 
 func (m Model) resolvePath(path string) string {
