@@ -63,11 +63,17 @@ func (m *Model) initAddFormWithIndex(editIndex int) {
 	filterValueInput.CharLimit = 128
 	filterValueInput.Width = 40
 
+	packageNameInput := textinput.New()
+	packageNameInput.Placeholder = "e.g., neovim"
+	packageNameInput.CharLimit = 128
+	packageNameInput.Width = 40
+
 	entryType := EntryTypeConfig
 	isFolder := true
 	isSudo := false
 	var files []string
 	var filters []FilterCondition
+	packageManagers := make(map[string]string)
 
 	// Populate with existing data if editing
 	if editIndex >= 0 && editIndex < len(m.Paths) {
@@ -117,6 +123,13 @@ func (m *Model) initAddFormWithIndex(editIndex int) {
 				})
 			}
 		}
+
+		// Load package managers
+		if entry.Package != nil && len(entry.Package.Managers) > 0 {
+			for k, v := range entry.Package.Managers {
+				packageManagers[k] = v
+			}
+		}
 	}
 
 	m.addForm = AddForm{
@@ -150,6 +163,11 @@ func (m *Model) initAddFormWithIndex(editIndex int) {
 		filterIsExclude:     false,
 		filterValueInput:    filterValueInput,
 		filterKeyCursor:     0,
+		packageManagers:     packageManagers,
+		packagesCursor:      0,
+		editingPackage:      false,
+		packageNameInput:    packageNameInput,
+		lastPackageName:     "",
 	}
 }
 
@@ -170,9 +188,19 @@ func (m Model) updateAddForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateFilterInput(msg)
 	}
 
+	// Handle editing package name mode separately
+	if m.addForm.editingPackage {
+		return m.updatePackageInput(msg)
+	}
+
 	// Handle files list navigation when focused on files area
 	if m.getFieldType() == fieldTypeFiles {
 		return m.updateFilesList(msg)
+	}
+
+	// Handle packages list navigation when focused on packages area
+	if m.getFieldType() == fieldTypePackages {
+		return m.updatePackagesList(msg)
 	}
 
 	// Handle filters list navigation when focused on filters area
@@ -869,6 +897,141 @@ func (m Model) updateFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updatePackagesList handles key events when the packages list is focused
+func (m Model) updatePackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// packagesCursor: 0 to len(knownPackageManagers)-1 for package managers
+	maxCursor := len(knownPackageManagers) - 1
+
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+
+	case "q":
+		// Return to list if editing, menu if adding
+		if m.addForm.editIndex >= 0 {
+			m.Screen = ScreenResults
+		} else {
+			m.Screen = ScreenMenu
+		}
+		return m, nil
+
+	case "up", "k":
+		if m.addForm.packagesCursor > 0 {
+			m.addForm.packagesCursor--
+		} else {
+			// Move to previous field
+			m.addForm.focusIndex--
+			m.updateAddFormFocus()
+		}
+		return m, nil
+
+	case "down", "j":
+		if m.addForm.packagesCursor < maxCursor {
+			m.addForm.packagesCursor++
+		} else {
+			// Move to next field (filters)
+			m.addForm.focusIndex++
+			maxIndex := m.addFormMaxIndex()
+			if m.addForm.focusIndex > maxIndex {
+				m.addForm.focusIndex = 0
+			}
+			m.addForm.packagesCursor = 0
+			m.updateAddFormFocus()
+		}
+		return m, nil
+
+	case "tab":
+		// Move to next field
+		m.addForm.focusIndex++
+		maxIndex := m.addFormMaxIndex()
+		if m.addForm.focusIndex > maxIndex {
+			m.addForm.focusIndex = 0
+		}
+		m.addForm.packagesCursor = 0
+		m.updateAddFormFocus()
+		return m, nil
+
+	case "shift+tab":
+		// Move to previous field
+		m.addForm.focusIndex--
+		m.updateAddFormFocus()
+		return m, nil
+
+	case "enter", "e", " ":
+		// Edit the selected package manager's package name
+		manager := knownPackageManagers[m.addForm.packagesCursor]
+		currentValue := m.addForm.packageManagers[manager]
+
+		// Auto-populate with last package name if empty
+		if currentValue == "" && m.addForm.lastPackageName != "" {
+			currentValue = m.addForm.lastPackageName
+		}
+
+		m.addForm.editingPackage = true
+		m.addForm.packageNameInput.SetValue(currentValue)
+		m.addForm.packageNameInput.Focus()
+		m.addForm.packageNameInput.SetCursor(len(currentValue))
+		return m, nil
+
+	case "d", "backspace", "delete":
+		// Clear the package name for the selected manager
+		manager := knownPackageManagers[m.addForm.packagesCursor]
+		delete(m.addForm.packageManagers, manager)
+		return m, nil
+
+	case "s", "ctrl+s":
+		// Save the form
+		if err := m.saveNewPath(); err != nil {
+			m.addForm.err = err.Error()
+			return m, nil
+		}
+		if m.addForm.editIndex >= 0 {
+			m.Screen = ScreenResults
+		} else {
+			m.Screen = ScreenMenu
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// updatePackageInput handles key events when editing a package name
+func (m Model) updatePackageInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+
+	case "esc":
+		// Cancel editing package name
+		m.addForm.editingPackage = false
+		m.addForm.packageNameInput.SetValue("")
+		return m, nil
+
+	case "enter":
+		pkgName := strings.TrimSpace(m.addForm.packageNameInput.Value())
+		manager := knownPackageManagers[m.addForm.packagesCursor]
+
+		if pkgName != "" {
+			m.addForm.packageManagers[manager] = pkgName
+			m.addForm.lastPackageName = pkgName // Remember for auto-populate
+		} else {
+			// Clear if empty
+			delete(m.addForm.packageManagers, manager)
+		}
+
+		m.addForm.editingPackage = false
+		m.addForm.packageNameInput.SetValue("")
+		return m, nil
+	}
+
+	// Handle text input
+	m.addForm.packageNameInput, cmd = m.addForm.packageNameInput.Update(msg)
+	return m, cmd
+}
+
 // updateAddFormFocus updates which input field is focused
 func (m *Model) updateAddFormFocus() {
 	m.addForm.nameInput.Blur()
@@ -879,6 +1042,7 @@ func (m *Model) updateAddFormFocus() {
 	m.addForm.repoInput.Blur()
 	m.addForm.branchInput.Blur()
 	m.addForm.newFileInput.Blur()
+	m.addForm.packageNameInput.Blur()
 
 	ft := m.getFieldType()
 	switch ft {
@@ -896,7 +1060,7 @@ func (m *Model) updateAddFormFocus() {
 		m.addForm.repoInput.Focus()
 	case fieldTypeBranch:
 		m.addForm.branchInput.Focus()
-	// Toggles and files list don't have text input focus
+	// Toggles, files list, and packages list don't have text input focus
 	}
 }
 
@@ -936,6 +1100,7 @@ const (
 	fieldTypeIsFolder                          // Folder/files toggle (config)
 	fieldTypeIsSudo                            // Root toggle
 	fieldTypeFiles                             // Files list (config, !isFolder)
+	fieldTypePackages                          // Package managers list
 	fieldTypeFilters                           // Filters list
 )
 
@@ -965,20 +1130,24 @@ const (
 	fieldIdxTypeSpec   = 4 // First type-specific field (backup/repo)
 	fieldIdxTypeSpec2  = 5 // Second type-specific field (isFolder/branch)
 	fieldIdxTypeSpec3  = 6 // Third type-specific field (files/isSudo)
-	fieldIdxTypeSpec4  = 7 // Fourth type-specific field (isSudo/filters)
-	fieldIdxTypeSpec5  = 8 // Fifth type-specific field (filters for files mode)
+	fieldIdxTypeSpec4  = 7 // Fourth type-specific field (isSudo/packages)
+	fieldIdxTypeSpec5  = 8 // Fifth type-specific field (packages/filters)
+	fieldIdxTypeSpec6  = 9 // Sixth type-specific field (filters for files mode)
 )
 
 // Form field count constants for max index calculation
 const (
 	// Number of fields after common fields (name, desc, linux, windows = 4)
-	gitFieldCount          = 4 // repo, branch, isSudo, filters
-	configFolderFieldCount = 4 // backup, isFolder, isSudo, filters
-	configFilesFieldCount  = 5 // backup, isFolder, files, isSudo, filters
+	gitFieldCount          = 5 // repo, branch, isSudo, packages, filters
+	configFolderFieldCount = 5 // backup, isFolder, isSudo, packages, filters
+	configFilesFieldCount  = 6 // backup, isFolder, files, isSudo, packages, filters
 )
 
 // Filter attribute keys
 var filterKeys = []string{"os", "distro", "hostname", "user"}
+
+// Known package managers (in display order)
+var knownPackageManagers = []string{"pacman", "yay", "paru", "apt", "dnf", "brew", "winget", "scoop", "choco"}
 
 // getFieldType returns the field type at the current focus index
 func (m *Model) getFieldType() addFormFieldType {
@@ -1008,7 +1177,7 @@ func (m *Model) getFieldType() addFormFieldType {
 
 	// Type-specific fields
 	if isGit {
-		// Git type: repo, branch, isSudo, filters
+		// Git type: repo, branch, isSudo, packages, filters
 		switch idx {
 		case fieldIdxTypeSpec:
 			return fieldTypeRepo
@@ -1017,12 +1186,14 @@ func (m *Model) getFieldType() addFormFieldType {
 		case fieldIdxTypeSpec3:
 			return fieldTypeIsSudo
 		case fieldIdxTypeSpec4:
+			return fieldTypePackages
+		case fieldIdxTypeSpec5:
 			return fieldTypeFilters
 		}
 	} else {
-		// Config type visual order: backup, isFolder, [files if !isFolder], isSudo, filters
+		// Config type visual order: backup, isFolder, [files if !isFolder], isSudo, packages, filters
 		if m.addForm.isFolder {
-			// Folder mode: backup, isFolder, isSudo, filters
+			// Folder mode: backup, isFolder, isSudo, packages, filters
 			switch idx {
 			case fieldIdxTypeSpec:
 				return fieldTypeBackup
@@ -1031,10 +1202,12 @@ func (m *Model) getFieldType() addFormFieldType {
 			case fieldIdxTypeSpec3:
 				return fieldTypeIsSudo
 			case fieldIdxTypeSpec4:
+				return fieldTypePackages
+			case fieldIdxTypeSpec5:
 				return fieldTypeFilters
 			}
 		} else {
-			// Files mode: backup, isFolder, files, isSudo, filters
+			// Files mode: backup, isFolder, files, isSudo, packages, filters
 			switch idx {
 			case fieldIdxTypeSpec:
 				return fieldTypeBackup
@@ -1045,6 +1218,8 @@ func (m *Model) getFieldType() addFormFieldType {
 			case fieldIdxTypeSpec4:
 				return fieldTypeIsSudo
 			case fieldIdxTypeSpec5:
+				return fieldTypePackages
+			case fieldIdxTypeSpec6:
 				return fieldTypeFilters
 			}
 		}
@@ -1308,6 +1483,15 @@ func (m Model) viewAddForm() string {
 	}
 	b.WriteString(fmt.Sprintf("  %s  %s Yes\n\n", rootLabel, rootCheck))
 
+	// Packages section
+	packagesLabel := "Packages:"
+	if ft == fieldTypePackages {
+		packagesLabel = HelpKeyStyle.Render("Packages:")
+	}
+	b.WriteString(fmt.Sprintf("  %s\n", packagesLabel))
+	b.WriteString(m.renderPackagesList())
+	b.WriteString("\n")
+
 	// Filters section
 	filtersLabel := "Filters:"
 	if ft == fieldTypeFilters {
@@ -1361,6 +1545,38 @@ func (m Model) viewAddForm() string {
 	b.WriteString(m.renderAddFormHelp())
 
 	return BaseStyle.Render(b.String())
+}
+
+// renderPackagesList renders the package managers list
+func (m Model) renderPackagesList() string {
+	var b strings.Builder
+	ft := m.getFieldType()
+
+	for i, manager := range knownPackageManagers {
+		prefix := "    "
+		pkgName := m.addForm.packageManagers[manager]
+
+		// Show input if editing this manager's package
+		if m.addForm.editingPackage && m.addForm.packagesCursor == i {
+			b.WriteString(fmt.Sprintf("%s%-8s %s\n", prefix, manager+":", m.addForm.packageNameInput.View()))
+		} else if ft == fieldTypePackages && m.addForm.packagesCursor == i {
+			// Focused on this manager
+			if pkgName != "" {
+				b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(fmt.Sprintf("%-8s %s", manager+":", pkgName))))
+			} else {
+				b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(fmt.Sprintf("%-8s (not set)", manager+":"))))
+			}
+		} else {
+			// Not focused
+			if pkgName != "" {
+				b.WriteString(fmt.Sprintf("%s%-8s %s\n", prefix, manager+":", pkgName))
+			} else {
+				b.WriteString(fmt.Sprintf("%s%-8s %s\n", prefix, manager+":", MutedTextStyle.Render("(not set)")))
+			}
+		}
+	}
+
+	return b.String()
 }
 
 // renderFilterAddUI renders the filter add/edit UI
@@ -1466,6 +1682,12 @@ func (m Model) renderAddFormHelp() string {
 			"esc", "cancel",
 		)
 	}
+	if m.addForm.editingPackage {
+		return RenderHelp(
+			"enter", "save",
+			"esc", "cancel",
+		)
+	}
 	if m.addForm.addingFilter || m.addForm.editingFilter {
 		// Adding/editing a filter
 		switch m.addForm.filterAddStep {
@@ -1527,6 +1749,23 @@ func (m Model) renderAddFormHelp() string {
 		}
 		return RenderHelp(
 			"enter/e", "add file",
+			"s", "save",
+			"q", "back",
+		)
+	}
+	if ft == fieldTypePackages {
+		// Packages list focused
+		manager := knownPackageManagers[m.addForm.packagesCursor]
+		if m.addForm.packageManagers[manager] != "" {
+			return RenderHelp(
+				"enter/e", "edit",
+				"d/del", "clear",
+				"s", "save",
+				"q", "back",
+			)
+		}
+		return RenderHelp(
+			"enter/e", "set package",
 			"s", "save",
 			"q", "back",
 		)
@@ -1662,13 +1901,31 @@ func (m *Model) saveNewPath() error {
 		newEntry.Files = files
 	}
 
+	// Build package configuration from form data
+	if len(m.addForm.packageManagers) > 0 {
+		newEntry.Package = &config.EntryPackage{
+			Managers: make(map[string]string),
+		}
+		for k, v := range m.addForm.packageManagers {
+			newEntry.Package.Managers[k] = v
+		}
+	}
+
 	// Editing existing entry
 	if m.addForm.editIndex >= 0 {
 		configIdx := m.findConfigEntryIndex(m.addForm.editIndex)
 		if configIdx >= 0 {
-			// Preserve package info if it exists
+			// Preserve custom and URL package info if it exists (we only edit managers)
 			if m.Config.Entries[configIdx].Package != nil {
-				newEntry.Package = m.Config.Entries[configIdx].Package
+				if newEntry.Package == nil {
+					newEntry.Package = &config.EntryPackage{}
+				}
+				if len(m.Config.Entries[configIdx].Package.Custom) > 0 {
+					newEntry.Package.Custom = m.Config.Entries[configIdx].Package.Custom
+				}
+				if len(m.Config.Entries[configIdx].Package.URL) > 0 {
+					newEntry.Package.URL = m.Config.Entries[configIdx].Package.URL
+				}
 			}
 
 			m.Config.Entries[configIdx] = newEntry

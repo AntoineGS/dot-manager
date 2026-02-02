@@ -139,6 +139,13 @@ type AddForm struct {
 	suggestions      []string
 	suggestionCursor int
 	showSuggestions  bool
+
+	// Package managers state
+	packageManagers    map[string]string // Manager name -> package name
+	packagesCursor     int               // Position in package managers list
+	editingPackage     bool              // Whether we're editing a package name
+	packageNameInput   textinput.Model   // Input for package name
+	lastPackageName    string            // Last entered package name for auto-populate
 }
 
 type Model struct {
