@@ -3,6 +3,7 @@ package tui
 import (
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
 	"github.com/AntoineGS/dot-manager/internal/manager"
@@ -298,6 +299,11 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 			})
 		}
 	}
+
+	// Sort all items by name
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Entry.Name < items[j].Entry.Name
+	})
 
 	// Keep Packages slice for backward compatibility with install operations
 	pkgItems := make([]PackageItem, 0, len(packageEntries))

@@ -147,12 +147,23 @@ func TestPathItemIsFolder(t *testing.T) {
 
 	model := NewModel(cfg, plat, false)
 
-	if !model.Paths[0].Entry.IsFolder() {
-		t.Error("First path should be a folder")
+	// Entries are sorted by name, so find them by name
+	var folderPath, filesPath *PathItem
+	for i := range model.Paths {
+		switch model.Paths[i].Entry.Name {
+		case "folder":
+			folderPath = &model.Paths[i]
+		case "files":
+			filesPath = &model.Paths[i]
+		}
 	}
 
-	if model.Paths[1].Entry.IsFolder() {
-		t.Error("Second path should not be a folder")
+	if folderPath == nil || !folderPath.Entry.IsFolder() {
+		t.Error("folder entry should be a folder")
+	}
+
+	if filesPath == nil || filesPath.Entry.IsFolder() {
+		t.Error("files entry should not be a folder")
 	}
 }
 

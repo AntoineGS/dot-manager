@@ -437,13 +437,21 @@ func (m Model) viewListTable() string {
 
 		// Truncate paths if needed (show config-style values with ~)
 		name := item.Entry.Name
-		// Add sudo indicator (use text instead of emoji to preserve ANSI styling)
+
+		// Add sudo indicator at the end
 		// Show [S] for entries that require sudo or packages that require sudo
 		needsSudo := item.Entry.Sudo || requiresSudo(item.PkgMethod)
+		suffix := ""
 		if needsSudo {
-			name = "[S] " + name
+			suffix = " [S]"
 		}
-		name = truncateStr(name, nameWidth)
+
+		// Truncate name if needed, leaving room for suffix
+		maxNameLen := nameWidth - len(suffix)
+		if maxNameLen < 5 {
+			maxNameLen = 5
+		}
+		name = truncateStr(name, maxNameLen) + suffix
 		target := truncateStr(unexpandHome(item.Entry.Targets[m.Platform.OS]), pathWidth)
 
 		// Build row with fixed-width columns
