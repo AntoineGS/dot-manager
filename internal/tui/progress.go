@@ -362,7 +362,7 @@ func (m Model) viewListTable() string {
 		))
 	} else {
 		b.WriteString(RenderHelp(
-			"j/k", "navigate",
+			"↑/k ↓/j", "navigate",
 			"l/→", "details",
 			"e", "edit",
 			"h/←", "back",

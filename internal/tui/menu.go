@@ -103,7 +103,7 @@ func (m Model) viewMenu() string {
 	// Help
 	b.WriteString("\n")
 	b.WriteString(RenderHelp(
-		"↑/↓", "navigate",
+		"↑/k ↓/j", "navigate",
 		"enter", "select",
 		"q", "quit",
 	))

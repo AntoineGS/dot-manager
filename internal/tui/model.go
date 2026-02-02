@@ -76,11 +76,22 @@ type AddForm struct {
 	linuxTargetInput   textinput.Model
 	windowsTargetInput textinput.Model
 	backupInput        textinput.Model
-	filesInput         textinput.Model
 	isFolder           bool
-	focusIndex         int // 0=name, 1=linuxTarget, 2=windowsTarget, 3=backup, 4=isFolder toggle, 5=files (when !isFolder)
+	focusIndex         int // 0=name, 1=linuxTarget, 2=windowsTarget, 3=backup, 4=isFolder toggle, 5=files list (when !isFolder)
 	err                string
 	editIndex          int // -1 for new, >= 0 for editing existing path
+
+	// Field editing state (for fields 0-3)
+	editingField  bool   // Whether we're currently editing a text field
+	originalValue string // Original value before editing (for cancel)
+
+	// Files list state (when !isFolder)
+	files            []string
+	filesCursor      int             // Cursor position in files list
+	newFileInput     textinput.Model // Input for adding/editing files
+	addingFile       bool            // Whether we're currently adding a file
+	editingFile      bool            // Whether we're currently editing a file
+	editingFileIndex int             // Index of the file being edited
 
 	// Autocomplete state
 	suggestions      []string
