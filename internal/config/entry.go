@@ -122,3 +122,58 @@ func EntryFromPackageSpec(p PackageSpec) Entry {
 		Package:     pkg,
 	}
 }
+
+// Application represents a logical grouping of configuration entries (v3 format)
+// An application has a name, optional description, filters, and contains multiple sub-entries.
+// It can also have an associated package for installation.
+type Application struct {
+	Name        string        `yaml:"name"`
+	Description string        `yaml:"description,omitempty"`
+	Filters     []Filter      `yaml:"filters,omitempty"`
+	Entries     []SubEntry    `yaml:"entries"`
+	Package     *EntryPackage `yaml:"package,omitempty"`
+}
+
+// SubEntry represents an individual configuration or git entry within an application (v3 format)
+type SubEntry struct {
+	Type   string `yaml:"type"` // "config" or "git"
+	Name   string `yaml:"name"`
+	Sudo   bool   `yaml:"sudo,omitempty"`
+
+	// Config fields (type: config)
+	Files   []string          `yaml:"files,omitempty"`
+	Backup  string            `yaml:"backup,omitempty"`
+	Targets map[string]string `yaml:"targets,omitempty"`
+
+	// Git fields (type: git)
+	Repo   string `yaml:"repo,omitempty"`
+	Branch string `yaml:"branch,omitempty"`
+}
+
+// IsConfig returns true if this is a config type sub-entry
+func (s *SubEntry) IsConfig() bool {
+	return s.Type == "config" || s.Backup != ""
+}
+
+// IsGit returns true if this is a git type sub-entry
+func (s *SubEntry) IsGit() bool {
+	return s.Type == "git" || s.Repo != ""
+}
+
+// IsFolder returns true if this config sub-entry manages an entire folder (no specific files)
+func (s *SubEntry) IsFolder() bool {
+	return s.IsConfig() && len(s.Files) == 0
+}
+
+// GetTarget returns the target path for the specified OS
+func (s *SubEntry) GetTarget(osType string) string {
+	if target, ok := s.Targets[osType]; ok {
+		return target
+	}
+	return ""
+}
+
+// HasPackage returns true if the application has package installation configuration
+func (a *Application) HasPackage() bool {
+	return a.Package != nil
+}

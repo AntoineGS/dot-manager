@@ -9,11 +9,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the main configuration structure (v2 format)
+// Config is the main configuration structure supporting both v2 and v3 formats
 type Config struct {
 	Version    int     `yaml:"version"`
 	BackupRoot string  `yaml:"backup_root"`
-	Entries    []Entry `yaml:"entries"`
+
+	// v2 format: flat entries list
+	Entries    []Entry `yaml:"entries,omitempty"`
+
+	// v3 format: hierarchical applications
+	Applications []Application `yaml:"applications,omitempty"`
 
 	// Package manager configuration
 	DefaultManager  string   `yaml:"default_manager,omitempty"`
@@ -60,8 +65,8 @@ func Load(path string) (*Config, error) {
 		cfg.Version = 2
 	}
 
-	if cfg.Version != 2 {
-		return nil, fmt.Errorf("unsupported config version %d (expected 2)", cfg.Version)
+	if cfg.Version != 2 && cfg.Version != 3 {
+		return nil, fmt.Errorf("unsupported config version %d (expected 2 or 3)", cfg.Version)
 	}
 
 	return &cfg, nil

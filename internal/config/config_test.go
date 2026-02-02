@@ -927,3 +927,148 @@ func TestGetFilteredPackageEntries(t *testing.T) {
 		t.Error("Expected work-pkg to be excluded for home-desktop")
 	}
 }
+
+func TestLoadApplicationStructure(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+version: 3
+backup_root: "~/gits/configurations"
+default_manager: "pacman"
+
+applications:
+  - name: "neovim"
+    description: "Text editor"
+    filters:
+      - include:
+          os: "linux"
+    entries:
+      - type: "config"
+        name: "nvim-config"
+        backup: "./Both/Neovim/nvim"
+        targets:
+          linux: "~/.config/nvim"
+          windows: "~/AppData/Local/nvim"
+      - type: "config"
+        name: "nvim-local"
+        files: ["local.lua"]
+        backup: "./Both/Neovim/local"
+        targets:
+          linux: "~/.config/nvim/lua"
+    package:
+      managers:
+        pacman: "neovim"
+        apt: "neovim"
+
+  - name: "oh-my-zsh"
+    description: "Zsh framework"
+    entries:
+      - type: "git"
+        name: "oh-my-zsh-repo"
+        repo: "https://github.com/ohmyzsh/ohmyzsh.git"
+        branch: "master"
+        sudo: true
+        targets:
+          linux: "/usr/share/oh-my-zsh"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	// Test version
+	if cfg.Version != 3 {
+		t.Errorf("Version = %d, want 3", cfg.Version)
+	}
+
+	// Test applications count
+	if len(cfg.Applications) != 2 {
+		t.Fatalf("len(Applications) = %d, want 2", len(cfg.Applications))
+	}
+
+	// Test first application (neovim)
+	app1 := cfg.Applications[0]
+	if app1.Name != "neovim" {
+		t.Errorf("Applications[0].Name = %q, want %q", app1.Name, "neovim")
+	}
+	if app1.Description != "Text editor" {
+		t.Errorf("Applications[0].Description = %q, want %q", app1.Description, "Text editor")
+	}
+	if len(app1.Filters) != 1 {
+		t.Errorf("len(Applications[0].Filters) = %d, want 1", len(app1.Filters))
+	}
+	if len(app1.Entries) != 2 {
+		t.Fatalf("len(Applications[0].Entries) = %d, want 2", len(app1.Entries))
+	}
+
+	// Test first sub-entry (nvim-config)
+	subEntry1 := app1.Entries[0]
+	if subEntry1.Type != "config" {
+		t.Errorf("SubEntry[0].Type = %q, want %q", subEntry1.Type, "config")
+	}
+	if subEntry1.Name != "nvim-config" {
+		t.Errorf("SubEntry[0].Name = %q, want %q", subEntry1.Name, "nvim-config")
+	}
+	if !subEntry1.IsConfig() {
+		t.Error("SubEntry[0].IsConfig() = false, want true")
+	}
+	if !subEntry1.IsFolder() {
+		t.Error("SubEntry[0].IsFolder() = false, want true")
+	}
+	if subEntry1.GetTarget("linux") != "~/.config/nvim" {
+		t.Errorf("SubEntry[0].GetTarget(linux) = %q, want %q", subEntry1.GetTarget("linux"), "~/.config/nvim")
+	}
+
+	// Test second sub-entry (nvim-local)
+	subEntry2 := app1.Entries[1]
+	if subEntry2.Type != "config" {
+		t.Errorf("SubEntry[1].Type = %q, want %q", subEntry2.Type, "config")
+	}
+	if len(subEntry2.Files) != 1 {
+		t.Errorf("len(SubEntry[1].Files) = %d, want 1", len(subEntry2.Files))
+	}
+	if subEntry2.IsFolder() {
+		t.Error("SubEntry[1].IsFolder() = true, want false")
+	}
+
+	// Test application package
+	if !app1.HasPackage() {
+		t.Fatal("Applications[0].HasPackage() = false, want true")
+	}
+	if app1.Package.Managers["pacman"] != "neovim" {
+		t.Errorf("Applications[0].Package.Managers[pacman] = %q, want %q", app1.Package.Managers["pacman"], "neovim")
+	}
+
+	// Test second application (oh-my-zsh)
+	app2 := cfg.Applications[1]
+	if app2.Name != "oh-my-zsh" {
+		t.Errorf("Applications[1].Name = %q, want %q", app2.Name, "oh-my-zsh")
+	}
+	if len(app2.Entries) != 1 {
+		t.Fatalf("len(Applications[1].Entries) = %d, want 1", len(app2.Entries))
+	}
+
+	// Test git sub-entry
+	gitEntry := app2.Entries[0]
+	if gitEntry.Type != "git" {
+		t.Errorf("GitEntry.Type = %q, want %q", gitEntry.Type, "git")
+	}
+	if !gitEntry.IsGit() {
+		t.Error("GitEntry.IsGit() = false, want true")
+	}
+	if gitEntry.Repo != "https://github.com/ohmyzsh/ohmyzsh.git" {
+		t.Errorf("GitEntry.Repo = %q", gitEntry.Repo)
+	}
+	if gitEntry.Branch != "master" {
+		t.Errorf("GitEntry.Branch = %q, want %q", gitEntry.Branch, "master")
+	}
+	if !gitEntry.Sudo {
+		t.Error("GitEntry.Sudo = false, want true")
+	}
+}
