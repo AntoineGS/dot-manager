@@ -44,44 +44,65 @@ go test ./internal/manager/...
 
 ### Configuration Format (dot-manager.yaml)
 
+**Version 3 (Current)**
+
 ```yaml
-version: 2
-backup_root: "."
-default_manager: "pacman"
-manager_priority: ["yay", "paru", "pacman"]
+version: 3
 
-entries:
-  # Config entry (symlink management)
-  - name: "config-name"
-    files: []  # Empty = entire folder
-    backup: "./path/to/backup"
-    targets:
-      linux: "~/.config/app"
-      windows: "~/AppData/Local/app"
+# Application-level settings
+applications:
+  - name: "nvim"
+    description: "Neovim text editor"
 
-  # Git entry (repository clone)
-  - name: "repo-name"
-    repo: "https://github.com/user/repo.git"
-    branch: "main"
-    targets:
-      linux: "~/path/to/clone"
+    configs:
+      # Config entry (symlink management)
+      - name: "nvim-config"
+        files: []  # Empty = entire folder
+        backup: "./nvim"
+        targets:
+          linux: "~/.config/nvim"
+          windows: "~/AppData/Local/nvim"
 
-  # Entry with package
-  - name: "package"
-    package:
-      managers:
-        pacman: "package-name"
+    repos:
+      # Git entry (repository clone)
+      - name: "nvim-plugins"
+        repo: "https://github.com/user/plugins.git"
+        branch: "main"
+        targets:
+          linux: "~/.local/share/nvim/site/pack/plugins/start/myplugins"
 
-  # Entry requiring sudo with filter
+    packages:
+      # Package entry
+      - name: "neovim"
+        managers:
+          pacman: "neovim"
+          apt: "neovim"
+          brew: "neovim"
+
+    filters:
+      - include:
+          os: "linux"
+
+  # System-level application with sudo
   - name: "system-config"
     sudo: true
-    backup: "./system"
-    targets:
-      linux: "/etc/app"
+    configs:
+      - name: "hosts"
+        backup: "./system/hosts"
+        targets:
+          linux: "/etc/hosts"
     filters:
       - include:
           distro: "arch"
 ```
+
+**Migration from v2**
+
+Version 3 introduces an Application-centric structure:
+- **v2**: Flat `entries` array with mixed config/git/package entries
+- **v3**: Nested `applications` array, each with separate `configs`, `repos`, `packages` arrays
+- **Benefits**: Better organization, application-level filtering, clearer grouping of related resources
+- **Breaking change**: Existing v2 configs must be restructured (no automatic migration yet)
 
 ### CLI Flags
 
