@@ -162,9 +162,6 @@ type Model struct {
 	Packages   []PackageItem
 	DryRun     bool
 
-	// v3 structure
-	Applications []ApplicationItem // For v3 config format
-	appCursor    int               // Cursor for application list (v3)
 
 	// UI state
 	menuCursor    int
@@ -220,27 +217,6 @@ type PathItem struct {
 	PkgInstalled *bool  // nil = no package, true = installed, false = not installed
 }
 
-// ApplicationItem represents an application in the 2-level table
-type ApplicationItem struct {
-	Application config.Application
-	Selected    bool
-	Expanded    bool // Whether sub-items are shown
-	SubItems    []SubEntryItem
-
-	// Package fields
-	PkgMethod    string
-	PkgInstalled *bool
-}
-
-// SubEntryItem represents a sub-entry (config or git) under an application
-type SubEntryItem struct {
-	SubEntry     config.SubEntry
-	Target       string
-	Selected     bool
-	State        PathState // Ready, Adopt, Missing, Linked
-	AppName      string    // Parent application name
-}
-
 type PackageItem struct {
 	Entry    config.Entry
 	Method   string // How it would be installed (pacman, apt, custom, url, none)
@@ -265,75 +241,134 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 	// Track entries we've already added (by name) to avoid duplicates
 	addedEntries := make(map[string]bool)
 
-	// Get all config entries filtered by filter context
-	configEntries := cfg.GetFilteredConfigEntries(filterCtx)
+	items := make([]PathItem, 0)
 
-	items := make([]PathItem, 0, len(configEntries))
-	for _, e := range configEntries {
-		target := e.GetTarget(plat.OS)
-		item := PathItem{
-			Entry:     e,
-			Target:    target,
-			Selected:  true, // Select all by default
-			EntryType: EntryTypeConfig,
-		}
-		// Add package info if entry has a package
-		if e.HasPackage() {
-			spec := e.ToPackageSpec()
-			method := getPackageInstallMethod(spec, plat.OS)
-			item.PkgMethod = method
-			if method != "none" {
-				installed := isPackageInstalled(spec, method)
-				item.PkgInstalled = &installed
+	// For v3 configs, flatten applications into PathItems
+	if cfg.Version == 3 {
+		apps := cfg.GetFilteredApplications(filterCtx)
+		for _, app := range apps {
+			// Convert each SubEntry to a PathItem
+			for _, subEntry := range app.Entries {
+				// Create Entry from SubEntry
+				entry := config.Entry{
+					Name:        app.Name + "/" + subEntry.Name, // Prefix with app name
+					Description: app.Description,                // Use app description
+					Sudo:        subEntry.Sudo,
+					Filters:     app.Filters, // Use app filters
+				}
+
+				var entryType EntryType
+				if subEntry.Type == "git" {
+					entryType = EntryTypeGit
+					entry.Repo = subEntry.Repo
+					entry.Branch = subEntry.Branch
+					entry.Targets = subEntry.Targets
+				} else {
+					entryType = EntryTypeConfig
+					entry.Files = subEntry.Files
+					entry.Backup = subEntry.Backup
+					entry.Targets = subEntry.Targets
+				}
+
+				// Add package from app-level if present
+				if app.Package != nil {
+					entry.Package = app.Package
+				}
+
+				target := entry.GetTarget(plat.OS)
+				item := PathItem{
+					Entry:     entry,
+					Target:    target,
+					Selected:  true,
+					EntryType: entryType,
+				}
+
+				// Add package info if entry has a package
+				if entry.HasPackage() {
+					spec := entry.ToPackageSpec()
+					method := getPackageInstallMethod(spec, plat.OS)
+					item.PkgMethod = method
+					if method != "none" {
+						installed := isPackageInstalled(spec, method)
+						item.PkgInstalled = &installed
+					}
+				}
+
+				items = append(items, item)
+				addedEntries[entry.Name] = true
 			}
 		}
-		items = append(items, item)
-		addedEntries[e.Name] = true
-	}
+	} else {
+		// For v2 configs, use existing logic
+		// Get all config entries filtered by filter context
+		configEntries := cfg.GetFilteredConfigEntries(filterCtx)
 
-	// Get all git entries filtered by filter context
-	gitEntries := cfg.GetFilteredGitEntries(filterCtx)
-	for _, e := range gitEntries {
-		target := e.GetTarget(plat.OS)
-		item := PathItem{
-			Entry:     e,
-			Target:    target,
-			Selected:  true, // Select all by default
-			EntryType: EntryTypeGit,
+		for _, e := range configEntries {
+			target := e.GetTarget(plat.OS)
+			item := PathItem{
+				Entry:     e,
+				Target:    target,
+				Selected:  true, // Select all by default
+				EntryType: EntryTypeConfig,
+			}
+			// Add package info if entry has a package
+			if e.HasPackage() {
+				spec := e.ToPackageSpec()
+				method := getPackageInstallMethod(spec, plat.OS)
+				item.PkgMethod = method
+				if method != "none" {
+					installed := isPackageInstalled(spec, method)
+					item.PkgInstalled = &installed
+				}
+			}
+			items = append(items, item)
+			addedEntries[e.Name] = true
 		}
-		// Add package info if entry has a package
-		if e.HasPackage() {
+
+		// Get all git entries filtered by filter context
+		gitEntries := cfg.GetFilteredGitEntries(filterCtx)
+		for _, e := range gitEntries {
+			target := e.GetTarget(plat.OS)
+			item := PathItem{
+				Entry:     e,
+				Target:    target,
+				Selected:  true, // Select all by default
+				EntryType: EntryTypeGit,
+			}
+			// Add package info if entry has a package
+			if e.HasPackage() {
+				spec := e.ToPackageSpec()
+				method := getPackageInstallMethod(spec, plat.OS)
+				item.PkgMethod = method
+				if method != "none" {
+					installed := isPackageInstalled(spec, method)
+					item.PkgInstalled = &installed
+				}
+			}
+			items = append(items, item)
+			addedEntries[e.Name] = true
+		}
+
+		// Add package-only entries (those not already added as config or git entries)
+		packageEntries := cfg.GetFilteredPackageEntries(filterCtx)
+		for _, e := range packageEntries {
+			// Skip if already added as config or git entry
+			if addedEntries[e.Name] {
+				continue
+			}
 			spec := e.ToPackageSpec()
 			method := getPackageInstallMethod(spec, plat.OS)
-			item.PkgMethod = method
 			if method != "none" {
 				installed := isPackageInstalled(spec, method)
-				item.PkgInstalled = &installed
+				items = append(items, PathItem{
+					Entry:        e,
+					Target:       "", // Package-only entries have no target
+					Selected:     true,
+					EntryType:    EntryTypePackage,
+					PkgMethod:    method,
+					PkgInstalled: &installed,
+				})
 			}
-		}
-		items = append(items, item)
-		addedEntries[e.Name] = true
-	}
-
-	// Add package-only entries (those not already added as config or git entries)
-	packageEntries := cfg.GetFilteredPackageEntries(filterCtx)
-	for _, e := range packageEntries {
-		// Skip if already added as config or git entry
-		if addedEntries[e.Name] {
-			continue
-		}
-		spec := e.ToPackageSpec()
-		method := getPackageInstallMethod(spec, plat.OS)
-		if method != "none" {
-			installed := isPackageInstalled(spec, method)
-			items = append(items, PathItem{
-				Entry:        e,
-				Target:       "", // Package-only entries have no target
-				Selected:     true,
-				EntryType:    EntryTypePackage,
-				PkgMethod:    method,
-				PkgInstalled: &installed,
-			})
 		}
 	}
 
@@ -343,14 +378,13 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 	})
 
 	// Keep Packages slice for backward compatibility with install operations
-	pkgItems := make([]PackageItem, 0, len(packageEntries))
-	for _, e := range packageEntries {
-		spec := e.ToPackageSpec()
-		method := getPackageInstallMethod(spec, plat.OS)
-		if method != "none" {
+	// Build from PathItems that have packages
+	pkgItems := make([]PackageItem, 0)
+	for _, item := range items {
+		if item.PkgInstalled != nil {
 			pkgItems = append(pkgItems, PackageItem{
-				Entry:    e,
-				Method:   method,
+				Entry:    item.Entry,
+				Method:   item.PkgMethod,
 				Selected: true, // Select all by default
 			})
 		}
@@ -377,11 +411,6 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 
 	// Detect initial path states
 	m.refreshPathStates()
-
-	// Initialize v3 application items if using v3 config
-	if cfg.Version == 3 {
-		m.initApplicationItems()
-	}
 
 	return m
 }
@@ -524,9 +553,6 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ScreenMenu:
 		return m.updateMenu(msg)
 	case ScreenPathSelect:
-		if m.Config.Version == 3 {
-			return m.updateApplicationSelect(msg)
-		}
 		return m.updatePathSelect(msg)
 	case ScreenPackageSelect:
 		return m.updatePackageSelect(msg)
@@ -544,9 +570,6 @@ func (m Model) View() string {
 	case ScreenMenu:
 		return m.viewMenu()
 	case ScreenPathSelect:
-		if m.Config.Version == 3 {
-			return m.viewApplicationSelect()
-		}
 		return m.viewPathSelect()
 	case ScreenPackageSelect:
 		return m.viewPackageSelect()

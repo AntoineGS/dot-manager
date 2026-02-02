@@ -225,29 +225,3 @@ func TestDryRunMode(t *testing.T) {
 	}
 }
 
-func TestApplicationItemExpansion(t *testing.T) {
-	t.Parallel()
-
-	item := ApplicationItem{
-		Application: config.Application{
-			Name: "starship",
-			Entries: []config.SubEntry{
-				{Type: "config", Name: "cache"},
-				{Type: "config", Name: "config"},
-			},
-		},
-		Expanded: false,
-		SubItems: []SubEntryItem{
-			{SubEntry: config.SubEntry{Type: "config", Name: "cache"}},
-			{SubEntry: config.SubEntry{Type: "config", Name: "config"}},
-		},
-	}
-
-	if item.Expanded {
-		t.Error("Item should start collapsed")
-	}
-
-	if len(item.SubItems) != 2 {
-		t.Errorf("SubItems count = %d, want 2", len(item.SubItems))
-	}
-}
