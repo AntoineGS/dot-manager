@@ -1072,3 +1072,440 @@ applications:
 		t.Error("GitEntry.Sudo = false, want true")
 	}
 }
+
+func TestGetFilteredApplications(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 3,
+		Applications: []Application{
+			{
+				Name:        "neovim",
+				Description: "Text editor",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "linux"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+				},
+				Package: &EntryPackage{Managers: map[string]string{"pacman": "neovim"}},
+			},
+			{
+				Name:        "vscode",
+				Description: "Code editor",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "windows"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "vscode-config", Backup: "./vscode", Targets: map[string]string{"windows": "~/AppData/Roaming/Code"}},
+				},
+			},
+			{
+				Name:        "git",
+				Description: "Version control",
+				Entries: []SubEntry{
+					{Type: "config", Name: "gitconfig", Files: []string{".gitconfig"}, Backup: "./git", Targets: map[string]string{"linux": "~", "windows": "~"}},
+				},
+			},
+			{
+				Name:        "work-only",
+				Description: "Work tools",
+				Filters: []Filter{
+					{Include: map[string]string{"hostname": "work-.*"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "work-config", Backup: "./work", Targets: map[string]string{"linux": "~/.work"}},
+				},
+			},
+		},
+	}
+
+	// Test Linux context - should get neovim, git, and work-only (no hostname filter)
+	linuxCtx := &FilterContext{OS: "linux", Hostname: "work-laptop", User: "john"}
+	apps := cfg.GetFilteredApplications(linuxCtx)
+	if len(apps) != 3 {
+		t.Errorf("GetFilteredApplications(linux, work-laptop) returned %d apps, want 3", len(apps))
+	}
+
+	names := make(map[string]bool)
+	for _, app := range apps {
+		names[app.Name] = true
+	}
+	if !names["neovim"] {
+		t.Error("Expected neovim to be included on Linux")
+	}
+	if !names["git"] {
+		t.Error("Expected git to be included (no filter)")
+	}
+	if !names["work-only"] {
+		t.Error("Expected work-only to be included on work-laptop")
+	}
+	if names["vscode"] {
+		t.Error("Expected vscode to be excluded on Linux")
+	}
+
+	// Test Windows context - should get vscode and git
+	windowsCtx := &FilterContext{OS: "windows", Hostname: "home-desktop", User: "john"}
+	windowsApps := cfg.GetFilteredApplications(windowsCtx)
+	if len(windowsApps) != 2 {
+		t.Errorf("GetFilteredApplications(windows, home-desktop) returned %d apps, want 2", len(windowsApps))
+	}
+
+	windowsNames := make(map[string]bool)
+	for _, app := range windowsApps {
+		windowsNames[app.Name] = true
+	}
+	if !windowsNames["vscode"] {
+		t.Error("Expected vscode to be included on Windows")
+	}
+	if !windowsNames["git"] {
+		t.Error("Expected git to be included (no filter)")
+	}
+	if windowsNames["neovim"] {
+		t.Error("Expected neovim to be excluded on Windows")
+	}
+	if windowsNames["work-only"] {
+		t.Error("Expected work-only to be excluded on home-desktop")
+	}
+}
+
+func TestExpandPathsV3(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		Version:    3,
+		BackupRoot: "~/gits/configs",
+		Applications: []Application{
+			{
+				Name: "neovim",
+				Entries: []SubEntry{
+					{
+						Type:   "config",
+						Name:   "nvim-config",
+						Backup: "./nvim",
+						Files:  []string{"$CUSTOM_VAR"},
+						Targets: map[string]string{
+							"linux": "~/.config/nvim",
+						},
+					},
+					{
+						Type: "git",
+						Name: "nvim-plugin",
+						Repo: "https://github.com/test/plugin.git",
+						Targets: map[string]string{
+							"linux": "~/.local/share/nvim/site/pack/plugins",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	envVars := map[string]string{
+		"CUSTOM_VAR": "expanded_value",
+	}
+
+	cfg.ExpandPaths(envVars)
+
+	home, _ := os.UserHomeDir()
+
+	// Test backup root expansion
+	expectedBackupRoot := filepath.Join(home, "gits/configs")
+	if cfg.BackupRoot != expectedBackupRoot {
+		t.Errorf("BackupRoot = %q, want %q", cfg.BackupRoot, expectedBackupRoot)
+	}
+
+	// Test sub-entry backup expansion
+	if cfg.Applications[0].Entries[0].Backup != "./nvim" {
+		t.Errorf("SubEntry Backup = %q, want %q", cfg.Applications[0].Entries[0].Backup, "./nvim")
+	}
+
+	// Test file variable expansion
+	if cfg.Applications[0].Entries[0].Files[0] != "expanded_value" {
+		t.Errorf("SubEntry Files[0] = %q, want %q", cfg.Applications[0].Entries[0].Files[0], "expanded_value")
+	}
+
+	// Test target expansion for config entry
+	expectedTarget := filepath.Join(home, ".config/nvim")
+	if cfg.Applications[0].Entries[0].Targets["linux"] != expectedTarget {
+		t.Errorf("SubEntry Targets[linux] = %q, want %q", cfg.Applications[0].Entries[0].Targets["linux"], expectedTarget)
+	}
+
+	// Test target expansion for git entry
+	expectedGitTarget := filepath.Join(home, ".local/share/nvim/site/pack/plugins")
+	if cfg.Applications[0].Entries[1].Targets["linux"] != expectedGitTarget {
+		t.Errorf("Git SubEntry Targets[linux] = %q, want %q", cfg.Applications[0].Entries[1].Targets["linux"], expectedGitTarget)
+	}
+}
+
+func TestGetAllSubEntries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 3,
+		Applications: []Application{
+			{
+				Name:        "neovim",
+				Description: "Text editor",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "linux"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+					{Type: "git", Name: "nvim-plugin", Repo: "https://github.com/test/plugin.git", Targets: map[string]string{"linux": "~/.local/share/nvim"}},
+				},
+			},
+			{
+				Name:        "vscode",
+				Description: "Code editor",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "windows"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "vscode-config", Backup: "./vscode", Targets: map[string]string{"windows": "~/AppData/Roaming/Code"}},
+				},
+			},
+			{
+				Name:        "git",
+				Description: "Version control",
+				Entries: []SubEntry{
+					{Type: "config", Name: "gitconfig", Files: []string{".gitconfig"}, Backup: "./git", Targets: map[string]string{"linux": "~"}},
+				},
+			},
+		},
+	}
+
+	// Test with Linux context - should get all sub-entries from neovim and git apps
+	linuxCtx := &FilterContext{OS: "linux", Hostname: "laptop", User: "john"}
+	subEntries := cfg.GetAllSubEntries(linuxCtx)
+	if len(subEntries) != 3 {
+		t.Errorf("GetAllSubEntries(linux) returned %d sub-entries, want 3", len(subEntries))
+	}
+
+	// Verify we got the correct entries
+	names := make(map[string]bool)
+	for _, e := range subEntries {
+		names[e.Name] = true
+	}
+	if !names["nvim-config"] {
+		t.Error("Expected nvim-config to be included")
+	}
+	if !names["nvim-plugin"] {
+		t.Error("Expected nvim-plugin to be included")
+	}
+	if !names["gitconfig"] {
+		t.Error("Expected gitconfig to be included")
+	}
+	if names["vscode-config"] {
+		t.Error("Expected vscode-config to be excluded on Linux")
+	}
+
+	// Test with Windows context - should get sub-entries from vscode and git apps
+	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
+	windowsSubEntries := cfg.GetAllSubEntries(windowsCtx)
+	if len(windowsSubEntries) != 2 {
+		t.Errorf("GetAllSubEntries(windows) returned %d sub-entries, want 2", len(windowsSubEntries))
+	}
+
+	windowsNames := make(map[string]bool)
+	for _, e := range windowsSubEntries {
+		windowsNames[e.Name] = true
+	}
+	if !windowsNames["vscode-config"] {
+		t.Error("Expected vscode-config to be included on Windows")
+	}
+	if !windowsNames["gitconfig"] {
+		t.Error("Expected gitconfig to be included (no filter)")
+	}
+
+	// Test with empty applications
+	emptyConfig := &Config{Version: 3, Applications: []Application{}}
+	emptyCtx := &FilterContext{OS: "linux", Hostname: "laptop", User: "john"}
+	emptySubEntries := emptyConfig.GetAllSubEntries(emptyCtx)
+	if len(emptySubEntries) != 0 {
+		t.Errorf("GetAllSubEntries on empty config returned %d sub-entries, want 0", len(emptySubEntries))
+	}
+}
+
+func TestGetAllConfigSubEntries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 3,
+		Applications: []Application{
+			{
+				Name:        "neovim",
+				Description: "Text editor",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "linux"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+					{Type: "git", Name: "nvim-plugin", Repo: "https://github.com/test/plugin.git", Targets: map[string]string{"linux": "~/.local/share/nvim"}},
+					{Type: "config", Name: "nvim-local", Files: []string{"local.lua"}, Backup: "./nvim-local", Targets: map[string]string{"linux": "~/.config/nvim/lua"}},
+				},
+			},
+			{
+				Name:        "oh-my-zsh",
+				Description: "Zsh framework",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "linux"}},
+				},
+				Entries: []SubEntry{
+					{Type: "git", Name: "oh-my-zsh-repo", Repo: "https://github.com/ohmyzsh/ohmyzsh.git", Targets: map[string]string{"linux": "/usr/share/oh-my-zsh"}},
+				},
+			},
+			{
+				Name:        "vscode",
+				Description: "Code editor",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "windows"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "vscode-config", Backup: "./vscode", Targets: map[string]string{"windows": "~/AppData/Roaming/Code"}},
+				},
+			},
+		},
+	}
+
+	// Test with Linux context - should only get config type sub-entries from neovim
+	linuxCtx := &FilterContext{OS: "linux", Hostname: "laptop", User: "john"}
+	configSubEntries := cfg.GetAllConfigSubEntries(linuxCtx)
+	if len(configSubEntries) != 2 {
+		t.Errorf("GetAllConfigSubEntries(linux) returned %d sub-entries, want 2", len(configSubEntries))
+	}
+
+	// Verify we only got config type entries
+	for _, e := range configSubEntries {
+		if !e.IsConfig() {
+			t.Errorf("GetAllConfigSubEntries returned non-config entry: %s (type: %s)", e.Name, e.Type)
+		}
+	}
+
+	names := make(map[string]bool)
+	for _, e := range configSubEntries {
+		names[e.Name] = true
+	}
+	if !names["nvim-config"] {
+		t.Error("Expected nvim-config to be included")
+	}
+	if !names["nvim-local"] {
+		t.Error("Expected nvim-local to be included")
+	}
+	if names["nvim-plugin"] {
+		t.Error("Expected nvim-plugin (git type) to be excluded")
+	}
+	if names["oh-my-zsh-repo"] {
+		t.Error("Expected oh-my-zsh-repo (git type) to be excluded")
+	}
+
+	// Test with Windows context - should get vscode-config only
+	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
+	windowsConfigSubEntries := cfg.GetAllConfigSubEntries(windowsCtx)
+	if len(windowsConfigSubEntries) != 1 {
+		t.Errorf("GetAllConfigSubEntries(windows) returned %d sub-entries, want 1", len(windowsConfigSubEntries))
+	}
+	if windowsConfigSubEntries[0].Name != "vscode-config" {
+		t.Errorf("Expected vscode-config, got %s", windowsConfigSubEntries[0].Name)
+	}
+
+	// Test with no matching entries (all filtered out)
+	darwinCtx := &FilterContext{OS: "darwin", Hostname: "mac", User: "john"}
+	darwinConfigSubEntries := cfg.GetAllConfigSubEntries(darwinCtx)
+	if len(darwinConfigSubEntries) != 0 {
+		t.Errorf("GetAllConfigSubEntries(darwin) returned %d sub-entries, want 0", len(darwinConfigSubEntries))
+	}
+}
+
+func TestGetAllGitSubEntries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 3,
+		Applications: []Application{
+			{
+				Name:        "neovim",
+				Description: "Text editor",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "linux"}},
+				},
+				Entries: []SubEntry{
+					{Type: "config", Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+					{Type: "git", Name: "nvim-plugin", Repo: "https://github.com/test/plugin.git", Targets: map[string]string{"linux": "~/.local/share/nvim"}},
+				},
+			},
+			{
+				Name:        "oh-my-zsh",
+				Description: "Zsh framework",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "linux"}},
+				},
+				Entries: []SubEntry{
+					{Type: "git", Name: "oh-my-zsh-repo", Repo: "https://github.com/ohmyzsh/ohmyzsh.git", Branch: "master", Sudo: true, Targets: map[string]string{"linux": "/usr/share/oh-my-zsh"}},
+				},
+			},
+			{
+				Name:        "windows-tools",
+				Description: "Windows utilities",
+				Filters: []Filter{
+					{Include: map[string]string{"os": "windows"}},
+				},
+				Entries: []SubEntry{
+					{Type: "git", Name: "windows-repo", Repo: "https://github.com/test/windows.git", Targets: map[string]string{"windows": "~/tools"}},
+					{Type: "config", Name: "windows-config", Backup: "./windows", Targets: map[string]string{"windows": "~/config"}},
+				},
+			},
+		},
+	}
+
+	// Test with Linux context - should only get git type sub-entries from neovim and oh-my-zsh
+	linuxCtx := &FilterContext{OS: "linux", Hostname: "laptop", User: "john"}
+	gitSubEntries := cfg.GetAllGitSubEntries(linuxCtx)
+	if len(gitSubEntries) != 2 {
+		t.Errorf("GetAllGitSubEntries(linux) returned %d sub-entries, want 2", len(gitSubEntries))
+	}
+
+	// Verify we only got git type entries
+	for _, e := range gitSubEntries {
+		if !e.IsGit() {
+			t.Errorf("GetAllGitSubEntries returned non-git entry: %s (type: %s)", e.Name, e.Type)
+		}
+	}
+
+	names := make(map[string]bool)
+	for _, e := range gitSubEntries {
+		names[e.Name] = true
+	}
+	if !names["nvim-plugin"] {
+		t.Error("Expected nvim-plugin to be included")
+	}
+	if !names["oh-my-zsh-repo"] {
+		t.Error("Expected oh-my-zsh-repo to be included")
+	}
+	if names["nvim-config"] {
+		t.Error("Expected nvim-config (config type) to be excluded")
+	}
+
+	// Test sudo flag is preserved
+	for _, e := range gitSubEntries {
+		if e.Name == "oh-my-zsh-repo" && !e.Sudo {
+			t.Error("Expected oh-my-zsh-repo to have Sudo=true")
+		}
+	}
+
+	// Test with Windows context - should get windows-repo only
+	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
+	windowsGitSubEntries := cfg.GetAllGitSubEntries(windowsCtx)
+	if len(windowsGitSubEntries) != 1 {
+		t.Errorf("GetAllGitSubEntries(windows) returned %d sub-entries, want 1", len(windowsGitSubEntries))
+	}
+	if windowsGitSubEntries[0].Name != "windows-repo" {
+		t.Errorf("Expected windows-repo, got %s", windowsGitSubEntries[0].Name)
+	}
+
+	// Test with no matching entries (all filtered out)
+	darwinCtx := &FilterContext{OS: "darwin", Hostname: "mac", User: "john"}
+	darwinGitSubEntries := cfg.GetAllGitSubEntries(darwinCtx)
+	if len(darwinGitSubEntries) != 0 {
+		t.Errorf("GetAllGitSubEntries(darwin) returned %d sub-entries, want 0", len(darwinGitSubEntries))
+	}
+}

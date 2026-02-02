@@ -75,6 +75,7 @@ func Load(path string) (*Config, error) {
 func (c *Config) ExpandPaths(envVars map[string]string) {
 	c.BackupRoot = expandPath(c.BackupRoot, envVars)
 
+	// Expand v2 Entries
 	for i := range c.Entries {
 		c.Entries[i].Backup = expandPath(c.Entries[i].Backup, envVars)
 		for k, v := range c.Entries[i].Targets {
@@ -82,6 +83,19 @@ func (c *Config) ExpandPaths(envVars map[string]string) {
 		}
 		for j := range c.Entries[i].Files {
 			c.Entries[i].Files[j] = expandPath(c.Entries[i].Files[j], envVars)
+		}
+	}
+
+	// Expand v3 Applications
+	for i := range c.Applications {
+		for j := range c.Applications[i].Entries {
+			c.Applications[i].Entries[j].Backup = expandPath(c.Applications[i].Entries[j].Backup, envVars)
+			for k, v := range c.Applications[i].Entries[j].Targets {
+				c.Applications[i].Entries[j].Targets[k] = expandPath(v, envVars)
+			}
+			for k := range c.Applications[i].Entries[j].Files {
+				c.Applications[i].Entries[j].Files[k] = expandPath(c.Applications[i].Entries[j].Files[k], envVars)
+			}
 		}
 	}
 }
@@ -147,6 +161,55 @@ func (c *Config) GetFilteredPackageEntries(ctx *FilterContext) []Entry {
 	for _, e := range c.Entries {
 		if e.HasPackage() && MatchesFilters(e.Filters, ctx) {
 			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// GetFilteredApplications returns applications filtered by filter context (v3)
+func (c *Config) GetFilteredApplications(ctx *FilterContext) []Application {
+	var result []Application
+	for _, app := range c.Applications {
+		if MatchesFilters(app.Filters, ctx) {
+			result = append(result, app)
+		}
+	}
+	return result
+}
+
+// GetAllSubEntries returns all sub-entries from all applications filtered by context (v3)
+func (c *Config) GetAllSubEntries(ctx *FilterContext) []SubEntry {
+	var result []SubEntry
+	apps := c.GetFilteredApplications(ctx)
+	for _, app := range apps {
+		result = append(result, app.Entries...)
+	}
+	return result
+}
+
+// GetAllConfigSubEntries returns only config type sub-entries from filtered applications (v3)
+func (c *Config) GetAllConfigSubEntries(ctx *FilterContext) []SubEntry {
+	var result []SubEntry
+	apps := c.GetFilteredApplications(ctx)
+	for _, app := range apps {
+		for _, entry := range app.Entries {
+			if entry.IsConfig() {
+				result = append(result, entry)
+			}
+		}
+	}
+	return result
+}
+
+// GetAllGitSubEntries returns only git type sub-entries from filtered applications (v3)
+func (c *Config) GetAllGitSubEntries(ctx *FilterContext) []SubEntry {
+	var result []SubEntry
+	apps := c.GetFilteredApplications(ctx)
+	for _, app := range apps {
+		for _, entry := range app.Entries {
+			if entry.IsGit() {
+				result = append(result, entry)
+			}
 		}
 	}
 	return result
