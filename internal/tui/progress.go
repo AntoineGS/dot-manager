@@ -321,7 +321,12 @@ func (m Model) viewListTable() string {
 		}
 
 		// Truncate paths if needed (show config-style values with ~)
-		name := truncateStr(item.Entry.Name, nameWidth)
+		name := item.Entry.Name
+		// Add root indicator
+		if item.Entry.Root {
+			name = "🔒 " + name
+		}
+		name = truncateStr(name, nameWidth)
 		target := truncateStr(unexpandHome(item.Entry.Targets[m.Platform.OS]), pathWidth)
 
 		// Build row
@@ -386,6 +391,16 @@ func (m Model) calcDetailHeight(item PathItem) int {
 	// Type line
 	lines++
 
+	// Description line (if present)
+	if item.Entry.Description != "" {
+		lines++
+	}
+
+	// Root line (if true)
+	if item.Entry.Root {
+		lines++
+	}
+
 	if item.EntryType == EntryTypeGit {
 		// Repo line
 		lines++
@@ -408,6 +423,16 @@ func (m Model) calcDetailHeight(item PathItem) int {
 	// One line per target OS
 	lines += len(item.Entry.Targets)
 
+	// Filters (if present)
+	if len(item.Entry.Filters) > 0 {
+		lines++ // Filters header
+		for _, f := range item.Entry.Filters {
+			if len(f.Include) > 0 || len(f.Exclude) > 0 {
+				lines++ // Each filter gets one line
+			}
+		}
+	}
+
 	// Bottom border
 	lines++
 
@@ -423,7 +448,36 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 		detail.WriteString(MutedTextStyle.Render("Type: "))
 		detail.WriteString(WarningStyle.Render("git"))
 		detail.WriteString("\n")
+	} else if item.Entry.IsFolder() {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Type: "))
+		detail.WriteString(WarningStyle.Render("folder"))
+		detail.WriteString("\n")
+	} else {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Type: "))
+		detail.WriteString(fmt.Sprintf("%d files", len(item.Entry.Files)))
+		detail.WriteString("\n")
+	}
 
+	// Description (if present)
+	if item.Entry.Description != "" {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Description: "))
+		detail.WriteString(item.Entry.Description)
+		detail.WriteString("\n")
+	}
+
+	// Root flag (if true)
+	if item.Entry.Root {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Root: "))
+		detail.WriteString(WarningStyle.Render("yes"))
+		detail.WriteString("\n")
+	}
+
+	// Type-specific fields
+	if item.EntryType == EntryTypeGit {
 		// Repo URL
 		detail.WriteString("    │ ")
 		detail.WriteString(MutedTextStyle.Render("Repo: "))
@@ -437,28 +491,14 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 			detail.WriteString(item.Entry.Branch)
 			detail.WriteString("\n")
 		}
-	} else if item.Entry.IsFolder() {
-		detail.WriteString("    │ ")
-		detail.WriteString(MutedTextStyle.Render("Type: "))
-		detail.WriteString(WarningStyle.Render("folder"))
-		detail.WriteString("\n")
-
-		// Backup path
-		detail.WriteString("    │ ")
-		detail.WriteString(MutedTextStyle.Render("Backup: "))
-		detail.WriteString(PathBackupStyle.Render(item.Entry.Backup))
-		detail.WriteString("\n")
 	} else {
-		detail.WriteString("    │ ")
-		detail.WriteString(MutedTextStyle.Render("Type: "))
-		detail.WriteString(fmt.Sprintf("%d files", len(item.Entry.Files)))
-		detail.WriteString("\n")
-
-		// Files list
-		detail.WriteString("    │ ")
-		detail.WriteString(MutedTextStyle.Render("Files: "))
-		detail.WriteString(strings.Join(item.Entry.Files, ", "))
-		detail.WriteString("\n")
+		// Files list (only for non-folders)
+		if !item.Entry.IsFolder() {
+			detail.WriteString("    │ ")
+			detail.WriteString(MutedTextStyle.Render("Files: "))
+			detail.WriteString(strings.Join(item.Entry.Files, ", "))
+			detail.WriteString("\n")
+		}
 
 		// Backup path
 		detail.WriteString("    │ ")
@@ -477,6 +517,27 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 		detail.WriteString(MutedTextStyle.Render(osLabel))
 		detail.WriteString(PathTargetStyle.Render(unexpandHome(target)))
 		detail.WriteString("\n")
+	}
+
+	// Filters (if present)
+	if len(item.Entry.Filters) > 0 {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Filters:"))
+		detail.WriteString("\n")
+		for _, f := range item.Entry.Filters {
+			detail.WriteString("    │   ")
+			filterParts := []string{}
+			for k, v := range f.Include {
+				filterParts = append(filterParts, fmt.Sprintf("%s=%s", k, v))
+			}
+			for k, v := range f.Exclude {
+				filterParts = append(filterParts, fmt.Sprintf("!%s=%s", k, v))
+			}
+			if len(filterParts) > 0 {
+				detail.WriteString(strings.Join(filterParts, ", "))
+				detail.WriteString("\n")
+			}
+		}
 	}
 
 	// Bottom line extending to table width

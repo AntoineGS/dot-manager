@@ -70,28 +70,67 @@ func (s PathState) String() string {
 	return "Unknown"
 }
 
+// FilterCondition represents a single filter condition for the UI
+type FilterCondition struct {
+	FilterIndex int    // Which filter group this belongs to (0-based)
+	IsExclude   bool   // true for exclude, false for include
+	Key         string // os, distro, hostname, user
+	Value       string // the pattern/value
+}
+
 // AddForm holds the state for the Add path form
 type AddForm struct {
-	nameInput          textinput.Model
+	// Entry type (config vs git)
+	entryType EntryType
+
+	// Common fields
+	nameInput        textinput.Model
+	descriptionInput textinput.Model
+	isRoot           bool
+
+	// Target fields (both types)
 	linuxTargetInput   textinput.Model
 	windowsTargetInput textinput.Model
-	backupInput        textinput.Model
-	isFolder           bool
-	focusIndex         int // 0=name, 1=linuxTarget, 2=windowsTarget, 3=backup, 4=isFolder toggle, 5=files list (when !isFolder)
-	err                string
-	editIndex          int // -1 for new, >= 0 for editing existing path
 
-	// Field editing state (for fields 0-3)
+	// Config-specific fields
+	backupInput textinput.Model
+	isFolder    bool
+
+	// Git-specific fields
+	repoInput   textinput.Model
+	branchInput textinput.Model
+
+	// Focus index: depends on entry type and mode
+	// Config type: 0=name, 1=description, 2=linuxTarget, 3=windowsTarget, 4=backup, 5=isFolder toggle, 6=isRoot toggle, 7=files list (when !isFolder), 8=filters
+	// Git type: 0=name, 1=description, 2=linuxTarget, 3=windowsTarget, 4=repo, 5=branch, 6=isRoot toggle, 7=filters
+	// New entries add type toggle at position 0, shifting others by 1
+	focusIndex int
+	err        string
+	editIndex  int // -1 for new, >= 0 for editing existing path
+
+	// Field editing state
 	editingField  bool   // Whether we're currently editing a text field
 	originalValue string // Original value before editing (for cancel)
 
-	// Files list state (when !isFolder)
+	// Files list state (when config type and !isFolder)
 	files            []string
 	filesCursor      int             // Cursor position in files list
 	newFileInput     textinput.Model // Input for adding/editing files
 	addingFile       bool            // Whether we're currently adding a file
 	editingFile      bool            // Whether we're currently editing a file
 	editingFileIndex int             // Index of the file being edited
+
+	// Filters list state
+	filters             []FilterCondition // Flattened list of filter conditions
+	filtersCursor       int               // Cursor position in filters list
+	addingFilter        bool              // Whether we're currently adding a filter
+	editingFilter       bool              // Whether we're currently editing a filter
+	editingFilterIndex  int               // Index of the filter being edited
+	filterAddStep       int               // 0=type(include/exclude), 1=key, 2=value
+	filterIsExclude     bool              // For adding: is this an exclude condition
+	filterKeyInput      textinput.Model   // Input for filter key selection
+	filterValueInput    textinput.Model   // Input for filter value
+	filterKeyCursor     int               // Cursor for key selection (0-3: os, distro, hostname, user)
 
 	// Autocomplete state
 	suggestions      []string
@@ -107,6 +146,7 @@ type Model struct {
 	Config     *config.Config
 	ConfigPath string // Path to config file for saving
 	Platform   *platform.Platform
+	FilterCtx  *config.FilterContext // Filter context for entry filtering
 	Manager    *manager.Manager
 	Paths      []PathItem
 	Packages   []PackageItem
@@ -167,8 +207,16 @@ type ResultItem struct {
 }
 
 func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
-	// Get config entries for the current user type (root or regular)
-	configEntries := cfg.GetConfigEntries(plat.IsRoot)
+	// Create filter context from platform
+	filterCtx := &config.FilterContext{
+		OS:       plat.OS,
+		Distro:   plat.Distro,
+		Hostname: plat.Hostname,
+		User:     plat.User,
+	}
+
+	// Get config entries filtered by root flag and filter context
+	configEntries := cfg.GetFilteredConfigEntries(plat.IsRoot, filterCtx)
 
 	items := make([]PathItem, 0, len(configEntries))
 	for _, e := range configEntries {
@@ -183,8 +231,8 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		}
 	}
 
-	// Get git entries for the current user type (root or regular)
-	gitEntries := cfg.GetGitEntries(plat.IsRoot)
+	// Get git entries filtered by root flag and filter context
+	gitEntries := cfg.GetFilteredGitEntries(plat.IsRoot, filterCtx)
 	for _, e := range gitEntries {
 		target := e.GetTarget(plat.OS)
 		if target != "" {
@@ -197,8 +245,8 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		}
 	}
 
-	// Initialize packages from entries with package configuration
-	packageEntries := cfg.GetPackageEntries()
+	// Initialize packages from entries with package configuration (filtered)
+	packageEntries := cfg.GetFilteredPackageEntries(filterCtx)
 	pkgItems := make([]PackageItem, 0, len(packageEntries))
 	for _, e := range packageEntries {
 		spec := e.ToPackageSpec()
@@ -216,6 +264,7 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		Screen:     ScreenMenu,
 		Config:     cfg,
 		Platform:   plat,
+		FilterCtx:  filterCtx,
 		Paths:      items,
 		Packages:   pkgItems,
 		DryRun:     dryRun,
