@@ -30,20 +30,36 @@ func ValidateEntry(e *Entry) error {
 		}
 	}
 
-	hasConfig := e.HasConfig()
+	isConfig := e.IsConfig()
+	isGit := e.IsGit()
 	hasPackage := e.HasPackage()
 
-	// Entry must have at least config or package
-	if !hasConfig && !hasPackage {
+	// Entry must be exactly one of: config type, git type, or package-only
+	if isConfig && isGit {
 		return ValidationError{
 			EntryName: e.Name,
-			Message:   "entry must have either config (backup/targets) or package configuration",
+			Message:   "entry cannot have both backup (config type) and repo (git type)",
+		}
+	}
+
+	// Entry must have at least one of: config, git, or package
+	if !isConfig && !isGit && !hasPackage {
+		return ValidationError{
+			EntryName: e.Name,
+			Message:   "entry must have backup (config type), repo (git type), or package configuration",
 		}
 	}
 
 	// Validate config fields if present
-	if hasConfig {
+	if isConfig {
 		if err := validateConfigFields(e); err != nil {
+			return err
+		}
+	}
+
+	// Validate git fields if present
+	if isGit {
+		if err := validateGitFields(e); err != nil {
 			return err
 		}
 	}
@@ -74,6 +90,32 @@ func validateConfigFields(e *Entry) error {
 			EntryName: e.Name,
 			Field:     "targets",
 			Message:   "at least one target is required for config entries",
+		}
+	}
+
+	// Validate target paths are not empty
+	for os, target := range e.Targets {
+		if strings.TrimSpace(target) == "" {
+			return ValidationError{
+				EntryName: e.Name,
+				Field:     fmt.Sprintf("targets.%s", os),
+				Message:   "target path cannot be empty",
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateGitFields(e *Entry) error {
+	// Repo is already validated by IsGit() being true
+
+	// At least one target is required for git entries
+	if len(e.Targets) == 0 {
+		return ValidationError{
+			EntryName: e.Name,
+			Field:     "targets",
+			Message:   "at least one target is required for git entries",
 		}
 	}
 

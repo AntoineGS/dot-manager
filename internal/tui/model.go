@@ -138,11 +138,20 @@ type Model struct {
 	height int
 }
 
+// EntryType distinguishes between config and git type entries
+type EntryType int
+
+const (
+	EntryTypeConfig EntryType = iota
+	EntryTypeGit
+)
+
 type PathItem struct {
-	Entry    config.Entry
-	Target   string
-	Selected bool
-	State    PathState
+	Entry     config.Entry
+	Target    string
+	Selected  bool
+	State     PathState
+	EntryType EntryType
 }
 
 type PackageItem struct {
@@ -166,9 +175,24 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		target := e.GetTarget(plat.OS)
 		if target != "" {
 			items = append(items, PathItem{
-				Entry:    e,
-				Target:   target,
-				Selected: true, // Select all by default
+				Entry:     e,
+				Target:    target,
+				Selected:  true, // Select all by default
+				EntryType: EntryTypeConfig,
+			})
+		}
+	}
+
+	// Get git entries for the current user type (root or regular)
+	gitEntries := cfg.GetGitEntries(plat.IsRoot)
+	for _, e := range gitEntries {
+		target := e.GetTarget(plat.OS)
+		if target != "" {
+			items = append(items, PathItem{
+				Entry:     e,
+				Target:    target,
+				Selected:  true, // Select all by default
+				EntryType: EntryTypeGit,
 			})
 		}
 	}
@@ -366,8 +390,22 @@ type PackageInstallMsg struct {
 
 // detectPathState determines the state of a path item
 func (m *Model) detectPathState(item *PathItem) PathState {
-	backupPath := m.resolvePath(item.Entry.Backup)
 	targetPath := item.Target
+
+	// For git entries
+	if item.EntryType == EntryTypeGit {
+		if pathExists(targetPath) {
+			gitDir := filepath.Join(targetPath, ".git")
+			if pathExists(gitDir) {
+				return StateLinked // Already cloned
+			}
+			return StateAdopt // Target exists but not a git repo
+		}
+		return StateReady // Ready to clone
+	}
+
+	// For config entries (symlinks)
+	backupPath := m.resolvePath(item.Entry.Backup)
 
 	// For folder-based paths
 	if item.Entry.IsFolder() {

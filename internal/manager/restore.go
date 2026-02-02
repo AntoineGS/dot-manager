@@ -13,6 +13,7 @@ import (
 func (m *Manager) Restore() error {
 	m.log("Restoring configurations for OS: %s (root: %v)", m.Platform.OS, m.Platform.IsRoot)
 
+	// Restore config entries (symlinks)
 	paths := m.GetPaths()
 
 	for _, path := range paths {
@@ -27,8 +28,18 @@ func (m *Manager) Restore() error {
 		}
 	}
 
-	if err := m.runPostRestoreHooks(); err != nil {
-		m.log("Error running post-restore hooks: %v", err)
+	// Restore git entries (clones)
+	gitEntries := m.Config.GetGitEntries(m.Platform.IsRoot)
+	for _, entry := range gitEntries {
+		target := entry.GetTarget(m.Platform.OS)
+		if target == "" {
+			m.logVerbose("Skipping git entry %s: no target for OS %s", entry.Name, m.Platform.OS)
+			continue
+		}
+
+		if err := m.restoreGitEntry(entry, target); err != nil {
+			m.log("Error restoring git entry %s: %v", entry.Name, err)
+		}
 	}
 
 	return nil
@@ -196,120 +207,69 @@ func createSymlink(source, target string) error {
 	return os.Symlink(source, target)
 }
 
-func (m *Manager) runPostRestoreHooks() error {
-	hooks, ok := m.Config.Hooks.PostRestore[m.Platform.OS]
-	if !ok {
-		return nil
-	}
-
-	for _, hook := range hooks {
-		if hook.SkipOnArch && m.Platform.IsArch {
-			m.log("Skipping hook %s on Arch Linux (managed by pacman)", hook.Type)
-			continue
-		}
-
-		switch hook.Type {
-		case "zsh-plugins":
-			if err := m.runZshPluginsHook(hook); err != nil {
-				m.log("Error running zsh-plugins hook: %v", err)
-			}
-		case "ghostty-terminfo":
-			if err := m.runGhosttyTerminfoHook(hook); err != nil {
-				m.log("Error running ghostty-terminfo hook: %v", err)
-			}
-		default:
-			m.logVerbose("Unknown hook type: %s", hook.Type)
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) runZshPluginsHook(hook config.Hook) error {
-	m.log("Setting up zsh plugins...")
-
-	for _, plugin := range hook.Plugins {
-		if pathExists(plugin.Path) {
-			m.log("Updating %s at %s...", plugin.Name, plugin.Path)
+// restoreGitEntry clones or updates a git repository
+func (m *Manager) restoreGitEntry(entry config.Entry, target string) error {
+	if pathExists(target) {
+		// Check if it's a git repository
+		gitDir := filepath.Join(target, ".git")
+		if pathExists(gitDir) {
+			m.log("Updating git repo %s at %s...", entry.Name, target)
 			if !m.DryRun {
-				cmd := exec.Command("sudo", "git", "-C", plugin.Path, "pull")
+				var cmd *exec.Cmd
+				if entry.Root {
+					cmd = exec.Command("sudo", "git", "-C", target, "pull")
+				} else {
+					cmd = exec.Command("git", "-C", target, "pull")
+				}
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
 				if err := cmd.Run(); err != nil {
-					m.log("Failed to update %s: %v", plugin.Name, err)
-				} else {
-					m.log("[ok] %s updated successfully", plugin.Name)
+					return fmt.Errorf("failed to update %s: %w", entry.Name, err)
 				}
+				m.log("[ok] %s updated successfully", entry.Name)
 			}
-		} else {
-			m.log("Cloning %s to %s...", plugin.Name, plugin.Path)
-			if !m.DryRun {
-				parentDir := filepath.Dir(plugin.Path)
-				if !pathExists(parentDir) {
-					mkdirCmd := exec.Command("sudo", "mkdir", "-p", parentDir)
-					if err := mkdirCmd.Run(); err != nil {
-						m.log("Failed to create directory %s: %v", parentDir, err)
-						continue
-					}
-				}
-
-				cmd := exec.Command("sudo", "git", "clone", plugin.Repo, plugin.Path)
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				if err := cmd.Run(); err != nil {
-					m.log("Failed to clone %s: %v", plugin.Name, err)
-				} else {
-					m.log("[ok] %s cloned successfully", plugin.Name)
-				}
-			}
+			return nil
 		}
-
-		// Handle fzf symlinks
-		if plugin.Name == "fzf" {
-			for _, sl := range hook.FzfSymlinks {
-				target := filepath.Join(plugin.Path, sl.Target)
-				link := filepath.Join(plugin.Path, sl.Link)
-
-				if pathExists(target) && !pathExists(link) {
-					m.log("Creating symlink %s -> %s", link, target)
-					if !m.DryRun {
-						cmd := exec.Command("sudo", "ln", "-s", target, link)
-						if err := cmd.Run(); err != nil {
-							m.log("Failed to create symlink for %s: %v", sl.Link, err)
-						} else {
-							m.log("[ok] Created symlink %s", link)
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) runGhosttyTerminfoHook(hook config.Hook) error {
-	source := m.resolvePath(hook.Source)
-
-	if !pathExists(source) {
-		m.log("Ghostty terminfo source not found: %s - skipping", source)
+		// Target exists but is not a git repo - skip
+		m.logVerbose("Target %s exists but is not a git repository, skipping", target)
 		return nil
 	}
 
-	m.log("Installing ghostty terminfo...")
-
+	// Clone the repository
+	m.log("Cloning %s to %s...", entry.Name, target)
 	if !m.DryRun {
-		home, _ := os.UserHomeDir()
-		terminfo := filepath.Join(home, ".terminfo")
+		parentDir := filepath.Dir(target)
+		if !pathExists(parentDir) {
+			if entry.Root {
+				mkdirCmd := exec.Command("sudo", "mkdir", "-p", parentDir)
+				if err := mkdirCmd.Run(); err != nil {
+					return fmt.Errorf("failed to create directory %s: %w", parentDir, err)
+				}
+			} else {
+				if err := os.MkdirAll(parentDir, 0755); err != nil {
+					return fmt.Errorf("failed to create directory %s: %w", parentDir, err)
+				}
+			}
+		}
 
-		cmd := exec.Command("tic", "-x", "-o", terminfo, source)
+		args := []string{"clone"}
+		if entry.Branch != "" {
+			args = append(args, "-b", entry.Branch)
+		}
+		args = append(args, entry.Repo, target)
+
+		var cmd *exec.Cmd
+		if entry.Root {
+			cmd = exec.Command("sudo", append([]string{"git"}, args...)...)
+		} else {
+			cmd = exec.Command("git", args...)
+		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			m.log("[error] Failed to install ghostty terminfo: %v", err)
-			return err
+			return fmt.Errorf("failed to clone %s: %w", entry.Name, err)
 		}
-		m.log("[ok] Ghostty terminfo installed successfully")
+		m.log("[ok] %s cloned successfully", entry.Name)
 	}
 
 	return nil

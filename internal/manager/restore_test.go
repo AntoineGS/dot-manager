@@ -222,3 +222,68 @@ func TestRestoreIntegration(t *testing.T) {
 		t.Error(".bashrc target is not a symlink")
 	}
 }
+
+func TestRestoreGitEntryDryRun(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	targetDir := filepath.Join(tmpDir, "target", "plugin")
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.DryRun = true
+
+	entry := config.Entry{
+		Name:   "test-plugin",
+		Repo:   "https://github.com/test/plugin.git",
+		Branch: "main",
+		Targets: map[string]string{
+			"linux": targetDir,
+		},
+	}
+
+	err := mgr.restoreGitEntry(entry, targetDir)
+	if err != nil {
+		t.Fatalf("restoreGitEntry() error = %v", err)
+	}
+
+	// Target should NOT be created in dry run mode
+	if pathExists(targetDir) {
+		t.Error("Target was created despite dry run mode")
+	}
+}
+
+func TestRestoreGitEntrySkipsExistingNonGit(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create a target that exists but is not a git repo
+	targetDir := filepath.Join(tmpDir, "target")
+	os.MkdirAll(targetDir, 0755)
+	os.WriteFile(filepath.Join(targetDir, "file.txt"), []byte("content"), 0644)
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.Verbose = true
+
+	entry := config.Entry{
+		Name: "test-plugin",
+		Repo: "https://github.com/test/plugin.git",
+		Targets: map[string]string{
+			"linux": targetDir,
+		},
+	}
+
+	err := mgr.restoreGitEntry(entry, targetDir)
+	if err != nil {
+		t.Fatalf("restoreGitEntry() error = %v", err)
+	}
+
+	// Target should still exist but .git should not
+	gitDir := filepath.Join(targetDir, ".git")
+	if pathExists(gitDir) {
+		t.Error(".git directory should not exist (we don't clone over non-git dirs)")
+	}
+}

@@ -32,6 +32,10 @@ func (m *Manager) GetEntries() []config.Entry {
 	return m.Config.GetConfigEntries(m.Platform.IsRoot)
 }
 
+func (m *Manager) GetGitEntries() []config.Entry {
+	return m.Config.GetGitEntries(m.Platform.IsRoot)
+}
+
 func (m *Manager) log(format string, args ...interface{}) {
 	fmt.Printf(format+"\n", args...)
 }

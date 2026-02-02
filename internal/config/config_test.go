@@ -36,12 +36,6 @@ entries:
     backup: "./Linux/pacman"
     targets:
       linux: "/etc/pacman.d/hooks"
-
-hooks:
-  post_restore:
-    linux:
-      - type: "test-hook"
-        skip_on_arch: true
 `
 
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -97,15 +91,6 @@ hooks:
 
 	if !cfg.Entries[2].Root {
 		t.Error("Entries[2].Root = false, want true")
-	}
-
-	// Test hooks
-	if len(cfg.Hooks.PostRestore["linux"]) != 1 {
-		t.Errorf("len(Hooks.PostRestore[linux]) = %d, want 1", len(cfg.Hooks.PostRestore["linux"]))
-	}
-
-	if !cfg.Hooks.PostRestore["linux"][0].SkipOnArch {
-		t.Error("Hooks.PostRestore[linux][0].SkipOnArch = false, want true")
 	}
 }
 
@@ -350,44 +335,6 @@ entries: []
 	}
 }
 
-func TestExpandPathsWithHooks(t *testing.T) {
-	t.Parallel()
-	cfg := &Config{
-		Version:    2,
-		BackupRoot: "~/dotfiles",
-		Hooks: Hooks{
-			PostRestore: map[string][]Hook{
-				"linux": {
-					{
-						Type:   "test",
-						Source: "~/source",
-						Plugins: []Plugin{
-							{
-								Name: "plugin",
-								Path: "~/plugins/test",
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	cfg.ExpandPaths(nil)
-
-	home, _ := os.UserHomeDir()
-
-	expectedSource := filepath.Join(home, "source")
-	if cfg.Hooks.PostRestore["linux"][0].Source != expectedSource {
-		t.Errorf("Hook source = %q, want %q", cfg.Hooks.PostRestore["linux"][0].Source, expectedSource)
-	}
-
-	expectedPluginPath := filepath.Join(home, "plugins/test")
-	if cfg.Hooks.PostRestore["linux"][0].Plugins[0].Path != expectedPluginPath {
-		t.Errorf("Plugin path = %q, want %q", cfg.Hooks.PostRestore["linux"][0].Plugins[0].Path, expectedPluginPath)
-	}
-}
-
 func TestPathSpecGetTargetEmptyTargets(t *testing.T) {
 	t.Parallel()
 	spec := PathSpec{
@@ -593,7 +540,7 @@ entries:
 	}
 }
 
-func TestLoadWithFzfSymlinks(t *testing.T) {
+func TestLoadWithGitEntry(t *testing.T) {
 	t.Parallel()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -601,21 +548,13 @@ func TestLoadWithFzfSymlinks(t *testing.T) {
 	configContent := `
 version: 2
 backup_root: "~/dotfiles"
-entries: []
-
-hooks:
-  post_restore:
-    linux:
-      - type: "zsh-plugins"
-        plugins:
-          - name: "fzf"
-            repo: "https://github.com/junegunn/fzf.git"
-            path: "/usr/share/fzf"
-        fzf_symlinks:
-          - target: "shell/completion.zsh"
-            link: "completion.zsh"
-          - target: "shell/key-bindings.zsh"
-            link: "key-bindings.zsh"
+entries:
+  - name: "oh-my-zsh"
+    repo: "https://github.com/ohmyzsh/ohmyzsh.git"
+    branch: "master"
+    root: true
+    targets:
+      linux: "/usr/share/oh-my-zsh"
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
@@ -626,18 +565,59 @@ hooks:
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	hooks := cfg.Hooks.PostRestore["linux"]
-	if len(hooks) != 1 {
-		t.Fatalf("len(hooks) = %d, want 1", len(hooks))
+	if len(cfg.Entries) != 1 {
+		t.Fatalf("len(Entries) = %d, want 1", len(cfg.Entries))
 	}
 
-	fzfSymlinks := hooks[0].FzfSymlinks
-	if len(fzfSymlinks) != 2 {
-		t.Fatalf("len(FzfSymlinks) = %d, want 2", len(fzfSymlinks))
+	entry := cfg.Entries[0]
+	if entry.Name != "oh-my-zsh" {
+		t.Errorf("Name = %q, want %q", entry.Name, "oh-my-zsh")
+	}
+	if entry.Repo != "https://github.com/ohmyzsh/ohmyzsh.git" {
+		t.Errorf("Repo = %q", entry.Repo)
+	}
+	if entry.Branch != "master" {
+		t.Errorf("Branch = %q, want %q", entry.Branch, "master")
+	}
+	if !entry.Root {
+		t.Error("Root = false, want true")
+	}
+	if !entry.IsGit() {
+		t.Error("IsGit() = false, want true")
+	}
+	if entry.IsConfig() {
+		t.Error("IsConfig() = true, want false")
+	}
+}
+
+func TestGetGitEntries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 2,
+		Entries: []Entry{
+			{Name: "neovim", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+			{Name: "oh-my-zsh", Repo: "https://github.com/ohmyzsh/ohmyzsh.git", Root: true, Targets: map[string]string{"linux": "/usr/share/oh-my-zsh"}},
+			{Name: "fzf", Repo: "https://github.com/junegunn/fzf.git", Targets: map[string]string{"linux": "~/.fzf"}},
+		},
 	}
 
-	if fzfSymlinks[0].Target != "shell/completion.zsh" {
-		t.Errorf("FzfSymlinks[0].Target = %q", fzfSymlinks[0].Target)
+	// Test getting non-root git entries
+	entries := cfg.GetGitEntries(false)
+	if len(entries) != 1 {
+		t.Errorf("GetGitEntries(false) returned %d entries, want 1", len(entries))
+	}
+	if entries[0].Name != "fzf" {
+		t.Errorf("GetGitEntries(false)[0].Name = %q, want %q", entries[0].Name, "fzf")
+	}
+
+	// Test getting root git entries
+	rootEntries := cfg.GetGitEntries(true)
+	if len(rootEntries) != 1 {
+		t.Errorf("GetGitEntries(true) returned %d entries, want 1", len(rootEntries))
+	}
+	if rootEntries[0].Name != "oh-my-zsh" {
+		t.Errorf("GetGitEntries(true)[0].Name = %q, want %q", rootEntries[0].Name, "oh-my-zsh")
 	}
 }
 
@@ -699,5 +679,129 @@ func TestGetPackageEntries(t *testing.T) {
 	}
 	if !names["both"] {
 		t.Error("GetPackageEntries() should include 'both'")
+	}
+}
+
+func TestValidateGitEntry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		entry   Entry
+		wantErr bool
+	}{
+		{
+			name: "valid git entry",
+			entry: Entry{
+				Name: "plugin",
+				Repo: "https://github.com/test/plugin.git",
+				Targets: map[string]string{
+					"linux": "~/.plugins/test",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid git entry with branch",
+			entry: Entry{
+				Name:   "plugin",
+				Repo:   "https://github.com/test/plugin.git",
+				Branch: "develop",
+				Targets: map[string]string{
+					"linux": "~/.plugins/test",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "git entry missing targets",
+			entry: Entry{
+				Name: "plugin",
+				Repo: "https://github.com/test/plugin.git",
+			},
+			wantErr: true,
+		},
+		{
+			name: "git entry with empty target",
+			entry: Entry{
+				Name: "plugin",
+				Repo: "https://github.com/test/plugin.git",
+				Targets: map[string]string{
+					"linux": "",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "entry with both backup and repo",
+			entry: Entry{
+				Name:   "invalid",
+				Backup: "./backup",
+				Repo:   "https://github.com/test/repo.git",
+				Targets: map[string]string{
+					"linux": "~/.test",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "entry with neither backup, repo, nor package",
+			entry: Entry{
+				Name: "empty",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ValidateEntry(&tt.entry)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateEntry() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestEntryIsConfigAndIsGit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		entry    Entry
+		isConfig bool
+		isGit    bool
+	}{
+		{
+			name:     "config entry",
+			entry:    Entry{Name: "nvim", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+			isConfig: true,
+			isGit:    false,
+		},
+		{
+			name:     "git entry",
+			entry:    Entry{Name: "plugin", Repo: "https://github.com/test/repo.git", Targets: map[string]string{"linux": "~/.plugins"}},
+			isConfig: false,
+			isGit:    true,
+		},
+		{
+			name:     "package-only entry",
+			entry:    Entry{Name: "ripgrep", Package: &EntryPackage{Managers: map[string]string{"pacman": "ripgrep"}}},
+			isConfig: false,
+			isGit:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.entry.IsConfig(); got != tt.isConfig {
+				t.Errorf("IsConfig() = %v, want %v", got, tt.isConfig)
+			}
+			if got := tt.entry.IsGit(); got != tt.isGit {
+				t.Errorf("IsGit() = %v, want %v", got, tt.isGit)
+			}
+		})
 	}
 }

@@ -242,7 +242,7 @@ func (m Model) viewListTable() string {
 	header := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s",
 		nameWidth, "Name",
 		typeWidth, "Type",
-		pathWidth, "Backup",
+		pathWidth, "Source",
 		pathWidth, "Target")
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
@@ -305,23 +305,29 @@ func (m Model) viewListTable() string {
 		isSelected := i == m.listCursor
 		cursor := RenderCursor(isSelected)
 
-		// Determine type
+		// Determine type based on entry type
 		var typeStr string
-		if item.Entry.IsFolder() {
-			typeStr = "folder"
+		var sourceStr string
+		if item.EntryType == EntryTypeGit {
+			typeStr = "git"
+			sourceStr = truncateStr(item.Entry.Repo, pathWidth)
 		} else {
-			typeStr = fmt.Sprintf("%d files", len(item.Entry.Files))
+			if item.Entry.IsFolder() {
+				typeStr = "folder"
+			} else {
+				typeStr = fmt.Sprintf("%d files", len(item.Entry.Files))
+			}
+			sourceStr = truncateStr(item.Entry.Backup, pathWidth)
 		}
 
 		// Truncate paths if needed (show config-style values with ~)
 		name := truncateStr(item.Entry.Name, nameWidth)
-		backup := truncateStr(item.Entry.Backup, pathWidth)
 		target := truncateStr(unexpandHome(item.Entry.Targets[m.Platform.OS]), pathWidth)
 
 		// Build row
 		row := fmt.Sprintf("%-*s  ", nameWidth, name)
 		row += fmt.Sprintf("%-*s  ", typeWidth, typeStr)
-		row += fmt.Sprintf("%-*s  ", pathWidth, backup)
+		row += fmt.Sprintf("%-*s  ", pathWidth, sourceStr)
 		row += fmt.Sprintf("%-*s", pathWidth, target)
 
 		// Apply styling based on selection
@@ -380,13 +386,21 @@ func (m Model) calcDetailHeight(item PathItem) int {
 	// Type line
 	lines++
 
-	// Files line (only for non-folders)
-	if !item.Entry.IsFolder() {
+	if item.EntryType == EntryTypeGit {
+		// Repo line
+		lines++
+		// Branch line (if specified)
+		if item.Entry.Branch != "" {
+			lines++
+		}
+	} else {
+		// Files line (only for non-folders)
+		if !item.Entry.IsFolder() {
+			lines++
+		}
+		// Backup line
 		lines++
 	}
-
-	// Backup line
-	lines++
 
 	// Targets header
 	lines++
@@ -403,11 +417,36 @@ func (m Model) calcDetailHeight(item PathItem) int {
 func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 	var detail strings.Builder
 
-	// Type and files
-	if item.Entry.IsFolder() {
+	// Type and source info
+	if item.EntryType == EntryTypeGit {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Type: "))
+		detail.WriteString(WarningStyle.Render("git"))
+		detail.WriteString("\n")
+
+		// Repo URL
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Repo: "))
+		detail.WriteString(PathBackupStyle.Render(item.Entry.Repo))
+		detail.WriteString("\n")
+
+		// Branch (if specified)
+		if item.Entry.Branch != "" {
+			detail.WriteString("    │ ")
+			detail.WriteString(MutedTextStyle.Render("Branch: "))
+			detail.WriteString(item.Entry.Branch)
+			detail.WriteString("\n")
+		}
+	} else if item.Entry.IsFolder() {
 		detail.WriteString("    │ ")
 		detail.WriteString(MutedTextStyle.Render("Type: "))
 		detail.WriteString(WarningStyle.Render("folder"))
+		detail.WriteString("\n")
+
+		// Backup path
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Backup: "))
+		detail.WriteString(PathBackupStyle.Render(item.Entry.Backup))
 		detail.WriteString("\n")
 	} else {
 		detail.WriteString("    │ ")
@@ -420,13 +459,13 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 		detail.WriteString(MutedTextStyle.Render("Files: "))
 		detail.WriteString(strings.Join(item.Entry.Files, ", "))
 		detail.WriteString("\n")
-	}
 
-	// Backup path
-	detail.WriteString("    │ ")
-	detail.WriteString(MutedTextStyle.Render("Backup: "))
-	detail.WriteString(PathBackupStyle.Render(item.Entry.Backup))
-	detail.WriteString("\n")
+		// Backup path
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Backup: "))
+		detail.WriteString(PathBackupStyle.Render(item.Entry.Backup))
+		detail.WriteString("\n")
+	}
 
 	// Targets by OS
 	detail.WriteString("    │ ")

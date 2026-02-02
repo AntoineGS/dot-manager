@@ -14,7 +14,6 @@ type Config struct {
 	Version    int     `yaml:"version"`
 	BackupRoot string  `yaml:"backup_root"`
 	Entries    []Entry `yaml:"entries"`
-	Hooks      Hooks   `yaml:"hooks"`
 
 	// Package manager configuration
 	DefaultManager  string   `yaml:"default_manager,omitempty"`
@@ -45,28 +44,6 @@ type PathSpec struct {
 	Targets map[string]string `yaml:"targets"`
 }
 
-type Hooks struct {
-	PostRestore map[string][]Hook `yaml:"post_restore"`
-}
-
-type Hook struct {
-	Type        string       `yaml:"type"`
-	SkipOnArch  bool         `yaml:"skip_on_arch"`
-	Plugins     []Plugin     `yaml:"plugins,omitempty"`
-	Source      string       `yaml:"source,omitempty"`
-	FzfSymlinks []FzfSymlink `yaml:"fzf_symlinks,omitempty"`
-}
-
-type Plugin struct {
-	Name string `yaml:"name"`
-	Repo string `yaml:"repo"`
-	Path string `yaml:"path"`
-}
-
-type FzfSymlink struct {
-	Target string `yaml:"target"`
-	Link   string `yaml:"link"`
-}
 
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -102,23 +79,24 @@ func (c *Config) ExpandPaths(envVars map[string]string) {
 			c.Entries[i].Files[j] = expandPath(c.Entries[i].Files[j], envVars)
 		}
 	}
-
-	for os, hooks := range c.Hooks.PostRestore {
-		for i := range hooks {
-			hooks[i].Source = expandPath(hooks[i].Source, envVars)
-			for j := range hooks[i].Plugins {
-				hooks[i].Plugins[j].Path = expandPath(hooks[i].Plugins[j].Path, envVars)
-			}
-		}
-		c.Hooks.PostRestore[os] = hooks
-	}
 }
 
-// GetConfigEntries returns entries that have config (backup/targets) filtered by root flag
+// GetConfigEntries returns entries that are config type (have backup) filtered by root flag
 func (c *Config) GetConfigEntries(isRoot bool) []Entry {
 	var result []Entry
 	for _, e := range c.Entries {
-		if e.HasConfig() && e.Root == isRoot {
+		if e.IsConfig() && e.Root == isRoot {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// GetGitEntries returns entries that are git type (have repo) filtered by root flag
+func (c *Config) GetGitEntries(isRoot bool) []Entry {
+	var result []Entry
+	for _, e := range c.Entries {
+		if e.IsGit() && e.Root == isRoot {
 			result = append(result, e)
 		}
 	}

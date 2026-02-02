@@ -1,7 +1,9 @@
 package config
 
-// Entry is a unified configuration entry that can have config management,
-// package installation, or both.
+// Entry is a unified configuration entry that can be:
+// - Config type (has backup field): symlink management
+// - Git type (has repo field): repository clones
+// Both types can optionally have a package field.
 type Entry struct {
 	// Common fields
 	Name        string   `yaml:"name"`
@@ -9,12 +11,16 @@ type Entry struct {
 	Tags        []string `yaml:"tags,omitempty"`
 	Root        bool     `yaml:"root,omitempty"`
 
-	// Config fields (flat - optional)
+	// Config fields (identifies config type entries)
 	Files   []string          `yaml:"files,omitempty"`
 	Backup  string            `yaml:"backup,omitempty"`
 	Targets map[string]string `yaml:"targets,omitempty"`
 
-	// Package fields (nested - optional)
+	// Git fields (identifies git type entries)
+	Repo   string `yaml:"repo,omitempty"`
+	Branch string `yaml:"branch,omitempty"`
+
+	// Package fields (nested - optional for both types)
 	Package *EntryPackage `yaml:"package,omitempty"`
 }
 
@@ -25,9 +31,20 @@ type EntryPackage struct {
 	URL      map[string]URLInstallSpec `yaml:"url,omitempty"`      // os -> url install
 }
 
+// IsConfig returns true if this is a config type entry (has backup field)
+func (e *Entry) IsConfig() bool {
+	return e.Backup != ""
+}
+
+// IsGit returns true if this is a git type entry (has repo field)
+func (e *Entry) IsGit() bool {
+	return e.Repo != ""
+}
+
 // HasConfig returns true if this entry has configuration management (backup/targets)
+// Deprecated: Use IsConfig() instead
 func (e *Entry) HasConfig() bool {
-	return e.Backup != "" || len(e.Targets) > 0
+	return e.IsConfig()
 }
 
 // HasPackage returns true if this entry has package installation configuration
