@@ -157,6 +157,10 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 
 func (m Model) updateApplicationSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
+	case "q", "h", "left":
+		// Go back to menu
+		m.Screen = ScreenMenu
+		return m, nil
 	case "up", "k":
 		if m.appCursor > 0 {
 			m.appCursor--

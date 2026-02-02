@@ -36,6 +36,11 @@ func (m Model) viewProgress() string {
 }
 
 func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Use v3 application handling for v3 configs in List operation
+	if m.Operation == OpList && m.Config.Version == 3 {
+		return m.updateApplicationSelect(msg)
+	}
+
 	// Handle filter mode input
 	if m.Operation == OpList && m.filtering {
 		switch msg.String() {
@@ -373,6 +378,11 @@ func (m Model) viewResults() string {
 }
 
 func (m Model) viewListTable() string {
+	// Use v3 application view for v3 configs
+	if m.Config.Version == 3 {
+		return m.viewApplicationSelect()
+	}
+
 	var b strings.Builder
 
 	// Title
