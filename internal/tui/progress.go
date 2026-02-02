@@ -67,6 +67,13 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.Screen = ScreenAddForm
 			return m, nil
 		}
+	case "a":
+		// Add new path (only in List view)
+		if m.Operation == OpList {
+			m.initAddForm()
+			m.Screen = ScreenAddForm
+			return m, nil
+		}
 	case "r":
 		// Return to menu for another operation
 		m.Screen = ScreenMenu
@@ -356,6 +363,7 @@ func (m Model) viewListTable() string {
 		b.WriteString(RenderHelp(
 			"↑/k ↓/j", "navigate",
 			"l/→", "details",
+			"a", "add",
 			"e", "edit",
 			"h/←", "back",
 			"q", "menu",
