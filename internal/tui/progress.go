@@ -94,7 +94,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.listCursor++
 				// Scroll down if cursor goes below visible area
 				// Use same calculation as viewListTable for visible rows
-				visibleRows := m.viewHeight - 13
+				visibleRows := m.viewHeight - 9
 				if visibleRows < 3 {
 					visibleRows = 3
 				}
@@ -212,14 +212,6 @@ func (m Model) viewListTable() string {
 	b.WriteString(TitleStyle.Render("󰋗  List"))
 	b.WriteString("\n\n")
 
-	// Subtitle with OS info (like main menu)
-	b.WriteString(RenderOSInfo(m.Platform.OS, m.Platform.IsRoot, m.Platform.IsArch, false))
-	b.WriteString("\n\n")
-
-	// Summary
-	b.WriteString(SubtitleStyle.Render(fmt.Sprintf("%d configured paths", len(m.Paths))))
-	b.WriteString("\n\n")
-
 	// Calculate column widths based on terminal width
 	// Reserve space for: padding (4) + cursor (2) + separators (6) + minimum content
 	availWidth := m.width - 12
@@ -263,8 +255,8 @@ func (m Model) viewListTable() string {
 	}
 
 	// Calculate how many table rows can fit
-	// Subtract lines for: title block (3), OS info (2), summary (2), header+separator (2), footer (4)
-	maxTableRows := m.viewHeight - 13
+	// Subtract lines for: title block (3), header+separator (2), footer (4)
+	maxTableRows := m.viewHeight - 9
 	if maxTableRows < 3 {
 		maxTableRows = 3
 	}
