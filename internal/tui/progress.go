@@ -8,6 +8,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Layout constants for list table view
+const (
+	// listTableOverhead is the number of lines used by title, header, separator, and footer
+	// Title block (3) + header+separator (2) + footer (4) = 9
+	listTableOverhead = 9
+	// minVisibleRows is the minimum number of table rows to show
+	minVisibleRows = 3
+	// minVisibleWithDetail is the minimum rows when detail panel is showing
+	minVisibleWithDetail = 1
+)
+
 func (m Model) viewProgress() string {
 	var b strings.Builder
 
@@ -101,9 +112,9 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.listCursor++
 				// Scroll down if cursor goes below visible area
 				// Use same calculation as viewListTable for visible rows
-				visibleRows := m.viewHeight - 9
-				if visibleRows < 3 {
-					visibleRows = 3
+				visibleRows := m.viewHeight - listTableOverhead
+				if visibleRows < minVisibleRows {
+					visibleRows = minVisibleRows
 				}
 				if m.listCursor >= m.scrollOffset+visibleRows {
 					m.scrollOffset = m.listCursor - visibleRows + 1
@@ -262,18 +273,17 @@ func (m Model) viewListTable() string {
 	}
 
 	// Calculate how many table rows can fit
-	// Subtract lines for: title block (3), header+separator (2), footer (4)
-	maxTableRows := m.viewHeight - 9
-	if maxTableRows < 3 {
-		maxTableRows = 3
+	maxTableRows := m.viewHeight - listTableOverhead
+	if maxTableRows < minVisibleRows {
+		maxTableRows = minVisibleRows
 	}
 
 	// Calculate how many rows we can show
 	maxVisible := maxTableRows
 	if m.showingDetail {
 		maxVisible = maxTableRows - detailHeight
-		if maxVisible < 1 {
-			maxVisible = 1
+		if maxVisible < minVisibleWithDetail {
+			maxVisible = minVisibleWithDetail
 		}
 	}
 	if maxVisible > len(m.Paths) {

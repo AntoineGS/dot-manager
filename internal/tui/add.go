@@ -708,10 +708,10 @@ func (m Model) updateFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "left", "h":
-		// Navigate in step 0 (type) or step 1 (key)
-		if m.addForm.filterAddStep == 0 {
+		// Navigate in type or key step
+		if m.addForm.filterAddStep == filterStepType {
 			m.addForm.filterIsExclude = !m.addForm.filterIsExclude
-		} else if m.addForm.filterAddStep == 1 {
+		} else if m.addForm.filterAddStep == filterStepKey {
 			if m.addForm.filterKeyCursor > 0 {
 				m.addForm.filterKeyCursor--
 			}
@@ -719,10 +719,10 @@ func (m Model) updateFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "right", "l":
-		// Navigate in step 0 (type) or step 1 (key)
-		if m.addForm.filterAddStep == 0 {
+		// Navigate in type or key step
+		if m.addForm.filterAddStep == filterStepType {
 			m.addForm.filterIsExclude = !m.addForm.filterIsExclude
-		} else if m.addForm.filterAddStep == 1 {
+		} else if m.addForm.filterAddStep == filterStepKey {
 			if m.addForm.filterKeyCursor < len(filterKeys)-1 {
 				m.addForm.filterKeyCursor++
 			}
@@ -731,16 +731,16 @@ func (m Model) updateFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "tab", "enter":
 		// Move to next step or save
-		if m.addForm.filterAddStep == 0 {
+		if m.addForm.filterAddStep == filterStepType {
 			// Move from type selection to key selection
-			m.addForm.filterAddStep = 1
+			m.addForm.filterAddStep = filterStepKey
 			return m, nil
-		} else if m.addForm.filterAddStep == 1 {
+		} else if m.addForm.filterAddStep == filterStepKey {
 			// Move from key selection to value input
-			m.addForm.filterAddStep = 2
+			m.addForm.filterAddStep = filterStepValue
 			m.addForm.filterValueInput.Focus()
 			return m, nil
-		} else if m.addForm.filterAddStep == 2 {
+		} else if m.addForm.filterAddStep == filterStepValue {
 			// Save the filter
 			value := strings.TrimSpace(m.addForm.filterValueInput.Value())
 			if value == "" {
@@ -784,17 +784,17 @@ func (m Model) updateFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "shift+tab":
 		// Move to previous step
-		if m.addForm.filterAddStep > 0 {
+		if m.addForm.filterAddStep > filterStepType {
 			m.addForm.filterAddStep--
-			if m.addForm.filterAddStep < 2 {
+			if m.addForm.filterAddStep < filterStepValue {
 				m.addForm.filterValueInput.Blur()
 			}
 		}
 		return m, nil
 	}
 
-	// Handle text input only in step 2 (value)
-	if m.addForm.filterAddStep == 2 {
+	// Handle text input only in value step
+	if m.addForm.filterAddStep == filterStepValue {
 		m.addForm.filterValueInput, cmd = m.addForm.filterValueInput.Update(msg)
 	}
 
@@ -841,16 +841,16 @@ func (m *Model) addFormMaxIndex() int {
 		offset = 1 // Add 1 for type toggle on new entries
 	}
 
+	// Common fields (name, desc, linux, windows) = 4, minus 1 for 0-based index = 3
+	baseFields := fieldIdxWindows
+
 	if m.addForm.entryType == EntryTypeGit {
-		// Git type: name, description, linuxTarget, windowsTarget, repo, branch, isRoot, filters
-		return offset + 7
+		return offset + baseFields + gitFieldCount
 	}
-	// Config type: name, description, linuxTarget, windowsTarget, backup, isFolder, isRoot, filters
 	if m.addForm.isFolder {
-		return offset + 7
+		return offset + baseFields + configFolderFieldCount
 	}
-	// Config type with files: add files list, then filters
-	return offset + 8
+	return offset + baseFields + configFilesFieldCount
 }
 
 // addFormFieldType represents the type of field at a focus index
@@ -871,6 +871,34 @@ const (
 	fieldTypeFilters                           // Filters list
 )
 
+// Filter add wizard step constants
+const (
+	filterStepType  = 0 // Select include/exclude
+	filterStepKey   = 1 // Select attribute key (os, distro, hostname, user)
+	filterStepValue = 2 // Enter value
+)
+
+// Form field index constants (after adjusting for type toggle offset)
+const (
+	fieldIdxName       = 0
+	fieldIdxDesc       = 1
+	fieldIdxLinux      = 2
+	fieldIdxWindows    = 3
+	fieldIdxTypeSpec   = 4 // First type-specific field (backup/repo)
+	fieldIdxTypeSpec2  = 5 // Second type-specific field (isFolder/branch)
+	fieldIdxTypeSpec3  = 6 // Third type-specific field (files/isRoot)
+	fieldIdxTypeSpec4  = 7 // Fourth type-specific field (isRoot/filters)
+	fieldIdxTypeSpec5  = 8 // Fifth type-specific field (filters for files mode)
+)
+
+// Form field count constants for max index calculation
+const (
+	// Number of fields after common fields (name, desc, linux, windows = 4)
+	gitFieldCount          = 4 // repo, branch, isRoot, filters
+	configFolderFieldCount = 4 // backup, isFolder, isRoot, filters
+	configFilesFieldCount  = 5 // backup, isFolder, files, isRoot, filters
+)
+
 // Filter attribute keys
 var filterKeys = []string{"os", "distro", "hostname", "user"}
 
@@ -888,57 +916,57 @@ func (m *Model) getFieldType() addFormFieldType {
 		idx-- // Adjust for remaining fields
 	}
 
-	// Common fields: name(0), desc(1), linux(2), windows(3)
+	// Common fields
 	switch idx {
-	case 0:
+	case fieldIdxName:
 		return fieldTypeName
-	case 1:
+	case fieldIdxDesc:
 		return fieldTypeDesc
-	case 2:
+	case fieldIdxLinux:
 		return fieldTypeLinux
-	case 3:
+	case fieldIdxWindows:
 		return fieldTypeWindows
 	}
 
 	// Type-specific fields
 	if isGit {
-		// Git type: 4=repo, 5=branch, 6=isRoot, 7=filters
+		// Git type: repo, branch, isRoot, filters
 		switch idx {
-		case 4:
+		case fieldIdxTypeSpec:
 			return fieldTypeRepo
-		case 5:
+		case fieldIdxTypeSpec2:
 			return fieldTypeBranch
-		case 6:
+		case fieldIdxTypeSpec3:
 			return fieldTypeIsRoot
-		case 7:
+		case fieldIdxTypeSpec4:
 			return fieldTypeFilters
 		}
 	} else {
 		// Config type visual order: backup, isFolder, [files if !isFolder], isRoot, filters
 		if m.addForm.isFolder {
-			// Folder mode: 4=backup, 5=isFolder, 6=isRoot, 7=filters
+			// Folder mode: backup, isFolder, isRoot, filters
 			switch idx {
-			case 4:
+			case fieldIdxTypeSpec:
 				return fieldTypeBackup
-			case 5:
+			case fieldIdxTypeSpec2:
 				return fieldTypeIsFolder
-			case 6:
+			case fieldIdxTypeSpec3:
 				return fieldTypeIsRoot
-			case 7:
+			case fieldIdxTypeSpec4:
 				return fieldTypeFilters
 			}
 		} else {
-			// Files mode: 4=backup, 5=isFolder, 6=files, 7=isRoot, 8=filters
+			// Files mode: backup, isFolder, files, isRoot, filters
 			switch idx {
-			case 4:
+			case fieldIdxTypeSpec:
 				return fieldTypeBackup
-			case 5:
+			case fieldIdxTypeSpec2:
 				return fieldTypeIsFolder
-			case 6:
+			case fieldIdxTypeSpec3:
 				return fieldTypeFiles
-			case 7:
+			case fieldIdxTypeSpec4:
 				return fieldTypeIsRoot
-			case 8:
+			case fieldIdxTypeSpec5:
 				return fieldTypeFilters
 			}
 		}
@@ -1267,7 +1295,7 @@ func (m Model) renderFilterAddUI() string {
 	}
 	b.WriteString(fmt.Sprintf("    %s:\n", MutedTextStyle.Render(actionText)))
 
-	// Step 0: Type selection (include/exclude)
+	// Type selection (include/exclude)
 	typeLabel := "    Type: "
 	includeCheck := "[ ]"
 	excludeCheck := "[✓]"
@@ -1276,13 +1304,13 @@ func (m Model) renderFilterAddUI() string {
 		excludeCheck = "[ ]"
 	}
 	typeStr := fmt.Sprintf("%s include  %s exclude", includeCheck, excludeCheck)
-	if m.addForm.filterAddStep == 0 {
+	if m.addForm.filterAddStep == filterStepType {
 		b.WriteString(typeLabel + SelectedMenuItemStyle.Render(typeStr) + "\n")
 	} else {
 		b.WriteString(typeLabel + typeStr + "\n")
 	}
 
-	// Step 1: Key selection
+	// Key selection
 	keyLabel := "    Key:  "
 	var keyOptions []string
 	for i, k := range filterKeys {
@@ -1293,15 +1321,15 @@ func (m Model) renderFilterAddUI() string {
 		}
 	}
 	keyStr := strings.Join(keyOptions, " ")
-	if m.addForm.filterAddStep == 1 {
+	if m.addForm.filterAddStep == filterStepKey {
 		b.WriteString(keyLabel + SelectedMenuItemStyle.Render(keyStr) + "\n")
 	} else {
 		b.WriteString(keyLabel + keyStr + "\n")
 	}
 
-	// Step 2: Value input
+	// Value input
 	valueLabel := "    Value: "
-	if m.addForm.filterAddStep == 2 {
+	if m.addForm.filterAddStep == filterStepValue {
 		b.WriteString(valueLabel + m.addForm.filterValueInput.View() + "\n")
 	} else {
 		value := m.addForm.filterValueInput.Value()
@@ -1354,20 +1382,20 @@ func (m Model) renderAddFormHelp() string {
 	if m.addForm.addingFilter || m.addForm.editingFilter {
 		// Adding/editing a filter
 		switch m.addForm.filterAddStep {
-		case 0:
+		case filterStepType:
 			return RenderHelp(
 				"←/→", "select type",
 				"tab/enter", "next",
 				"esc", "cancel",
 			)
-		case 1:
+		case filterStepKey:
 			return RenderHelp(
 				"←/→", "select key",
 				"tab/enter", "next",
 				"shift+tab", "back",
 				"esc", "cancel",
 			)
-		case 2:
+		case filterStepValue:
 			return RenderHelp(
 				"enter", "save filter",
 				"shift+tab", "back",
