@@ -485,16 +485,24 @@ func (m Model) updateFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.addForm.filesCursor < maxCursor {
 			m.addForm.filesCursor++
 		} else {
-			// Wrap to first field
-			m.addForm.focusIndex = 0
+			// Move to next field (or wrap to beginning if at end)
+			m.addForm.focusIndex++
+			maxIndex := m.addFormMaxIndex()
+			if m.addForm.focusIndex > maxIndex {
+				m.addForm.focusIndex = 0
+			}
 			m.addForm.filesCursor = 0
 			m.updateAddFormFocus()
 		}
 		return m, nil
 
 	case "tab":
-		// Move to next field (wrap to beginning)
-		m.addForm.focusIndex = 0
+		// Move to next field (or wrap to beginning if at end)
+		m.addForm.focusIndex++
+		maxIndex := m.addFormMaxIndex()
+		if m.addForm.focusIndex > maxIndex {
+			m.addForm.focusIndex = 0
+		}
 		m.addForm.filesCursor = 0
 		m.updateAddFormFocus()
 		return m, nil
@@ -1471,8 +1479,7 @@ func (m Model) renderAddFormHelp() string {
 		case filterStepKey:
 			return RenderHelp(
 				"←/h →/l", "select key",
-				"↑/k ↓/j", "navigate",
-				"enter/tab", "next",
+					"enter/tab", "next",
 				"esc", "cancel",
 			)
 		case filterStepValue:
@@ -1483,8 +1490,7 @@ func (m Model) renderAddFormHelp() string {
 				)
 			}
 			return RenderHelp(
-				"↑/k ↓/j", "navigate",
-				"enter/e", "edit value",
+					"enter/e", "edit value",
 				"esc", "cancel",
 			)
 		}
@@ -1514,14 +1520,12 @@ func (m Model) renderAddFormHelp() string {
 		// Files list focused
 		if m.addForm.filesCursor < len(m.addForm.files) {
 			return RenderHelp(
-				"↑/k ↓/j", "navigate",
-				"enter/e", "edit",
+					"enter/e", "edit",
 				"d/del", "remove",
 				"esc", "back",
 			)
 		}
 		return RenderHelp(
-			"↑/k ↓/j", "navigate",
 			"enter/e", "add file",
 			"s", "save",
 			"esc", "back",
@@ -1531,15 +1535,13 @@ func (m Model) renderAddFormHelp() string {
 		// Filters list focused
 		if m.addForm.filtersCursor < len(m.addForm.filters) {
 			return RenderHelp(
-				"↑/k ↓/j", "navigate",
-				"enter", "edit",
+					"enter", "edit",
 				"d/del", "remove",
 				"s", "save",
 				"esc", "back",
 			)
 		}
 		return RenderHelp(
-			"↑/k ↓/j", "navigate",
 			"enter", "add filter",
 			"s", "save",
 			"esc", "back",
@@ -1548,7 +1550,6 @@ func (m Model) renderAddFormHelp() string {
 	if m.isTextInputField() {
 		// Text field focused (not editing)
 		return RenderHelp(
-			"↑/k ↓/j", "navigate",
 			"enter/e", "edit",
 			"s", "save",
 			"esc", "back",
@@ -1557,14 +1558,12 @@ func (m Model) renderAddFormHelp() string {
 	if m.isToggleField() {
 		// Toggle field focused
 		return RenderHelp(
-			"↑/k ↓/j", "navigate",
 			"enter/space", "toggle",
 			"s", "save",
 			"esc", "back",
 		)
 	}
 	return RenderHelp(
-		"↑/k ↓/j", "navigate",
 		"enter/e", "edit",
 		"s", "save",
 		"esc", "back",

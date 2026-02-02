@@ -119,7 +119,6 @@ func (m Model) viewPackageSelect() string {
 	// Help
 	b.WriteString("\n")
 	b.WriteString(RenderHelp(
-		"↑/k ↓/j", "navigate",
 		"space", "toggle",
 		"a", "all",
 		"n", "none",

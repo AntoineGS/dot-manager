@@ -14,9 +14,7 @@ var menuItems = []struct {
 	icon string
 }{
 	{OpRestore, "Restore", "Create symlinks from targets to backup sources", "󰁯"},
-	{OpAdd, "Add", "Add a new path configuration", "󰐕"},
-	{OpInstallPackages, "Install Packages", "Install packages using various package managers", "󰏖"},
-	{OpList, "List", "Display all configured paths", "󰋗"},
+	{OpList, "Manage", "Browse, edit and install", "󰋗"},
 }
 
 func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -41,25 +39,6 @@ func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.scrollOffset = 0
 			m.listCursor = 0
 			m.showingDetail = false
-			return m, nil
-		}
-		if m.Operation == OpAdd {
-			// Initialize add form and show it
-			m.initAddForm()
-			m.Screen = ScreenAddForm
-			return m, nil
-		}
-		if m.Operation == OpInstallPackages {
-			if len(m.Packages) == 0 {
-				m.Screen = ScreenResults
-				m.results = []ResultItem{{
-					Name:    "No packages",
-					Success: false,
-					Message: "No installable packages found in configuration",
-				}}
-				return m, nil
-			}
-			m.Screen = ScreenPackageSelect
 			return m, nil
 		}
 		m.Screen = ScreenPathSelect
@@ -103,7 +82,6 @@ func (m Model) viewMenu() string {
 	// Help
 	b.WriteString("\n")
 	b.WriteString(RenderHelp(
-		"↑/k ↓/j", "navigate",
 		"enter", "select",
 		"q", "quit",
 	))

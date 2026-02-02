@@ -407,6 +407,39 @@ func (m *Manager) GetInstallMethod(pkg Package) string {
 	return "none"
 }
 
+// IsInstalled checks if a package is installed on the system.
+// It uses the appropriate package manager query command based on the installation method.
+// Returns true if the package is installed, false otherwise.
+func IsInstalled(pkgName string, manager string) bool {
+	var cmd *exec.Cmd
+
+	switch PackageManager(manager) {
+	case Pacman, Yay, Paru:
+		cmd = exec.Command("pacman", "-Q", pkgName)
+	case Apt:
+		cmd = exec.Command("dpkg", "-s", pkgName)
+	case Dnf:
+		cmd = exec.Command("rpm", "-q", pkgName)
+	case Brew:
+		cmd = exec.Command("brew", "list", pkgName)
+	case Winget:
+		cmd = exec.Command("winget", "list", "--id", pkgName)
+	case Scoop:
+		cmd = exec.Command("scoop", "info", pkgName)
+	case Choco:
+		cmd = exec.Command("choco", "list", "--local-only", pkgName)
+	default:
+		// For custom/url methods, we can't easily check installation status
+		return false
+	}
+
+	// Run silently - just check exit code
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	err := cmd.Run()
+	return err == nil
+}
+
 // FromEntry creates a Package from a config.Entry.
 // It converts the entry's package configuration into a Package struct,
 // mapping managers and URL install configurations. Returns nil if the

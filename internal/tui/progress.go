@@ -35,6 +35,34 @@ func (m Model) viewProgress() string {
 }
 
 func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Handle delete confirmation
+	if m.Operation == OpList && m.confirmingDelete {
+		switch msg.String() {
+		case "y", "Y", "enter":
+			// Confirm delete
+			m.confirmingDelete = false
+			if err := m.deleteEntry(m.listCursor); err == nil {
+				// Adjust cursor if needed
+				if m.listCursor >= len(m.Paths) && m.listCursor > listStartIndex {
+					m.listCursor--
+				}
+				// Adjust scroll offset if needed
+				if m.scrollOffset > listStartIndex && m.scrollOffset >= len(m.Paths) {
+					m.scrollOffset = len(m.Paths) - 1
+					if m.scrollOffset < listStartIndex {
+						m.scrollOffset = listStartIndex
+					}
+				}
+			}
+			return m, nil
+		case "n", "N", "esc":
+			// Cancel delete
+			m.confirmingDelete = false
+			return m, nil
+		}
+		return m, nil
+	}
+
 	// Handle detail popup separately
 	if m.Operation == OpList && m.showingDetail {
 		switch msg.String() {
@@ -86,32 +114,72 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "d", "delete", "backspace":
-		// Delete selected entry (only in List view)
+		// Ask for delete confirmation (only in List view)
 		if m.Operation == OpList && len(m.Paths) > listStartIndex {
-			if err := m.deleteEntry(m.listCursor); err == nil {
-				// Adjust cursor if needed
-				if m.listCursor >= len(m.Paths) && m.listCursor > listStartIndex {
-					m.listCursor--
-				}
-				// Adjust scroll offset if needed
-				if m.scrollOffset > listStartIndex && m.scrollOffset >= len(m.Paths) {
-					m.scrollOffset = len(m.Paths) - 1
-					if m.scrollOffset < listStartIndex {
-						m.scrollOffset = listStartIndex
-					}
-				}
-			}
+			m.confirmingDelete = true
 			return m, nil
 		}
-	case "r":
-		// Return to menu for another operation
-		m.Screen = ScreenMenu
-		// Reset selections
-		for i := range m.Paths {
-			m.Paths[i].Selected = true
+	case "i":
+		// Install package for selected entry (only in List view)
+		if m.Operation == OpList && len(m.Paths) > 0 {
+			item := m.Paths[m.listCursor]
+			if item.PkgInstalled != nil && !*item.PkgInstalled {
+				// Setup for package installation
+				m.Operation = OpInstallPackages
+				m.pendingPackages = []PackageItem{{
+					Entry:    item.Entry,
+					Method:   item.PkgMethod,
+					Selected: true,
+				}}
+				m.currentPackageIndex = 0
+				m.results = nil
+				m.Screen = ScreenProgress
+				return m, m.installNextPackage()
+			}
 		}
-		m.pathCursor = 0
-		m.scrollOffset = 0
+		return m, nil
+	case "m":
+		// Install all missing packages (only in List view)
+		if m.Operation == OpList {
+			var missing []PackageItem
+			for _, item := range m.Paths {
+				if item.PkgInstalled != nil && !*item.PkgInstalled {
+					missing = append(missing, PackageItem{
+						Entry:    item.Entry,
+						Method:   item.PkgMethod,
+						Selected: true,
+					})
+				}
+			}
+			if len(missing) > 0 {
+				m.Operation = OpInstallPackages
+				m.pendingPackages = missing
+				m.currentPackageIndex = 0
+				m.results = nil
+				m.Screen = ScreenProgress
+				return m, m.installNextPackage()
+			}
+		}
+		return m, nil
+	case "r":
+		// Restore selected entry (only in List view for config/git entries)
+		if m.Operation == OpList && len(m.Paths) > 0 {
+			item := m.Paths[m.listCursor]
+			// Only restore config or git entries (not package-only)
+			if item.EntryType != EntryTypePackage {
+				success, message := m.performRestore(item)
+				// Update the state after restore
+				if success {
+					m.Paths[m.listCursor].State = m.detectPathState(&m.Paths[m.listCursor])
+				}
+				// Show result briefly in results
+				m.results = []ResultItem{{
+					Name:    item.Entry.Name,
+					Success: success,
+					Message: message,
+				}}
+			}
+		}
 		return m, nil
 	case "up", "k":
 		if m.Operation == OpList {
@@ -245,32 +313,34 @@ func (m Model) viewListTable() string {
 	var b strings.Builder
 
 	// Title
-	b.WriteString(TitleStyle.Render("󰋗  List"))
+	b.WriteString(TitleStyle.Render("󰋗  Manage"))
 	b.WriteString("\n\n")
 
 	// Calculate column widths based on terminal width
-	// Reserve space for: padding (4) + cursor (2) + separators (6) + minimum content
-	availWidth := m.width - 12
+	// Reserve space for: padding (4) + cursor (2) + separators (10) + minimum content
+	availWidth := m.width - 14
 	if availWidth < 60 {
 		availWidth = 60
 	}
 
-	// Column widths: Name (20%), Type (10%), Backup (35%), Target (35%)
+	// Column widths: Name (20%), Type (8), Pkg (1), Source (35%), Target (35%)
 	nameWidth := availWidth * 20 / 100
 	if nameWidth < 12 {
 		nameWidth = 12
 	}
 	typeWidth := 8
-	pathWidth := (availWidth - nameWidth - typeWidth) / 2
+	pkgWidth := 1 // Single character: ✓, ✗, or space
+	pathWidth := (availWidth - nameWidth - typeWidth - pkgWidth) / 2
 
-	// Total table width: cursor(2) + name + sep(2) + type + sep(2) + backup + sep(2) + target
-	tableWidth := 2 + nameWidth + 2 + typeWidth + 2 + pathWidth + 2 + pathWidth
+	// Total table width: cursor(2) + name + sep(2) + type + sep(2) + pkg + sep(2) + source + sep(2) + target
+	tableWidth := 2 + nameWidth + 2 + typeWidth + 2 + pkgWidth + 2 + pathWidth + 2 + pathWidth
 
 	// Table header (with space for cursor)
 	headerStyle := PathNameStyle.Bold(true)
-	header := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s",
+	header := fmt.Sprintf("  %-*s  %-*s  %s  %-*s  %-*s",
 		nameWidth, "Name",
 		typeWidth, "Type",
+		"P", // Single char header for Package status
 		pathWidth, "Source",
 		pathWidth, "Target")
 	b.WriteString(headerStyle.Render(header))
@@ -279,6 +349,7 @@ func (m Model) viewListTable() string {
 	// Header separator
 	separator := "  " + strings.Repeat("─", nameWidth) + "──" +
 		strings.Repeat("─", typeWidth) + "──" +
+		strings.Repeat("─", pkgWidth) + "──" +
 		strings.Repeat("─", pathWidth) + "──" +
 		strings.Repeat("─", pathWidth)
 	b.WriteString(MutedTextStyle.Render(separator))
@@ -336,10 +407,14 @@ func (m Model) viewListTable() string {
 		// Determine type based on entry type
 		var typeStr string
 		var sourceStr string
-		if item.EntryType == EntryTypeGit {
+		switch item.EntryType {
+		case EntryTypeGit:
 			typeStr = "git"
 			sourceStr = truncateStr(item.Entry.Repo, pathWidth)
-		} else {
+		case EntryTypePackage:
+			typeStr = "package"
+			sourceStr = truncateStr(item.PkgMethod, pathWidth)
+		default: // EntryTypeConfig
 			if item.Entry.IsFolder() {
 				typeStr = "folder"
 			} else {
@@ -348,26 +423,48 @@ func (m Model) viewListTable() string {
 			sourceStr = truncateStr(item.Entry.Backup, pathWidth)
 		}
 
+		// Determine installed status indicator
+		var pkgIndicator string
+		if item.PkgInstalled != nil {
+			if *item.PkgInstalled {
+				pkgIndicator = "✓"
+			} else {
+				pkgIndicator = "✗"
+			}
+		} else {
+			pkgIndicator = " "
+		}
+
 		// Truncate paths if needed (show config-style values with ~)
 		name := item.Entry.Name
-		// Add root indicator
-		if item.Entry.Root {
-			name = "🔒 " + name
+		// Add root indicator (use text instead of emoji to preserve ANSI styling)
+		// Show [R] for root entries or packages that require sudo
+		needsSudo := item.Entry.Root || requiresSudo(item.PkgMethod)
+		if needsSudo {
+			name = "[R] " + name
 		}
 		name = truncateStr(name, nameWidth)
 		target := truncateStr(unexpandHome(item.Entry.Targets[m.Platform.OS]), pathWidth)
 
-		// Build row
-		row := fmt.Sprintf("%-*s  ", nameWidth, name)
-		row += fmt.Sprintf("%-*s  ", typeWidth, typeStr)
-		row += fmt.Sprintf("%-*s  ", pathWidth, sourceStr)
-		row += fmt.Sprintf("%-*s", pathWidth, target)
+		// Build row with fixed-width columns
+		row := fmt.Sprintf("%-*s  %-*s  ",
+			nameWidth, name,
+			typeWidth, typeStr)
 
-		// Apply styling based on selection
+		// Add package indicator (no styling here - will be styled with whole row)
+		row += pkgIndicator
+		row += "  " // separator after pkg column
+
+		row += fmt.Sprintf("%-*s  %-*s",
+			pathWidth, sourceStr,
+			pathWidth, target)
+
+		// Apply styling based on selection (cursor always outside styled content)
+		// Style the row first, then add colored package indicator separately if needed
 		if isSelected {
-			b.WriteString(SelectedListItemStyle.Render(cursor + row))
+			b.WriteString(cursor + SelectedListItemStyle.Render(row))
 		} else {
-			b.WriteString(cursor + PathTargetStyle.Render(row))
+			b.WriteString(cursor + MutedTextStyle.Render(row))
 		}
 		b.WriteString("\n")
 
@@ -391,20 +488,29 @@ func (m Model) viewListTable() string {
 	b.WriteString(SubtitleStyle.Render(scrollInfo))
 	b.WriteString("\n")
 
-	// Help
+	// Help or confirmation prompt
 	b.WriteString("\n")
-	if m.showingDetail {
-		b.WriteString(RenderHelp(
+	if m.confirmingDelete {
+		// Show delete confirmation prompt
+		if m.listCursor < len(m.Paths) {
+			name := m.Paths[m.listCursor].Entry.Name
+			b.WriteString(WarningStyle.Render(fmt.Sprintf("Delete '%s'? ", name)))
+			b.WriteString(RenderHelpWithWidth(m.width, "y/enter", "yes", "n/esc", "no"))
+		}
+	} else if m.showingDetail {
+		b.WriteString(RenderHelpWithWidth(m.width,
 			"h/←/esc", "close",
 			"q", "back",
 		))
 	} else {
-		b.WriteString(RenderHelp(
-			"↑/k ↓/j", "navigate",
+		b.WriteString(RenderHelpWithWidth(m.width,
 			"l/→", "details",
 			"a", "add",
 			"e", "edit",
 			"d", "delete",
+			"r", "restore",
+			"i", "install",
+			"m", "install missing",
 			"q", "menu",
 		))
 	}
@@ -429,14 +535,22 @@ func (m Model) calcDetailHeight(item PathItem) int {
 		lines++
 	}
 
-	if item.EntryType == EntryTypeGit {
+	// Package line (if present)
+	if item.PkgInstalled != nil {
+		lines++
+	}
+
+	switch item.EntryType {
+	case EntryTypeGit:
 		// Repo line
 		lines++
 		// Branch line (if specified)
 		if item.Entry.Branch != "" {
 			lines++
 		}
-	} else {
+	case EntryTypePackage:
+		// Package-only entries don't have additional lines here
+	default: // EntryTypeConfig
 		// Files line (only for non-folders)
 		if !item.Entry.IsFolder() {
 			lines++
@@ -445,11 +559,11 @@ func (m Model) calcDetailHeight(item PathItem) int {
 		lines++
 	}
 
-	// Targets header
-	lines++
-
-	// One line per target OS
-	lines += len(item.Entry.Targets)
+	// Targets header and lines (only for non-package entries)
+	if item.EntryType != EntryTypePackage && len(item.Entry.Targets) > 0 {
+		lines++ // Targets header
+		lines += len(item.Entry.Targets)
+	}
 
 	// Filters (if present)
 	if len(item.Entry.Filters) > 0 {
@@ -471,21 +585,29 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 	var detail strings.Builder
 
 	// Type and source info
-	if item.EntryType == EntryTypeGit {
+	switch item.EntryType {
+	case EntryTypeGit:
 		detail.WriteString("    │ ")
 		detail.WriteString(MutedTextStyle.Render("Type: "))
 		detail.WriteString(WarningStyle.Render("git"))
 		detail.WriteString("\n")
-	} else if item.Entry.IsFolder() {
+	case EntryTypePackage:
 		detail.WriteString("    │ ")
 		detail.WriteString(MutedTextStyle.Render("Type: "))
-		detail.WriteString(WarningStyle.Render("folder"))
+		detail.WriteString(WarningStyle.Render("package"))
 		detail.WriteString("\n")
-	} else {
-		detail.WriteString("    │ ")
-		detail.WriteString(MutedTextStyle.Render("Type: "))
-		detail.WriteString(fmt.Sprintf("%d files", len(item.Entry.Files)))
-		detail.WriteString("\n")
+	default: // EntryTypeConfig
+		if item.Entry.IsFolder() {
+			detail.WriteString("    │ ")
+			detail.WriteString(MutedTextStyle.Render("Type: "))
+			detail.WriteString(WarningStyle.Render("folder"))
+			detail.WriteString("\n")
+		} else {
+			detail.WriteString("    │ ")
+			detail.WriteString(MutedTextStyle.Render("Type: "))
+			detail.WriteString(fmt.Sprintf("%d files", len(item.Entry.Files)))
+			detail.WriteString("\n")
+		}
 	}
 
 	// Description (if present)
@@ -504,8 +626,22 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 		detail.WriteString("\n")
 	}
 
+	// Package info (if present)
+	if item.PkgInstalled != nil {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Package: "))
+		detail.WriteString(item.PkgMethod)
+		if *item.PkgInstalled {
+			detail.WriteString(" " + SuccessStyle.Render("(installed)"))
+		} else {
+			detail.WriteString(" " + ErrorStyle.Render("(not installed)"))
+		}
+		detail.WriteString("\n")
+	}
+
 	// Type-specific fields
-	if item.EntryType == EntryTypeGit {
+	switch item.EntryType {
+	case EntryTypeGit:
 		// Repo URL
 		detail.WriteString("    │ ")
 		detail.WriteString(MutedTextStyle.Render("Repo: "))
@@ -519,7 +655,9 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 			detail.WriteString(item.Entry.Branch)
 			detail.WriteString("\n")
 		}
-	} else {
+	case EntryTypePackage:
+		// Package-only entries show manager info in package section above
+	default: // EntryTypeConfig
 		// Files list (only for non-folders)
 		if !item.Entry.IsFolder() {
 			detail.WriteString("    │ ")
@@ -535,16 +673,18 @@ func (m Model) renderInlineDetail(item PathItem, tableWidth int) string {
 		detail.WriteString("\n")
 	}
 
-	// Targets by OS
-	detail.WriteString("    │ ")
-	detail.WriteString(MutedTextStyle.Render("Targets:"))
-	detail.WriteString("\n")
-	for os, target := range item.Entry.Targets {
-		detail.WriteString("    │   ")
-		osLabel := fmt.Sprintf("%-8s ", os+":")
-		detail.WriteString(MutedTextStyle.Render(osLabel))
-		detail.WriteString(PathTargetStyle.Render(unexpandHome(target)))
+	// Targets by OS (only for non-package entries)
+	if item.EntryType != EntryTypePackage && len(item.Entry.Targets) > 0 {
+		detail.WriteString("    │ ")
+		detail.WriteString(MutedTextStyle.Render("Targets:"))
 		detail.WriteString("\n")
+		for os, target := range item.Entry.Targets {
+			detail.WriteString("    │   ")
+			osLabel := fmt.Sprintf("%-8s ", os+":")
+			detail.WriteString(MutedTextStyle.Render(osLabel))
+			detail.WriteString(PathTargetStyle.Render(unexpandHome(target)))
+			detail.WriteString("\n")
+		}
 	}
 
 	// Filters (if present)
@@ -600,4 +740,13 @@ func unexpandHome(path string) string {
 		return "~" + path[len(home):]
 	}
 	return path
+}
+
+// requiresSudo returns true if the package manager method requires sudo
+func requiresSudo(method string) bool {
+	switch method {
+	case "pacman", "apt", "dnf":
+		return true
+	}
+	return false
 }
