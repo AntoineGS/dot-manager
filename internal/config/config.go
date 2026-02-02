@@ -27,7 +27,7 @@ type PackageSpec struct {
 	Managers    map[string]string         `yaml:"managers,omitempty"` // manager -> package name
 	Custom      map[string]string         `yaml:"custom,omitempty"`   // os -> command
 	URL         map[string]URLInstallSpec `yaml:"url,omitempty"`      // os -> url install
-	Tags        []string                  `yaml:"tags,omitempty"`
+	Filters     []Filter                  `yaml:"filters,omitempty"`
 }
 
 // URLInstallSpec defines URL-based installation
@@ -92,6 +92,17 @@ func (c *Config) GetConfigEntries(isRoot bool) []Entry {
 	return result
 }
 
+// GetFilteredConfigEntries returns config entries filtered by root flag and filter context
+func (c *Config) GetFilteredConfigEntries(isRoot bool, ctx *FilterContext) []Entry {
+	var result []Entry
+	for _, e := range c.Entries {
+		if e.IsConfig() && e.Root == isRoot && MatchesFilters(e.Filters, ctx) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
 // GetGitEntries returns entries that are git type (have repo) filtered by root flag
 func (c *Config) GetGitEntries(isRoot bool) []Entry {
 	var result []Entry
@@ -103,11 +114,33 @@ func (c *Config) GetGitEntries(isRoot bool) []Entry {
 	return result
 }
 
+// GetFilteredGitEntries returns git entries filtered by root flag and filter context
+func (c *Config) GetFilteredGitEntries(isRoot bool, ctx *FilterContext) []Entry {
+	var result []Entry
+	for _, e := range c.Entries {
+		if e.IsGit() && e.Root == isRoot && MatchesFilters(e.Filters, ctx) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
 // GetPackageEntries returns entries that have package configuration
 func (c *Config) GetPackageEntries() []Entry {
 	var result []Entry
 	for _, e := range c.Entries {
 		if e.HasPackage() {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// GetFilteredPackageEntries returns package entries filtered by filter context
+func (c *Config) GetFilteredPackageEntries(ctx *FilterContext) []Entry {
+	var result []Entry
+	for _, e := range c.Entries {
+		if e.HasPackage() && MatchesFilters(e.Filters, ctx) {
 			result = append(result, e)
 		}
 	}

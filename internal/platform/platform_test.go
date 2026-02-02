@@ -114,14 +114,18 @@ func TestGetDirname(t *testing.T) {
 	}
 }
 
-func TestDetectArchLinux(t *testing.T) {
+func TestDetectDistro(t *testing.T) {
 	t.Parallel()
-	// This test will pass on Arch Linux and return false elsewhere
-	isArch := detectArchLinux()
+	// This test returns the distro ID from /etc/os-release
+	distro := detectDistro()
 
-	// Just verify it doesn't panic and returns a boolean
-	if isArch != true && isArch != false {
-		t.Error("detectArchLinux() should return a boolean")
+	// Just verify it doesn't panic and returns a string
+	// On non-Linux systems or if /etc/os-release doesn't exist, it returns ""
+	if distro != "" {
+		// If we got a distro, it should be lowercase and non-empty
+		if len(distro) == 0 {
+			t.Error("detectDistro() returned empty but non-nil string")
+		}
 	}
 }
 

@@ -378,9 +378,9 @@ manager_priority:
 entries:
   - name: neovim
     description: "Editor"
-    tags:
-      - editor
-      - dev
+    filters:
+      - include:
+          os: "linux"
     package:
       managers:
         pacman: neovim
@@ -411,8 +411,12 @@ entries:
 		t.Errorf("Entries[0].Name = %q, want %q", cfg.Entries[0].Name, "neovim")
 	}
 
-	if len(cfg.Entries[0].Tags) != 2 {
-		t.Errorf("len(Tags) = %d, want 2", len(cfg.Entries[0].Tags))
+	if len(cfg.Entries[0].Filters) != 1 {
+		t.Errorf("len(Filters) = %d, want 1", len(cfg.Entries[0].Filters))
+	}
+
+	if cfg.Entries[0].Filters[0].Include["os"] != "linux" {
+		t.Errorf("Filters[0].Include[os] = %q, want %q", cfg.Entries[0].Filters[0].Include["os"], "linux")
 	}
 
 	if cfg.Entries[0].Package == nil {
@@ -803,5 +807,120 @@ func TestEntryIsConfigAndIsGit(t *testing.T) {
 				t.Errorf("IsGit() = %v, want %v", got, tt.isGit)
 			}
 		})
+	}
+}
+
+func TestGetFilteredConfigEntries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 2,
+		Entries: []Entry{
+			{Name: "linux-config", Backup: "./linux", Targets: map[string]string{"linux": "~/.config/linux"}, Filters: []Filter{{Include: map[string]string{"os": "linux"}}}},
+			{Name: "windows-config", Backup: "./windows", Targets: map[string]string{"windows": "~/AppData"}, Filters: []Filter{{Include: map[string]string{"os": "windows"}}}},
+			{Name: "all-config", Backup: "./all", Targets: map[string]string{"linux": "~/.config/all"}},
+			{Name: "root-config", Root: true, Backup: "./root", Targets: map[string]string{"linux": "/etc/root"}},
+		},
+	}
+
+	linuxCtx := &FilterContext{OS: "linux", Hostname: "desktop", User: "john"}
+
+	// Test non-root entries on Linux
+	entries := cfg.GetFilteredConfigEntries(false, linuxCtx)
+	if len(entries) != 2 {
+		t.Errorf("GetFilteredConfigEntries(false, linux) returned %d entries, want 2", len(entries))
+	}
+
+	names := make(map[string]bool)
+	for _, e := range entries {
+		names[e.Name] = true
+	}
+	if !names["linux-config"] {
+		t.Error("Expected linux-config to be included")
+	}
+	if !names["all-config"] {
+		t.Error("Expected all-config to be included")
+	}
+	if names["windows-config"] {
+		t.Error("Expected windows-config to be excluded")
+	}
+
+	// Test with Windows context
+	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
+	windowsEntries := cfg.GetFilteredConfigEntries(false, windowsCtx)
+	if len(windowsEntries) != 2 {
+		t.Errorf("GetFilteredConfigEntries(false, windows) returned %d entries, want 2", len(windowsEntries))
+	}
+}
+
+func TestGetFilteredGitEntries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 2,
+		Entries: []Entry{
+			{Name: "linux-repo", Repo: "https://github.com/test/linux.git", Targets: map[string]string{"linux": "~/.linux"}, Filters: []Filter{{Include: map[string]string{"os": "linux"}}}},
+			{Name: "all-repo", Repo: "https://github.com/test/all.git", Targets: map[string]string{"linux": "~/.all"}},
+		},
+	}
+
+	linuxCtx := &FilterContext{OS: "linux", Hostname: "desktop", User: "john"}
+	entries := cfg.GetFilteredGitEntries(false, linuxCtx)
+	if len(entries) != 2 {
+		t.Errorf("GetFilteredGitEntries(false, linux) returned %d entries, want 2", len(entries))
+	}
+
+	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
+	windowsEntries := cfg.GetFilteredGitEntries(false, windowsCtx)
+	if len(windowsEntries) != 1 {
+		t.Errorf("GetFilteredGitEntries(false, windows) returned %d entries, want 1", len(windowsEntries))
+	}
+	if windowsEntries[0].Name != "all-repo" {
+		t.Errorf("Expected all-repo, got %s", windowsEntries[0].Name)
+	}
+}
+
+func TestGetFilteredPackageEntries(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		Version: 2,
+		Entries: []Entry{
+			{Name: "linux-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "linux-pkg"}}, Filters: []Filter{{Include: map[string]string{"os": "linux"}}}},
+			{Name: "work-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "work-pkg"}}, Filters: []Filter{{Include: map[string]string{"hostname": "work-.*"}}}},
+			{Name: "non-root-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "non-root"}}, Filters: []Filter{{Exclude: map[string]string{"user": "root"}}}},
+			{Name: "all-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "all-pkg"}}},
+		},
+	}
+
+	// Test with linux context on work-laptop as non-root
+	linuxCtx := &FilterContext{OS: "linux", Hostname: "work-laptop", User: "john"}
+	entries := cfg.GetFilteredPackageEntries(linuxCtx)
+	if len(entries) != 4 {
+		t.Errorf("GetFilteredPackageEntries(linux, work-laptop, john) returned %d entries, want 4", len(entries))
+	}
+
+	// Test with linux context on home-desktop as root
+	rootCtx := &FilterContext{OS: "linux", Hostname: "home-desktop", User: "root"}
+	rootEntries := cfg.GetFilteredPackageEntries(rootCtx)
+	if len(rootEntries) != 2 {
+		t.Errorf("GetFilteredPackageEntries(linux, home-desktop, root) returned %d entries, want 2", len(rootEntries))
+	}
+
+	names := make(map[string]bool)
+	for _, e := range rootEntries {
+		names[e.Name] = true
+	}
+	if !names["linux-pkg"] {
+		t.Error("Expected linux-pkg to be included")
+	}
+	if !names["all-pkg"] {
+		t.Error("Expected all-pkg to be included")
+	}
+	if names["non-root-pkg"] {
+		t.Error("Expected non-root-pkg to be excluded for root user")
+	}
+	if names["work-pkg"] {
+		t.Error("Expected work-pkg to be excluded for home-desktop")
 	}
 }

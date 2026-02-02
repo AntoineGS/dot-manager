@@ -835,7 +835,7 @@ func (m *Model) saveNewPath() error {
 			}
 			// Preserve other fields
 			newEntry.Description = m.Config.Entries[configIdx].Description
-			newEntry.Tags = m.Config.Entries[configIdx].Tags
+			newEntry.Filters = m.Config.Entries[configIdx].Filters
 			newEntry.Root = m.Config.Entries[configIdx].Root
 
 			m.Config.Entries[configIdx] = newEntry

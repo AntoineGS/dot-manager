@@ -33,7 +33,7 @@ type Package struct {
 	Managers    map[PackageManager]string `yaml:"managers,omitempty"`
 	Custom      map[string]string         `yaml:"custom,omitempty"` // OS -> command
 	URL         map[string]URLInstall     `yaml:"url,omitempty"`    // OS -> URL install
-	Tags        []string                  `yaml:"tags,omitempty"`   // For filtering (e.g., "dev", "gui", "cli")
+	Filters     []config.Filter           `yaml:"filters,omitempty"`
 }
 
 // URLInstall represents installation from a URL
@@ -309,29 +309,15 @@ func (m *Manager) InstallAll(packages []Package) []InstallResult {
 	return results
 }
 
-// InstallByTags installs packages matching any of the given tags
-func (m *Manager) InstallByTags(packages []Package, tags []string) []InstallResult {
-	var filtered []Package
+// FilterPackages returns packages that match the given filter context
+func FilterPackages(packages []Package, ctx *config.FilterContext) []Package {
+	var result []Package
 	for _, pkg := range packages {
-		if m.matchesTags(pkg, tags) {
-			filtered = append(filtered, pkg)
+		if config.MatchesFilters(pkg.Filters, ctx) {
+			result = append(result, pkg)
 		}
 	}
-	return m.InstallAll(filtered)
-}
-
-func (m *Manager) matchesTags(pkg Package, tags []string) bool {
-	if len(tags) == 0 {
-		return true
-	}
-	for _, tag := range tags {
-		for _, pkgTag := range pkg.Tags {
-			if tag == pkgTag {
-				return true
-			}
-		}
-	}
-	return false
+	return result
 }
 
 // CanInstall checks if a package can be installed on this system
@@ -405,7 +391,7 @@ func FromEntry(e config.Entry) *Package {
 		Managers:    managers,
 		Custom:      e.Package.Custom,
 		URL:         urlInstalls,
-		Tags:        e.Tags,
+		Filters:     e.Filters,
 	}
 }
 

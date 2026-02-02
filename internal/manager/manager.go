@@ -11,16 +11,23 @@ import (
 )
 
 type Manager struct {
-	Config   *config.Config
-	Platform *platform.Platform
-	DryRun   bool
-	Verbose  bool
+	Config    *config.Config
+	Platform  *platform.Platform
+	FilterCtx *config.FilterContext
+	DryRun    bool
+	Verbose   bool
 }
 
 func New(cfg *config.Config, plat *platform.Platform) *Manager {
 	return &Manager{
 		Config:   cfg,
 		Platform: plat,
+		FilterCtx: &config.FilterContext{
+			OS:       plat.OS,
+			Distro:   plat.Distro,
+			Hostname: plat.Hostname,
+			User:     plat.User,
+		},
 	}
 }
 
@@ -29,11 +36,15 @@ func (m *Manager) GetPaths() []config.PathSpec {
 }
 
 func (m *Manager) GetEntries() []config.Entry {
-	return m.Config.GetConfigEntries(m.Platform.IsRoot)
+	return m.Config.GetFilteredConfigEntries(m.Platform.IsRoot, m.FilterCtx)
 }
 
 func (m *Manager) GetGitEntries() []config.Entry {
-	return m.Config.GetGitEntries(m.Platform.IsRoot)
+	return m.Config.GetFilteredGitEntries(m.Platform.IsRoot, m.FilterCtx)
+}
+
+func (m *Manager) GetPackageEntries() []config.Entry {
+	return m.Config.GetFilteredPackageEntries(m.FilterCtx)
 }
 
 func (m *Manager) log(format string, args ...interface{}) {

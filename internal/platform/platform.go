@@ -14,21 +14,27 @@ const (
 )
 
 type Platform struct {
-	OS      string
-	IsRoot  bool
-	IsArch  bool
-	EnvVars map[string]string
+	OS       string
+	Distro   string // Linux distribution ID (e.g., "arch", "ubuntu", "fedora")
+	Hostname string
+	User     string
+	IsRoot   bool
+	IsArch   bool
+	EnvVars  map[string]string
 }
 
 func Detect() *Platform {
 	p := &Platform{
-		OS:      detectOS(),
-		EnvVars: make(map[string]string),
+		OS:       detectOS(),
+		Hostname: detectHostname(),
+		User:     detectUser(),
+		EnvVars:  make(map[string]string),
 	}
 
 	if p.OS == OSLinux {
+		p.Distro = detectDistro()
 		p.IsRoot = detectRoot()
-		p.IsArch = detectArchLinux()
+		p.IsArch = p.Distro == "arch"
 	}
 
 	if p.OS == OSWindows {
@@ -36,6 +42,39 @@ func Detect() *Platform {
 	}
 
 	return p
+}
+
+// detectDistro returns the Linux distribution ID from /etc/os-release
+// Returns values like "arch", "ubuntu", "fedora", "debian", etc.
+func detectDistro() string {
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return ""
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "ID=") {
+			id := strings.TrimPrefix(line, "ID=")
+			id = strings.Trim(id, "\"")
+			return id
+		}
+	}
+
+	return ""
+}
+
+func detectHostname() string {
+	hostname, _ := os.Hostname()
+	return hostname
+}
+
+func detectUser() string {
+	u, err := user.Current()
+	if err != nil {
+		return ""
+	}
+	return u.Username
 }
 
 func detectOS() string {
@@ -60,23 +99,6 @@ func detectRoot() bool {
 	return u.Uid == "0"
 }
 
-func detectArchLinux() bool {
-	data, err := os.ReadFile("/etc/os-release")
-	if err != nil {
-		return false
-	}
-
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "ID=") {
-			id := strings.TrimPrefix(line, "ID=")
-			id = strings.Trim(id, "\"")
-			return id == "arch"
-		}
-	}
-
-	return false
-}
 
 func (p *Platform) detectPowerShellProfile() {
 	cmd := exec.Command("pwsh", "-NoProfile", "-Command", "echo $PROFILE")
@@ -115,6 +137,24 @@ func getDirname(path string) string {
 func (p *Platform) WithOS(osType string) *Platform {
 	newP := *p
 	newP.OS = osType
+	return &newP
+}
+
+func (p *Platform) WithHostname(hostname string) *Platform {
+	newP := *p
+	newP.Hostname = hostname
+	return &newP
+}
+
+func (p *Platform) WithUser(username string) *Platform {
+	newP := *p
+	newP.User = username
+	return &newP
+}
+
+func (p *Platform) WithDistro(distro string) *Platform {
+	newP := *p
+	newP.Distro = distro
 	return &newP
 }
 

@@ -8,7 +8,7 @@ type Entry struct {
 	// Common fields
 	Name        string   `yaml:"name"`
 	Description string   `yaml:"description,omitempty"`
-	Tags        []string `yaml:"tags,omitempty"`
+	Filters     []Filter `yaml:"filters,omitempty"`
 	Root        bool     `yaml:"root,omitempty"`
 
 	// Config fields (identifies config type entries)
@@ -81,7 +81,7 @@ func (e *Entry) ToPackageSpec() PackageSpec {
 		return PackageSpec{
 			Name:        e.Name,
 			Description: e.Description,
-			Tags:        e.Tags,
+			Filters:     e.Filters,
 		}
 	}
 	return PackageSpec{
@@ -90,7 +90,7 @@ func (e *Entry) ToPackageSpec() PackageSpec {
 		Managers:    e.Package.Managers,
 		Custom:      e.Package.Custom,
 		URL:         e.Package.URL,
-		Tags:        e.Tags,
+		Filters:     e.Filters,
 	}
 }
 
@@ -118,7 +118,7 @@ func EntryFromPackageSpec(p PackageSpec) Entry {
 	return Entry{
 		Name:        p.Name,
 		Description: p.Description,
-		Tags:        p.Tags,
+		Filters:     p.Filters,
 		Package:     pkg,
 	}
 }
