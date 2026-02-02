@@ -46,8 +46,7 @@ var (
 				Padding(0, 2)
 
 	// List styles
-	ListItemStyle = lipgloss.NewStyle().
-			PaddingLeft(2)
+	ListItemStyle = lipgloss.NewStyle()
 
 	SelectedListItemStyle = lipgloss.NewStyle().
 				Foreground(primaryColor).
