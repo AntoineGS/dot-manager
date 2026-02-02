@@ -236,3 +236,65 @@ func TestBackupIntegration(t *testing.T) {
 		t.Errorf("Backup content = %q, want %q", string(content), "bash config")
 	}
 }
+
+func TestBackupV3Application(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create installed config
+	homeDir := filepath.Join(tmpDir, "home")
+	nvimDir := filepath.Join(homeDir, ".config", "nvim")
+	os.MkdirAll(nvimDir, 0755)
+	os.WriteFile(filepath.Join(nvimDir, "init.lua"), []byte("vim config"), 0644)
+
+	// Create backup directory
+	backupRoot := filepath.Join(tmpDir, "backup")
+	os.MkdirAll(filepath.Join(backupRoot, "nvim"), 0755)
+
+	// Create v3 config
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: backupRoot,
+		Applications: []config.Application{
+			{
+				Name:        "neovim",
+				Description: "Neovim editor",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	err := mgr.Backup()
+	if err != nil {
+		t.Fatalf("Backup() error = %v", err)
+	}
+
+	// Check file was backed up (folder backup adds base name as subfolder)
+	backedUpInit := filepath.Join(backupRoot, "nvim", "nvim", "init.lua")
+	if !pathExists(backedUpInit) {
+		t.Errorf("nvim/init.lua was not backed up at %s", backedUpInit)
+		// List what actually exists
+		entries, _ := os.ReadDir(filepath.Join(backupRoot, "nvim"))
+		t.Logf("Contents of nvim backup dir: %v", entries)
+		return
+	}
+
+	content, err := os.ReadFile(backedUpInit)
+	if err != nil {
+		t.Fatalf("Failed to read backed up file: %v", err)
+	}
+	if string(content) != "vim config" {
+		t.Errorf("Backup content = %q, want %q", string(content), "vim config")
+	}
+}

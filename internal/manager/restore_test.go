@@ -291,3 +291,117 @@ func TestRestoreGitEntrySkipsExistingNonGit(t *testing.T) {
 		t.Error(".git directory should not exist (we don't clone over non-git dirs)")
 	}
 }
+
+func TestRestoreV3Application(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup structure
+	backupRoot := filepath.Join(tmpDir, "backup")
+	nvimBackup := filepath.Join(backupRoot, "nvim")
+	os.MkdirAll(nvimBackup, 0755)
+	os.WriteFile(filepath.Join(nvimBackup, "init.lua"), []byte("vim config"), 0644)
+
+	// Create v3 config with Application
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: backupRoot,
+		Applications: []config.Application{
+			{
+				Name:        "neovim",
+				Description: "Neovim editor",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim",
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(tmpDir, "home", ".config", "nvim"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	err := mgr.Restore()
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+
+	// Check nvim folder symlink was created
+	nvimTarget := filepath.Join(tmpDir, "home", ".config", "nvim")
+	if !isSymlink(nvimTarget) {
+		t.Error("nvim target is not a symlink")
+	}
+
+	link, _ := os.Readlink(nvimTarget)
+	if link != nvimBackup {
+		t.Errorf("Symlink target = %q, want %q", link, nvimBackup)
+	}
+}
+
+func TestRestoreV3MultipleSubEntries(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup structure for multiple sub-entries
+	backupRoot := filepath.Join(tmpDir, "backup")
+
+	configBackup := filepath.Join(backupRoot, "nvim-config")
+	os.MkdirAll(configBackup, 0755)
+	os.WriteFile(filepath.Join(configBackup, "init.lua"), []byte("config"), 0644)
+
+	dataBackup := filepath.Join(backupRoot, "nvim-data")
+	os.MkdirAll(dataBackup, 0755)
+	os.WriteFile(filepath.Join(dataBackup, "lazy.lua"), []byte("data"), 0644)
+
+	// Create v3 config with multiple sub-entries
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: backupRoot,
+		Applications: []config.Application{
+			{
+				Name:        "neovim",
+				Description: "Neovim with separate config and data",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./nvim-config",
+						Targets: map[string]string{
+							"linux": filepath.Join(tmpDir, "home", ".config", "nvim"),
+						},
+					},
+					{
+						Name:   "data",
+						Backup: "./nvim-data",
+						Targets: map[string]string{
+							"linux": filepath.Join(tmpDir, "home", ".local", "share", "nvim"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	err := mgr.Restore()
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+
+	// Check both symlinks were created
+	configTarget := filepath.Join(tmpDir, "home", ".config", "nvim")
+	if !isSymlink(configTarget) {
+		t.Error("config target is not a symlink")
+	}
+
+	dataTarget := filepath.Join(tmpDir, "home", ".local", "share", "nvim")
+	if !isSymlink(dataTarget) {
+		t.Error("data target is not a symlink")
+	}
+}

@@ -947,6 +947,183 @@ func TestE2E_BackupNonexistentSource(t *testing.T) {
 	}
 }
 
+// TestE2E_V3RestoreFromBackup tests v3 config restore workflow
+func TestE2E_V3RestoreFromBackup(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Setup: Create a backup with v3 structure
+	repoDir := filepath.Join(tmpDir, "dotfiles")
+	homeDir := filepath.Join(tmpDir, "home")
+
+	// Create backup structure
+	nvimBackup := filepath.Join(repoDir, "nvim", "config")
+	os.MkdirAll(nvimBackup, 0755)
+	os.WriteFile(filepath.Join(nvimBackup, "init.lua"), []byte("-- nvim config"), 0644)
+
+	nvimDataBackup := filepath.Join(repoDir, "nvim", "data")
+	os.MkdirAll(nvimDataBackup, 0755)
+	os.WriteFile(filepath.Join(nvimDataBackup, "lazy.lua"), []byte("-- lazy"), 0644)
+
+	// Create v3 config
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: repoDir,
+		Applications: []config.Application{
+			{
+				Name:        "neovim",
+				Description: "Neovim with separate config and data",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./nvim/config",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".config", "nvim"),
+						},
+					},
+					{
+						Name:   "data",
+						Backup: "./nvim/data",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".local", "share", "nvim"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	// Execute restore
+	err := mgr.Restore()
+	if err != nil {
+		t.Fatalf("Restore() failed: %v", err)
+	}
+
+	// Verify config symlink
+	configTarget := filepath.Join(homeDir, ".config", "nvim")
+	if !isSymlink(configTarget) {
+		t.Error("config target should be a symlink")
+	}
+	link, _ := os.Readlink(configTarget)
+	if link != nvimBackup {
+		t.Errorf("config symlink = %q, want %q", link, nvimBackup)
+	}
+
+	// Verify data symlink
+	dataTarget := filepath.Join(homeDir, ".local", "share", "nvim")
+	if !isSymlink(dataTarget) {
+		t.Error("data target should be a symlink")
+	}
+	link, _ = os.Readlink(dataTarget)
+	if link != nvimDataBackup {
+		t.Errorf("data symlink = %q, want %q", link, nvimDataBackup)
+	}
+
+	// Verify content is accessible
+	content, _ := os.ReadFile(filepath.Join(configTarget, "init.lua"))
+	if string(content) != "-- nvim config" {
+		t.Errorf("config content = %q, want %q", string(content), "-- nvim config")
+	}
+}
+
+// TestE2E_V3BackupThenRestore tests v3 backup and restore workflow
+func TestE2E_V3BackupThenRestore(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	homeDir := filepath.Join(tmpDir, "home")
+	repoDir := filepath.Join(tmpDir, "dotfiles")
+
+	// Setup: User has existing config
+	nvimDir := filepath.Join(homeDir, ".config", "nvim")
+	os.MkdirAll(nvimDir, 0755)
+	os.WriteFile(filepath.Join(nvimDir, "init.lua"), []byte("vim.g.leader = ' '"), 0644)
+
+	// Setup backup directory
+	os.MkdirAll(filepath.Join(repoDir, "nvim"), 0755)
+
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: repoDir,
+		Applications: []config.Application{
+			{
+				Name:        "neovim",
+				Description: "Neovim editor",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	// Step 1: Backup
+	err := mgr.Backup()
+	if err != nil {
+		t.Fatalf("Backup() failed: %v", err)
+	}
+
+	// Verify backup was created
+	backedUpInit := filepath.Join(repoDir, "nvim", "nvim", "init.lua")
+	if !pathExists(backedUpInit) {
+		t.Error("backup should exist")
+	}
+
+	// Step 2: Delete original and restore
+	os.RemoveAll(nvimDir)
+
+	// Update config to point to backed up folder (backup adds base name)
+	restoreCfg := &config.Config{
+		Version:    3,
+		BackupRoot: repoDir,
+		Applications: []config.Application{
+			{
+				Name:        "neovim",
+				Description: "Neovim editor",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./nvim/nvim", // Points to the backed up folder
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
+				},
+			},
+		},
+	}
+	restoreMgr := New(restoreCfg, plat)
+
+	err = restoreMgr.Restore()
+	if err != nil {
+		t.Fatalf("Restore() failed: %v", err)
+	}
+
+	// Verify restored symlink
+	if !isSymlink(nvimDir) {
+		t.Error("nvim should be a symlink after restore")
+	}
+
+	content, err := os.ReadFile(filepath.Join(nvimDir, "init.lua"))
+	if err != nil {
+		t.Fatalf("Failed to read restored file: %v", err)
+	}
+	if string(content) != "vim.g.leader = ' '" {
+		t.Errorf("restored content = %q, want %q", string(content), "vim.g.leader = ' '")
+	}
+}
+
 // TestE2E_RestoreCreatesNestedParentDirs tests that restore creates nested parent directories.
 func TestE2E_RestoreCreatesNestedParentDirs(t *testing.T) {
 	t.Parallel()
