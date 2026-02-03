@@ -49,6 +49,7 @@ type GitConfig struct {
 	URL     string            `yaml:"url"`
 	Branch  string            `yaml:"branch,omitempty"`
 	Targets map[string]string `yaml:"targets"`
+	Sudo    bool              `yaml:"sudo,omitempty"`
 }
 
 // Package represents a package to install with multiple installation methods.
@@ -58,13 +59,12 @@ type GitConfig struct {
 // custom commands, and finally URL-based installation. Filters can be used to
 // conditionally include the package based on OS, distro, hostname, or user.
 type Package struct {
-	Name        string                    `yaml:"name"`
-	Description string                    `yaml:"description,omitempty"`
-	Managers    map[PackageManager]string `yaml:"managers,omitempty"`
-	Git         *GitConfig                `yaml:"git,omitempty"`    // Git package configuration
-	Custom      map[string]string         `yaml:"custom,omitempty"` // OS -> command
-	URL         map[string]URLInstall     `yaml:"url,omitempty"`    // OS -> URL install
-	Filters     []config.Filter           `yaml:"filters,omitempty"`
+	Name        string                         `yaml:"name"`
+	Description string                         `yaml:"description,omitempty"`
+	Managers    map[PackageManager]interface{} `yaml:"managers,omitempty"`
+	Custom      map[string]string              `yaml:"custom,omitempty"` // OS -> command
+	URL         map[string]URLInstall          `yaml:"url,omitempty"`    // OS -> URL install
+	Filters     []config.Filter                `yaml:"filters,omitempty"`
 }
 
 // URLInstall represents installation from a URL with download and command execution.
@@ -192,9 +192,9 @@ func (m *Manager) Install(pkg Package) InstallResult {
 	result := InstallResult{Package: pkg.Name}
 
 	// Check if this is a git package
-	if repoURL, ok := pkg.Managers[Git]; ok {
+	if gitCfg, ok := pkg.Managers[Git]; ok {
 		result.Method = "git"
-		success, msg := m.installGitPackage(pkg, repoURL)
+		success, msg := m.installGitPackage(pkg, gitCfg)
 		result.Success = success
 		result.Message = msg
 		return result
@@ -205,7 +205,12 @@ func (m *Manager) Install(pkg Package) InstallResult {
 		for _, mgr := range m.Available {
 			if pkgName, ok := pkg.Managers[mgr]; ok {
 				result.Method = string(mgr)
-				success, msg := m.installWithManager(mgr, pkgName)
+				// Type assert to string for traditional package managers
+				pkgNameStr, ok := pkgName.(string)
+				if !ok {
+					continue
+				}
+				success, msg := m.installWithManager(mgr, pkgNameStr)
 				result.Success = success
 				result.Message = msg
 
@@ -385,13 +390,14 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 }
 
 // installGitPackage clones or updates a git repository.
-func (m *Manager) installGitPackage(pkg Package, repoURL string) (bool, string) {
-	// Get target path for current OS
-	if pkg.Git == nil {
-		return false, "Git configuration is nil"
+func (m *Manager) installGitPackage(_ Package, gitCfg interface{}) (bool, string) {
+	// Type assert to GitConfig
+	cfg, ok := gitCfg.(GitConfig)
+	if !ok {
+		return false, "Git manager value is not GitConfig"
 	}
 
-	targetPath, ok := pkg.Git.Targets[m.OS]
+	targetPath, ok := cfg.Targets[m.OS]
 	if !ok {
 		return false, fmt.Sprintf("No git target path defined for OS: %s", m.OS)
 	}
@@ -413,7 +419,7 @@ func (m *Manager) installGitPackage(pkg Package, repoURL string) (bool, string) 
 	}
 
 	// Not cloned yet, do git clone
-	return m.gitClone(repoURL, targetPath, pkg.Git.Branch)
+	return m.gitClone(cfg.URL, targetPath, cfg.Branch)
 }
 
 func (m *Manager) gitClone(repoURL, targetPath, branch string) (bool, string) {
@@ -588,7 +594,7 @@ func FromEntry(e config.Entry) *Package {
 		return nil
 	}
 
-	managers := make(map[PackageManager]string)
+	managers := make(map[PackageManager]interface{})
 	for k, v := range e.Package.Managers {
 		managers[PackageManager(k)] = v
 	}
