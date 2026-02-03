@@ -782,10 +782,21 @@ func (m Model) viewListTable() string {
 	maxTypeWidth := 0
 	maxSourceWidth := 0
 	maxStatusWidth := 0
+	maxCountWidth := 0
 
 	for _, app := range filtered {
 		if len(app.Application.Name) > maxAppNameWidth {
 			maxAppNameWidth = len(app.Application.Name)
+		}
+
+		// Calculate entry count width for this app
+		entryText := "entries"
+		if len(app.SubItems) == 1 {
+			entryText = "entry"
+		}
+		entryCount := fmt.Sprintf("%d %s", len(app.SubItems), entryText)
+		if len(entryCount) > maxCountWidth {
+			maxCountWidth = len(entryCount)
 		}
 
 		if app.Expanded {
@@ -842,6 +853,12 @@ func (m Model) viewListTable() string {
 		unifiedNameWidth = maxSubNameWidth + 4
 	}
 
+	// Calculate unified width for entry count / type column
+	unifiedCountTypeWidth := maxCountWidth
+	if maxTypeWidth > unifiedCountTypeWidth {
+		unifiedCountTypeWidth = maxTypeWidth
+	}
+
 	// Render hierarchical tree structure
 	visualRow := 0
 	for _, app := range filtered {
@@ -875,7 +892,7 @@ func (m Model) viewListTable() string {
 
 			// Pad to column widths (use unified width for status alignment)
 			paddedName := padRight(app.Application.Name, unifiedNameWidth)
-			paddedCount := padRight(entryCount, 12) // Fixed width for entry count
+			paddedCount := padRight(entryCount, unifiedCountTypeWidth)
 
 			// Build the complete line with or without selection styling
 			var line string
@@ -946,34 +963,23 @@ func (m Model) viewListTable() string {
 						}
 					}
 
-					// Source path
-					sourcePath := ""
-					if subItem.SubEntry.IsGit() {
-						sourcePath = truncateStr(subItem.SubEntry.Repo)
-					} else {
-						// Show backup path as-is (e.g., "./nvim") without resolving
-						sourcePath = truncateStr(subItem.SubEntry.Backup)
-					}
-
 					// Target path
 					targetPath := truncateStr(subItem.Target)
 
 					// Pad to column widths (use unified width - 4 to account for tree prefix)
 					paddedName := padRight(subItem.SubEntry.Name, unifiedNameWidth-4)
-					paddedType := padRight(typeInfo, maxTypeWidth)
-					paddedSource := padRight(sourcePath, maxSourceWidth)
+					paddedType := padRight(typeInfo, unifiedCountTypeWidth)
 
 					// Build the complete line with or without selection styling
 					var line string
 					if isSelected {
 						// Apply selection style to entire row
-						line = fmt.Sprintf("%s %s %s  %s  %s  %s  %s ",
+						line = fmt.Sprintf("%s %s %s  %s  %s  %s ",
 							cursor,
 							treePrefix,
 							paddedName,
 							statusPlainText,
 							paddedType,
-							paddedSource,
 							targetPath)
 						line = SelectedListItemStyle.Render(line)
 					} else {
@@ -981,13 +987,12 @@ func (m Model) viewListTable() string {
 						statusBadge := renderStateBadge(subItem.State)
 
 						// Apply individual column styles for visual distinction
-						line = fmt.Sprintf("%s %s %s  %s  %s  %s  %s",
+						line = fmt.Sprintf("%s %s %s  %s  %s  %s",
 							cursor,
 							treePrefix,
 							paddedName,
 							statusBadge,
 							MutedTextStyle.Render(paddedType),
-							PathBackupStyle.Render(paddedSource),
 							PathTargetStyle.Render(targetPath))
 					}
 
