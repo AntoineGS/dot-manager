@@ -73,11 +73,19 @@ func (m *Model) initApplicationFormNew() {
 
 // initApplicationFormEdit initializes the form for editing an existing application
 func (m *Model) initApplicationFormEdit(appIdx int) {
-	if appIdx < 0 || appIdx >= len(m.Config.Applications) {
+	// appIdx is an index into m.Applications (sorted), not m.Config.Applications (unsorted)
+	// We need to find the correct index in m.Config.Applications by application name
+	if appIdx < 0 || appIdx >= len(m.Applications) {
 		return
 	}
 
-	app := m.Config.Applications[appIdx]
+	appName := m.Applications[appIdx].Application.Name
+	configAppIdx := m.findConfigApplicationIndex(appName)
+	if configAppIdx < 0 {
+		return
+	}
+
+	app := m.Config.Applications[configAppIdx]
 
 	nameInput := textinput.New()
 	nameInput.Placeholder = "e.g., neovim"
