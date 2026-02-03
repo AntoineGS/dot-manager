@@ -780,6 +780,7 @@ func (m Model) viewListTable() string {
 	maxSubNameWidth := 0
 	maxTypeWidth := 0
 	maxSourceWidth := 0
+	maxStatusWidth := 0
 
 	for _, app := range filtered {
 		if len(app.Application.Name) > maxAppNameWidth {
@@ -821,6 +822,12 @@ func (m Model) viewListTable() string {
 
 				if len(sourcePath) > maxSourceWidth {
 					maxSourceWidth = len(sourcePath)
+				}
+
+				// Status badge width
+				statusText := subItem.State.String()
+				if len(statusText) > maxStatusWidth {
+					maxStatusWidth = len(statusText)
 				}
 			}
 		}
