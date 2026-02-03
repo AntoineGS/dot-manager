@@ -956,7 +956,7 @@ func (m Model) viewListTable() string {
 					var line string
 					if isSelected {
 						// Apply selection style to entire row
-						line = fmt.Sprintf("%s  %s %s  %s  %s  %s  %s ",
+						line = fmt.Sprintf("%s %s %s  %s  %s  %s  %s ",
 							cursor,
 							treePrefix,
 							paddedName,
@@ -970,7 +970,7 @@ func (m Model) viewListTable() string {
 						statusBadge := renderStateBadge(subItem.State)
 
 						// Apply individual column styles for visual distinction
-						line = fmt.Sprintf("%s  %s %s  %s  %s  %s  %s",
+						line = fmt.Sprintf("%s %s %s  %s  %s  %s  %s",
 							cursor,
 							treePrefix,
 							paddedName,
