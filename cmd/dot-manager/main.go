@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
 	"github.com/AntoineGS/dot-manager/internal/manager"
@@ -248,7 +251,20 @@ func runRestore(cmd *cobra.Command, args []string) error {
 		fmt.Println("=== DRY RUN MODE ===")
 	}
 
-	return mgr.Restore()
+	// Create context with cancellation support
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle interrupt signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nOperation cancelled by user")
+		cancel()
+	}()
+
+	return mgr.RestoreWithContext(ctx)
 }
 
 func runBackup(cmd *cobra.Command, args []string) error {
@@ -265,7 +281,20 @@ func runBackup(cmd *cobra.Command, args []string) error {
 		fmt.Println("=== DRY RUN MODE ===")
 	}
 
-	return mgr.Backup()
+	// Create context with cancellation support
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle interrupt signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nOperation cancelled by user")
+		cancel()
+	}()
+
+	return mgr.BackupWithContext(ctx)
 }
 
 func runList(cmd *cobra.Command, args []string) error {

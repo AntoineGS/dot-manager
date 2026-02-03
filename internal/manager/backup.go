@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,7 +10,18 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/config"
 )
 
+// BackupWithContext backs up configurations with context support
+func (m *Manager) BackupWithContext(ctx context.Context) error {
+	m = m.WithContext(ctx)
+	return m.Backup()
+}
+
 func (m *Manager) Backup() error {
+	// Check context before starting
+	if err := m.checkContext(); err != nil {
+		return err
+	}
+
 	m.log("Backing up configurations for OS: %s", m.Platform.OS)
 
 	if m.Config.Version == 3 {
@@ -20,6 +32,11 @@ func (m *Manager) Backup() error {
 	entries := m.GetEntries()
 
 	for _, entry := range entries {
+		// Check context before each entry
+		if err := m.checkContext(); err != nil {
+			return err
+		}
+
 		target := entry.GetTarget(m.Platform.OS)
 		if target == "" {
 			m.logVerbose("Skipping %s: no target for OS %s", entry.Name, m.Platform.OS)
@@ -38,9 +55,19 @@ func (m *Manager) backupV3() error {
 	apps := m.GetApplications()
 
 	for _, app := range apps {
+		// Check context before each application
+		if err := m.checkContext(); err != nil {
+			return err
+		}
+
 		m.log("Backing up application: %s", app.Name)
 
 		for _, subEntry := range app.Entries {
+			// Check context before each entry
+			if err := m.checkContext(); err != nil {
+				return err
+			}
+
 			if !subEntry.IsConfig() {
 				m.logVerbose("Skipping %s/%s: git entries don't need backup", app.Name, subEntry.Name)
 				continue

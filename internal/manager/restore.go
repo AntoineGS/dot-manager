@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,7 +11,18 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/config"
 )
 
+// RestoreWithContext restores configurations with context support
+func (m *Manager) RestoreWithContext(ctx context.Context) error {
+	m = m.WithContext(ctx)
+	return m.Restore()
+}
+
 func (m *Manager) Restore() error {
+	// Check context before starting
+	if err := m.checkContext(); err != nil {
+		return err
+	}
+
 	m.log("Restoring configurations for OS: %s", m.Platform.OS)
 
 	// Check config version
@@ -22,6 +34,11 @@ func (m *Manager) Restore() error {
 	entries := m.GetEntries()
 
 	for _, entry := range entries {
+		// Check context before each entry
+		if err := m.checkContext(); err != nil {
+			return err
+		}
+
 		target := entry.GetTarget(m.Platform.OS)
 		if target == "" {
 			m.logVerbose("Skipping %s: no target for OS %s", entry.Name, m.Platform.OS)
@@ -36,6 +53,11 @@ func (m *Manager) Restore() error {
 	// Restore git entries (clones)
 	gitEntries := m.GetGitEntries()
 	for _, entry := range gitEntries {
+		// Check context before each entry
+		if err := m.checkContext(); err != nil {
+			return err
+		}
+
 		target := entry.GetTarget(m.Platform.OS)
 		if target == "" {
 			m.logVerbose("Skipping git entry %s: no target for OS %s", entry.Name, m.Platform.OS)
@@ -340,9 +362,19 @@ func (m *Manager) restoreV3() error {
 	apps := m.GetApplications()
 
 	for _, app := range apps {
+		// Check context before each application
+		if err := m.checkContext(); err != nil {
+			return err
+		}
+
 		m.log("Restoring application: %s", app.Name)
 
 		for _, subEntry := range app.Entries {
+			// Check context before each entry
+			if err := m.checkContext(); err != nil {
+				return err
+			}
+
 			target := subEntry.GetTarget(m.Platform.OS)
 			if target == "" {
 				m.logVerbose("Skipping %s/%s: no target for OS %s", app.Name, subEntry.Name, m.Platform.OS)

@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,7 @@ type Manager struct {
 	FilterCtx *config.FilterContext
 	DryRun    bool
 	Verbose   bool
+	ctx       context.Context // Internal context
 }
 
 func New(cfg *config.Config, plat *platform.Platform) *Manager {
@@ -28,6 +30,24 @@ func New(cfg *config.Config, plat *platform.Platform) *Manager {
 			Hostname: plat.Hostname,
 			User:     plat.User,
 		},
+		ctx: context.Background(), // Default context
+	}
+}
+
+// WithContext returns a new Manager with the given context
+func (m *Manager) WithContext(ctx context.Context) *Manager {
+	m2 := *m
+	m2.ctx = ctx
+	return &m2
+}
+
+// checkContext checks if context is cancelled and returns error
+func (m *Manager) checkContext() error {
+	select {
+	case <-m.ctx.Done():
+		return m.ctx.Err()
+	default:
+		return nil
 	}
 }
 
