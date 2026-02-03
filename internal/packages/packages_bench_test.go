@@ -11,7 +11,7 @@ func BenchmarkFilterPackages(b *testing.B) {
 	for i := range packages {
 		packages[i] = Package{
 			Name: "test-package",
-			Managers: map[PackageManager]string{
+			Managers: map[PackageManager]interface{}{
 				Pacman: "test",
 			},
 		}
