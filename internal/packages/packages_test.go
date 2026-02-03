@@ -1,9 +1,14 @@
 package packages
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
+	"github.com/AntoineGS/dot-manager/internal/platform"
 )
 
 func TestNewManager(t *testing.T) {
@@ -1241,5 +1246,167 @@ func TestPackage_GitFields(t *testing.T) {
 
 	if pkg.GitTargets["linux"] != "~/.dotfiles" {
 		t.Errorf("Expected linux target, got %s", pkg.GitTargets["linux"])
+	}
+}
+
+func TestManager_InstallGitPackage_Clone(t *testing.T) {
+	if !platform.IsCommandAvailable("git") {
+		t.Skip("git not available for testing")
+	}
+
+	// Create bare repo for testing
+	tmpDir := t.TempDir()
+	bareRepo := filepath.Join(tmpDir, "test-repo.git")
+	cloneDest := filepath.Join(tmpDir, "cloned")
+
+	// Initialize bare repo
+	cmd := exec.Command("git", "init", "--bare", bareRepo)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create bare repo: %v", err)
+	}
+
+	// Create package manager
+	cfg := &Config{Packages: []Package{}}
+	mgr := NewManager(cfg, platform.OSLinux, false, false)
+
+	// Create git package
+	pkg := Package{
+		Name: "test-repo",
+		Managers: map[PackageManager]string{
+			Git: bareRepo,
+		},
+		GitTargets: map[string]string{
+			platform.OSLinux: cloneDest,
+		},
+	}
+
+	// Install
+	result := mgr.Install(pkg)
+
+	if !result.Success {
+		t.Errorf("Expected success, got: %s", result.Message)
+	}
+
+	if result.Method != "git" {
+		t.Errorf("Expected method 'git', got: %s", result.Method)
+	}
+
+	// Verify clone exists
+	if _, err := os.Stat(filepath.Join(cloneDest, ".git")); err != nil {
+		t.Errorf("Expected .git directory to exist: %v", err)
+	}
+}
+
+func TestManager_InstallGitPackage_Pull(t *testing.T) {
+	if !platform.IsCommandAvailable("git") {
+		t.Skip("git not available for testing")
+	}
+
+	// Create working repo, bare repo, and clone dest
+	tmpDir := t.TempDir()
+	workingRepo := filepath.Join(tmpDir, "working")
+	bareRepo := filepath.Join(tmpDir, "test-repo.git")
+	cloneDest := filepath.Join(tmpDir, "cloned")
+
+	// Initialize working repo with a commit
+	cmd := exec.Command("git", "init", workingRepo)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create working repo: %v", err)
+	}
+
+	// Configure git user for commit
+	cmd = exec.Command("git", "-C", workingRepo, "config", "user.email", "test@example.com")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to set git email: %v", err)
+	}
+	cmd = exec.Command("git", "-C", workingRepo, "config", "user.name", "Test User")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to set git name: %v", err)
+	}
+
+	// Create initial commit
+	testFile := filepath.Join(workingRepo, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	cmd = exec.Command("git", "-C", workingRepo, "add", "test.txt")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to add file: %v", err)
+	}
+	cmd = exec.Command("git", "-C", workingRepo, "commit", "-m", "Initial commit")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Clone to bare repo
+	cmd = exec.Command("git", "clone", "--bare", workingRepo, bareRepo)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to create bare repo: %v", err)
+	}
+
+	// Clone from bare repo to destination
+	cmd = exec.Command("git", "clone", bareRepo, cloneDest)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("Failed to clone repo: %v", err)
+	}
+
+	// Create package manager
+	cfg := &Config{Packages: []Package{}}
+	mgr := NewManager(cfg, platform.OSLinux, false, false)
+
+	// Create git package
+	pkg := Package{
+		Name: "test-repo",
+		Managers: map[PackageManager]string{
+			Git: bareRepo,
+		},
+		GitTargets: map[string]string{
+			platform.OSLinux: cloneDest,
+		},
+	}
+
+	// Install (should pull)
+	result := mgr.Install(pkg)
+
+	if !result.Success {
+		t.Errorf("Expected success, got: %s", result.Message)
+	}
+
+	if !strings.Contains(result.Message, "updated") {
+		t.Errorf("Expected 'updated' in message, got: %s", result.Message)
+	}
+}
+
+func TestManager_InstallGitPackage_DryRun(t *testing.T) {
+	tmpDir := t.TempDir()
+	cloneDest := filepath.Join(tmpDir, "cloned")
+
+	cfg := &Config{Packages: []Package{}}
+	mgr := NewManager(cfg, platform.OSLinux, true, false) // dry-run = true
+
+	pkg := Package{
+		Name: "test-repo",
+		Managers: map[PackageManager]string{
+			Git: "https://github.com/test/repo.git",
+		},
+		GitBranch: "main",
+		GitTargets: map[string]string{
+			platform.OSLinux: cloneDest,
+		},
+	}
+
+	result := mgr.Install(pkg)
+
+	if !result.Success {
+		t.Errorf("Expected success in dry-run, got: %s", result.Message)
+	}
+
+	if !strings.Contains(result.Message, "Would run") {
+		t.Errorf("Expected 'Would run' in dry-run message, got: %s", result.Message)
+	}
+
+	// Verify nothing was actually cloned
+	if _, err := os.Stat(cloneDest); err == nil {
+		t.Error("Expected no clone in dry-run mode, but directory exists")
 	}
 }

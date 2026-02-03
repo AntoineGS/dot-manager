@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -176,13 +177,22 @@ type InstallResult struct {
 }
 
 // Install installs a single package using the best available method.
-// It tries package managers first (in order of availability), then custom
-// commands, and finally URL-based installation. Returns an InstallResult
+// It tries git packages first, then package managers (in order of availability),
+// then custom commands, and finally URL-based installation. Returns an InstallResult
 // indicating success or failure with a descriptive message.
 func (m *Manager) Install(pkg Package) InstallResult {
 	result := InstallResult{Package: pkg.Name}
 
-	// Try package managers first
+	// Check if this is a git package
+	if repoURL, ok := pkg.Managers[Git]; ok {
+		result.Method = "git"
+		success, msg := m.installGitPackage(pkg, repoURL)
+		result.Success = success
+		result.Message = msg
+		return result
+	}
+
+	// Try package managers
 	if len(pkg.Managers) > 0 {
 		for _, mgr := range m.Available {
 			if pkgName, ok := pkg.Managers[mgr]; ok {
@@ -362,6 +372,74 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 	}
 
 	return true, "Installed via URL"
+}
+
+// installGitPackage clones or updates a git repository.
+func (m *Manager) installGitPackage(pkg Package, repoURL string) (bool, string) {
+	// Get target path for current OS
+	targetPath, ok := pkg.GitTargets[m.OS]
+	if !ok {
+		return false, fmt.Sprintf("No git target path defined for OS: %s", m.OS)
+	}
+
+	// Expand path (handle ~)
+	if strings.HasPrefix(targetPath, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, fmt.Sprintf("Failed to get home directory: %v", err)
+		}
+		targetPath = filepath.Join(home, targetPath[1:])
+	}
+
+	// Check if already cloned
+	gitDir := filepath.Join(targetPath, ".git")
+	if _, err := os.Stat(gitDir); err == nil {
+		// Already cloned, do git pull
+		return m.gitPull(targetPath)
+	}
+
+	// Not cloned yet, do git clone
+	return m.gitClone(repoURL, targetPath, pkg.GitBranch)
+}
+
+func (m *Manager) gitClone(repoURL, targetPath, branch string) (bool, string) {
+	var cmd *exec.Cmd
+
+	if branch != "" {
+		cmd = exec.Command("git", "clone", "-b", branch, repoURL, targetPath)
+	} else {
+		cmd = exec.Command("git", "clone", repoURL, targetPath)
+	}
+
+	if m.DryRun {
+		return true, fmt.Sprintf("Would run: %s", strings.Join(cmd.Args, " "))
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Sprintf("Git clone failed: %v", err)
+	}
+
+	return true, "Repository cloned successfully"
+}
+
+func (m *Manager) gitPull(repoPath string) (bool, string) {
+	cmd := exec.Command("git", "-C", repoPath, "pull")
+
+	if m.DryRun {
+		return true, fmt.Sprintf("Would run: git -C %s pull", repoPath)
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Sprintf("Git pull failed: %v", err)
+	}
+
+	return true, "Repository updated successfully"
 }
 
 // InstallAll installs all packages in the provided slice sequentially.
