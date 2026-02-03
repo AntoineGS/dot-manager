@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -1047,4 +1048,32 @@ func (m *Model) cancelApplicationFieldEdit() {
 	m.applicationForm.editingField = false
 	m.applicationForm.err = ""
 	m.updateApplicationFormFocus()
+}
+
+// NewApplicationForm creates a new ApplicationForm for testing purposes
+func NewApplicationForm(app config.Application, isEdit bool) *ApplicationForm {
+	nameInput := textinput.New()
+	nameInput.SetValue(app.Name)
+
+	descriptionInput := textinput.New()
+	descriptionInput.SetValue(app.Description)
+
+	editAppIdx := -1
+	if isEdit {
+		editAppIdx = 0
+	}
+
+	return &ApplicationForm{
+		nameInput:        nameInput,
+		descriptionInput: descriptionInput,
+		editAppIdx:       editAppIdx,
+	}
+}
+
+// Validate checks if the ApplicationForm has valid data
+func (f *ApplicationForm) Validate() error {
+	if strings.TrimSpace(f.nameInput.Value()) == "" {
+		return errors.New("application name is required")
+	}
+	return nil
 }

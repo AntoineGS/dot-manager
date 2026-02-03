@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -1335,5 +1336,82 @@ func (m *Model) updateSubEntry(appIdx, subIdx int, subEntry config.SubEntry) err
 	}
 
 	m.initApplicationItems()
+	return nil
+}
+
+// NewSubEntryForm creates a new SubEntryForm for testing purposes
+func NewSubEntryForm(entry config.SubEntry) *SubEntryForm {
+	nameInput := textinput.New()
+	nameInput.SetValue(entry.Name)
+
+	linuxTargetInput := textinput.New()
+	if target, ok := entry.Targets["linux"]; ok {
+		linuxTargetInput.SetValue(target)
+	}
+
+	windowsTargetInput := textinput.New()
+	if target, ok := entry.Targets["windows"]; ok {
+		windowsTargetInput.SetValue(target)
+	}
+
+	backupInput := textinput.New()
+	backupInput.SetValue(entry.Backup)
+
+	repoInput := textinput.New()
+	repoInput.SetValue(entry.Repo)
+
+	branchInput := textinput.New()
+	branchInput.SetValue(entry.Branch)
+
+	// Determine entry type
+	entryType := EntryTypeConfig
+	if entry.Type == "git" || entry.Repo != "" {
+		entryType = EntryTypeGit
+	}
+
+	return &SubEntryForm{
+		entryType:          entryType,
+		nameInput:          nameInput,
+		linuxTargetInput:   linuxTargetInput,
+		windowsTargetInput: windowsTargetInput,
+		backupInput:        backupInput,
+		repoInput:          repoInput,
+		branchInput:        branchInput,
+		isSudo:             entry.Sudo,
+		isFolder:           entry.IsFolder(),
+		files:              entry.Files,
+	}
+}
+
+// Validate checks if the SubEntryForm has valid data
+func (f *SubEntryForm) Validate() error {
+	if strings.TrimSpace(f.nameInput.Value()) == "" {
+		return errors.New("entry name is required")
+	}
+
+	if f.entryType == EntryTypeConfig {
+		if strings.TrimSpace(f.backupInput.Value()) == "" {
+			return errors.New("backup path is required for config entries")
+		}
+	}
+
+	if f.entryType == EntryTypeGit {
+		if strings.TrimSpace(f.repoInput.Value()) == "" {
+			return errors.New("repository URL is required for git entries")
+		}
+	}
+
+	// Check if at least one target is specified
+	hasTarget := false
+	if strings.TrimSpace(f.linuxTargetInput.Value()) != "" {
+		hasTarget = true
+	}
+	if strings.TrimSpace(f.windowsTargetInput.Value()) != "" {
+		hasTarget = true
+	}
+	if !hasTarget {
+		return errors.New("at least one target is required")
+	}
+
 	return nil
 }
