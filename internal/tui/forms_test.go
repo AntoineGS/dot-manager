@@ -92,9 +92,8 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid_config_type",
+			name: "valid_config_entry",
 			entry: config.SubEntry{
-				Type:   "config",
 				Name:   "test",
 				Backup: "./test",
 				Targets: map[string]string{
@@ -104,21 +103,8 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid_git_type",
-			entry: config.SubEntry{
-				Type: "git",
-				Name: "test",
-				Repo: "https://github.com/user/repo",
-				Targets: map[string]string{
-					"linux": "~/repos/test",
-				},
-			},
-			wantErr: false,
-		},
-		{
 			name: "config_missing_backup",
 			entry: config.SubEntry{
-				Type: "config",
 				Name: "test",
 				Targets: map[string]string{
 					"linux": "~/.config/test",
@@ -127,20 +113,8 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "git_missing_repo",
-			entry: config.SubEntry{
-				Type: "git",
-				Name: "test",
-				Targets: map[string]string{
-					"linux": "~/repos/test",
-				},
-			},
-			wantErr: true,
-		},
-		{
 			name: "missing_name",
 			entry: config.SubEntry{
-				Type:   "config",
 				Name:   "",
 				Backup: "./test",
 				Targets: map[string]string{
@@ -152,7 +126,6 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 		{
 			name: "missing_targets",
 			entry: config.SubEntry{
-				Type:    "config",
 				Name:    "test",
 				Backup:  "./test",
 				Targets: map[string]string{},
@@ -162,7 +135,6 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 		{
 			name: "whitespace_only_name",
 			entry: config.SubEntry{
-				Type:   "config",
 				Name:   "   ",
 				Backup: "./test",
 				Targets: map[string]string{
@@ -174,7 +146,6 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 		{
 			name: "valid_with_both_targets",
 			entry: config.SubEntry{
-				Type:   "config",
 				Name:   "test",
 				Backup: "./test",
 				Targets: map[string]string{
@@ -185,38 +156,12 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "valid_git_with_branch",
-			entry: config.SubEntry{
-				Type:   "git",
-				Name:   "test",
-				Repo:   "https://github.com/user/repo",
-				Branch: "main",
-				Targets: map[string]string{
-					"linux": "~/repos/test",
-				},
-			},
-			wantErr: false,
-		},
-		{
 			name: "config_whitespace_backup",
 			entry: config.SubEntry{
-				Type:   "config",
 				Name:   "test",
 				Backup: "   ",
 				Targets: map[string]string{
 					"linux": "~/.config/test",
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "git_whitespace_repo",
-			entry: config.SubEntry{
-				Type: "git",
-				Name: "test",
-				Repo: "   ",
-				Targets: map[string]string{
-					"linux": "~/repos/test",
 				},
 			},
 			wantErr: true,
@@ -238,7 +183,6 @@ func TestSubEntryForm_TypeValidation(t *testing.T) {
 func TestSubEntryForm_Construction(t *testing.T) {
 	t.Run("config_entry", func(t *testing.T) {
 		entry := config.SubEntry{
-			Type:   "config",
 			Name:   "test",
 			Backup: "./test",
 			Sudo:   true,
@@ -250,10 +194,6 @@ func TestSubEntryForm_Construction(t *testing.T) {
 		}
 
 		form := NewSubEntryForm(entry)
-
-		if form.entryType != EntryTypeConfig {
-			t.Errorf("entryType = %v, want %v", form.entryType, EntryTypeConfig)
-		}
 
 		if form.nameInput.Value() != "test" {
 			t.Errorf("nameInput = %q, want %q", form.nameInput.Value(), "test")
@@ -277,52 +217,6 @@ func TestSubEntryForm_Construction(t *testing.T) {
 
 		if len(form.files) != 2 {
 			t.Errorf("files length = %d, want 2", len(form.files))
-		}
-	})
-
-	t.Run("git_entry", func(t *testing.T) {
-		entry := config.SubEntry{
-			Type:   "git",
-			Name:   "test-repo",
-			Repo:   "https://github.com/user/repo",
-			Branch: "develop",
-			Targets: map[string]string{
-				"linux": "~/repos/test",
-			},
-		}
-
-		form := NewSubEntryForm(entry)
-
-		if form.entryType != EntryTypeGit {
-			t.Errorf("entryType = %v, want %v", form.entryType, EntryTypeGit)
-		}
-
-		if form.nameInput.Value() != "test-repo" {
-			t.Errorf("nameInput = %q, want %q", form.nameInput.Value(), "test-repo")
-		}
-
-		if form.repoInput.Value() != "https://github.com/user/repo" {
-			t.Errorf("repoInput = %q, want %q", form.repoInput.Value(), "https://github.com/user/repo")
-		}
-
-		if form.branchInput.Value() != "develop" {
-			t.Errorf("branchInput = %q, want %q", form.branchInput.Value(), "develop")
-		}
-	})
-
-	t.Run("git_entry_inferred_from_repo", func(t *testing.T) {
-		entry := config.SubEntry{
-			Name: "test-repo",
-			Repo: "https://github.com/user/repo",
-			Targets: map[string]string{
-				"linux": "~/repos/test",
-			},
-		}
-
-		form := NewSubEntryForm(entry)
-
-		if form.entryType != EntryTypeGit {
-			t.Errorf("entryType = %v, want %v (should infer from Repo)", form.entryType, EntryTypeGit)
 		}
 	})
 }

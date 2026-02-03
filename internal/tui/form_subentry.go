@@ -15,13 +15,10 @@ import (
 type subEntryFieldType int
 
 const (
-	subFieldToggle subEntryFieldType = iota // Entry type toggle (config/git, new only)
-	subFieldName
+	subFieldName subEntryFieldType = iota
 	subFieldLinux
 	subFieldWindows
 	subFieldBackup   // Config-specific
-	subFieldRepo     // Git-specific
-	subFieldBranch   // Git-specific
 	subFieldIsFolder // Config-specific toggle
 	subFieldFiles    // Config-specific list
 	subFieldIsSudo   // Sudo toggle
@@ -50,23 +47,12 @@ func (m *Model) initSubEntryFormNew(appIdx int) {
 	backupInput.CharLimit = 256
 	backupInput.Width = 40
 
-	repoInput := textinput.New()
-	repoInput.Placeholder = "e.g., https://github.com/user/repo"
-	repoInput.CharLimit = 256
-	repoInput.Width = 40
-
-	branchInput := textinput.New()
-	branchInput.Placeholder = "e.g., main (optional)"
-	branchInput.CharLimit = 64
-	branchInput.Width = 40
-
 	newFileInput := textinput.New()
 	newFileInput.Placeholder = "e.g., .bashrc"
 	newFileInput.CharLimit = 256
 	newFileInput.Width = 40
 
 	m.subEntryForm = &SubEntryForm{
-		entryType:          EntryTypeConfig,
 		nameInput:          nameInput,
 		linuxTargetInput:   linuxTargetInput,
 		windowsTargetInput: windowsTargetInput,
@@ -79,8 +65,6 @@ func (m *Model) initSubEntryFormNew(appIdx int) {
 		addingFile:         false,
 		editingFile:        false,
 		editingFileIndex:   -1,
-		repoInput:          repoInput,
-		branchInput:        branchInput,
 		focusIndex:         0,
 		editingField:       false,
 		originalValue:      "",
@@ -165,29 +149,12 @@ func (m *Model) initSubEntryFormEdit(appIdx, subIdx int) {
 	backupInput.CharLimit = 256
 	backupInput.Width = 40
 
-	repoInput := textinput.New()
-	repoInput.Placeholder = "e.g., https://github.com/user/repo"
-	repoInput.SetValue(sub.Repo)
-	repoInput.CharLimit = 256
-	repoInput.Width = 40
-
-	branchInput := textinput.New()
-	branchInput.Placeholder = "e.g., main (optional)"
-	branchInput.SetValue(sub.Branch)
-	branchInput.CharLimit = 64
-	branchInput.Width = 40
-
 	newFileInput := textinput.New()
 	newFileInput.Placeholder = "e.g., .bashrc"
 	newFileInput.CharLimit = 256
 	newFileInput.Width = 40
 
-	// Determine entry type and load type-specific fields
-	entryType := EntryTypeConfig
-	if sub.Repo != "" {
-		entryType = EntryTypeGit
-	}
-
+	// Load config-specific fields
 	isFolder := sub.IsFolder()
 	var files []string
 
@@ -197,7 +164,6 @@ func (m *Model) initSubEntryFormEdit(appIdx, subIdx int) {
 	}
 
 	m.subEntryForm = &SubEntryForm{
-		entryType:          entryType,
 		nameInput:          nameInput,
 		linuxTargetInput:   linuxTargetInput,
 		windowsTargetInput: windowsTargetInput,
@@ -210,8 +176,6 @@ func (m *Model) initSubEntryFormEdit(appIdx, subIdx int) {
 		addingFile:         false,
 		editingFile:        false,
 		editingFileIndex:   -1,
-		repoInput:          repoInput,
-		branchInput:        branchInput,
 		focusIndex:         0,
 		editingField:       false,
 		originalValue:      "",
@@ -235,17 +199,6 @@ func (m *Model) getSubEntryFieldType() subEntryFieldType {
 	}
 
 	idx := m.subEntryForm.focusIndex
-	isNew := m.subEntryForm.editAppIdx < 0
-	isGit := m.subEntryForm.entryType == EntryTypeGit
-
-	// Handle type toggle for new entries
-	if isNew {
-		if idx == 0 {
-			return subFieldToggle
-		}
-
-		idx-- // Adjust for remaining fields
-	}
 
 	// Common fields: name (0), linux (1), windows (2)
 	switch idx {
@@ -257,41 +210,28 @@ func (m *Model) getSubEntryFieldType() subEntryFieldType {
 		return subFieldWindows
 	}
 
-	// Type-specific fields start at index 3
-	if isGit {
-		// Git type: repo (3), branch (4), isSudo (5)
+	// Config-specific fields start at index 3
+	if m.subEntryForm.isFolder {
+		// Folder mode: backup (3), isFolder (4), isSudo (5)
 		switch idx {
 		case 3:
-			return subFieldRepo
+			return subFieldBackup
 		case 4:
-			return subFieldBranch
+			return subFieldIsFolder
 		case 5:
 			return subFieldIsSudo
 		}
 	} else {
-		// Config type: backup (3), isFolder (4), [files (5) if !isFolder], isSudo
-		if m.subEntryForm.isFolder {
-			// Folder mode: backup, isFolder, isSudo
-			switch idx {
-			case 3:
-				return subFieldBackup
-			case 4:
-				return subFieldIsFolder
-			case 5:
-				return subFieldIsSudo
-			}
-		} else {
-			// Files mode: backup, isFolder, files, isSudo
-			switch idx {
-			case 3:
-				return subFieldBackup
-			case 4:
-				return subFieldIsFolder
-			case 5:
-				return subFieldFiles
-			case 6:
-				return subFieldIsSudo
-			}
+		// Files mode: backup (3), isFolder (4), files (5), isSudo (6)
+		switch idx {
+		case 3:
+			return subFieldBackup
+		case 4:
+			return subFieldIsFolder
+		case 5:
+			return subFieldFiles
+		case 6:
+			return subFieldIsSudo
 		}
 	}
 
@@ -299,33 +239,21 @@ func (m *Model) getSubEntryFieldType() subEntryFieldType {
 	return subFieldName
 }
 
-// subEntryFormMaxIndex returns the maximum focus index based on entry type and state
+// subEntryFormMaxIndex returns the maximum focus index based on state
 func (m *Model) subEntryFormMaxIndex() int {
 	if m.subEntryForm == nil {
 		return 0
 	}
 
-	offset := 0
-	if m.subEntryForm.editAppIdx < 0 {
-		offset = 1 // Add 1 for type toggle on new entries
-	}
-
-	isGit := m.subEntryForm.entryType == EntryTypeGit
-
 	// Common fields: name, linux, windows = 3 fields (0-2)
-	// Type-specific fields start at 3
-	if isGit {
-		// Git: repo, branch, isSudo = 3 fields (3-5)
-		return offset + 5
-	}
-
+	// Config-specific fields start at 3
 	if m.subEntryForm.isFolder {
 		// Config folder: backup, isFolder, isSudo = 3 fields (3-5)
-		return offset + 5
+		return 5
 	}
 
 	// Config files: backup, isFolder, files, isSudo = 4 fields (3-6)
-	return offset + 6
+	return 6
 }
 
 // updateSubEntryForm handles key events for the sub-entry form
@@ -409,19 +337,6 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Handle toggles
 		ft := m.getSubEntryFieldType()
 		switch ft {
-		case subFieldToggle:
-			// Don't allow type toggle in edit mode
-			if m.subEntryForm.editAppIdx >= 0 && m.subEntryForm.editSubIdx >= 0 {
-				return m, nil
-			}
-			// Toggle entry type (config <-> git) - only for new entries
-			if m.subEntryForm.entryType == EntryTypeConfig {
-				m.subEntryForm.entryType = EntryTypeGit
-			} else {
-				m.subEntryForm.entryType = EntryTypeConfig
-			}
-
-			return m, nil
 		case subFieldIsFolder:
 			m.subEntryForm.isFolder = !m.subEntryForm.isFolder
 			return m, nil
@@ -440,19 +355,6 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		// Handle toggles on enter
 		switch ft {
-		case subFieldToggle:
-			// Don't allow type toggle in edit mode
-			if m.subEntryForm.editAppIdx >= 0 && m.subEntryForm.editSubIdx >= 0 {
-				return m, nil
-			}
-
-			if m.subEntryForm.entryType == EntryTypeConfig {
-				m.subEntryForm.entryType = EntryTypeGit
-			} else {
-				m.subEntryForm.entryType = EntryTypeConfig
-			}
-
-			return m, nil
 		case subFieldIsFolder:
 			m.subEntryForm.isFolder = !m.subEntryForm.isFolder
 			return m, nil
@@ -574,10 +476,6 @@ func (m Model) updateSubEntryFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.subEntryForm.windowsTargetInput, cmd = m.subEntryForm.windowsTargetInput.Update(msg)
 	case subFieldBackup:
 		m.subEntryForm.backupInput, cmd = m.subEntryForm.backupInput.Update(msg)
-	case subFieldRepo:
-		m.subEntryForm.repoInput, cmd = m.subEntryForm.repoInput.Update(msg)
-	case subFieldBranch:
-		m.subEntryForm.branchInput, cmd = m.subEntryForm.branchInput.Update(msg)
 	}
 
 	// Update suggestions for path fields after text changes
@@ -770,17 +668,10 @@ func (m Model) viewSubEntryForm() string {
 
 	var b strings.Builder
 	ft := m.getSubEntryFieldType()
-	isNew := m.subEntryForm.editAppIdx < 0
-	isGit := m.subEntryForm.entryType == EntryTypeGit
 
 	// Title
 	if m.subEntryForm.editAppIdx >= 0 {
-		if isGit {
-			b.WriteString(TitleStyle.Render("  Edit Git Entry"))
-		} else {
-			b.WriteString(TitleStyle.Render("  Edit Config Entry"))
-		}
-
+		b.WriteString(TitleStyle.Render("  Edit Config Entry"))
 		b.WriteString("\n\n")
 		b.WriteString(SubtitleStyle.Render("Edit the entry configuration"))
 	} else {
@@ -790,23 +681,6 @@ func (m Model) viewSubEntryForm() string {
 	}
 
 	b.WriteString("\n\n")
-
-	// Entry type toggle (only for new entries)
-	if isNew {
-		typeLabel := "Entry Type:"
-		if ft == subFieldToggle {
-			typeLabel = HelpKeyStyle.Render("Entry Type:")
-		}
-		configCheck := CheckboxUnchecked
-		gitCheck := CheckboxChecked
-
-		if m.subEntryForm.entryType == EntryTypeConfig {
-			configCheck = CheckboxChecked
-			gitCheck = CheckboxUnchecked
-		}
-
-		b.WriteString(fmt.Sprintf("  %s  %s Config  %s Git\n\n", typeLabel, configCheck, gitCheck))
-	}
 
 	// Name field
 	nameLabel := "Name:"
@@ -847,97 +721,76 @@ func (m Model) viewSubEntryForm() string {
 
 	b.WriteString("\n")
 
-	// Type-specific fields
-	if isGit {
-		// Repository field
-		repoLabel := "Repository URL:"
-		if ft == subFieldRepo {
-			repoLabel = HelpKeyStyle.Render("Repository URL:")
+	// Backup field
+	backupLabel := "Backup path:"
+	if ft == subFieldBackup {
+		backupLabel = HelpKeyStyle.Render("Backup path:")
+	}
+
+	b.WriteString(fmt.Sprintf("  %s\n", backupLabel))
+	b.WriteString(fmt.Sprintf("  %s\n", m.renderSubEntryFieldValue(subFieldBackup, "(empty)")))
+
+	if m.subEntryForm.editingField && ft == subFieldBackup && m.subEntryForm.showSuggestions {
+		b.WriteString(m.renderSubEntrySuggestions())
+	}
+
+	b.WriteString("\n")
+
+	// Is folder toggle
+	toggleLabel := "Backup type:"
+	if ft == subFieldIsFolder {
+		toggleLabel = HelpKeyStyle.Render("Backup type:")
+	}
+	folderCheck := CheckboxUnchecked
+	filesCheck := CheckboxChecked
+
+	if m.subEntryForm.isFolder {
+		folderCheck = CheckboxChecked
+		filesCheck = CheckboxUnchecked
+	}
+
+	b.WriteString(fmt.Sprintf("  %s  %s Folder  %s Files\n\n", toggleLabel, folderCheck, filesCheck))
+
+	// Files list (only shown when Files mode is selected)
+	if !m.subEntryForm.isFolder {
+		filesLabel := "Files:"
+		if ft == subFieldFiles {
+			filesLabel = HelpKeyStyle.Render("Files:")
 		}
 
-		b.WriteString(fmt.Sprintf("  %s\n", repoLabel))
-		b.WriteString(fmt.Sprintf("  %s\n\n", m.renderSubEntryFieldValue(subFieldRepo, "(empty)")))
+		b.WriteString(fmt.Sprintf("  %s\n", filesLabel))
 
-		// Branch field
-		branchLabel := "Branch:"
-		if ft == subFieldBranch {
-			branchLabel = HelpKeyStyle.Render("Branch:")
+		// Render file list
+		if len(m.subEntryForm.files) == 0 && !m.subEntryForm.addingFile {
+			b.WriteString(MutedTextStyle.Render("    (no files added)"))
+			b.WriteString("\n")
+		} else {
+			for i, file := range m.subEntryForm.files {
+				prefix := IndentSpaces
+				// Show input if editing this file
+				if m.subEntryForm.editingFile && m.subEntryForm.editingFileIndex == i {
+					b.WriteString(fmt.Sprintf("%s%s\n", prefix, m.subEntryForm.newFileInput.View()))
+				} else if ft == subFieldFiles && !m.subEntryForm.addingFile && !m.subEntryForm.editingFile && m.subEntryForm.filesCursor == i {
+					b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render("• "+file)))
+				} else {
+					b.WriteString(fmt.Sprintf("%s• %s\n", prefix, file))
+				}
+			}
 		}
 
-		b.WriteString(fmt.Sprintf("  %s\n", branchLabel))
-		b.WriteString(fmt.Sprintf("  %s\n\n", m.renderSubEntryFieldValue(subFieldBranch, "(optional, defaults to default branch)")))
-	} else {
-		// Backup field
-		backupLabel := "Backup path:"
-		if ft == subFieldBackup {
-			backupLabel = HelpKeyStyle.Render("Backup path:")
-		}
-
-		b.WriteString(fmt.Sprintf("  %s\n", backupLabel))
-		b.WriteString(fmt.Sprintf("  %s\n", m.renderSubEntryFieldValue(subFieldBackup, "(empty)")))
-
-		if m.subEntryForm.editingField && ft == subFieldBackup && m.subEntryForm.showSuggestions {
-			b.WriteString(m.renderSubEntrySuggestions())
+		// Add File button or input
+		if m.subEntryForm.addingFile {
+			b.WriteString(fmt.Sprintf("    %s\n", m.subEntryForm.newFileInput.View()))
+		} else if !m.subEntryForm.editingFile {
+			addFileText := "[+ Add File]"
+			if ft == subFieldFiles && m.subEntryForm.filesCursor == len(m.subEntryForm.files) {
+				b.WriteString(fmt.Sprintf("    %s\n", SelectedMenuItemStyle.Render(addFileText)))
+			} else {
+				b.WriteString(fmt.Sprintf("    %s\n", MutedTextStyle.Render(addFileText)))
+			}
 		}
 
 		b.WriteString("\n")
-
-		// Is folder toggle
-		toggleLabel := "Backup type:"
-		if ft == subFieldIsFolder {
-			toggleLabel = HelpKeyStyle.Render("Backup type:")
-		}
-		folderCheck := CheckboxUnchecked
-		filesCheck := CheckboxChecked
-
-		if m.subEntryForm.isFolder {
-			folderCheck = CheckboxChecked
-			filesCheck = CheckboxUnchecked
-		}
-
-		b.WriteString(fmt.Sprintf("  %s  %s Folder  %s Files\n\n", toggleLabel, folderCheck, filesCheck))
-
-		// Files list (only shown when Files mode is selected)
-		if !m.subEntryForm.isFolder {
-			filesLabel := "Files:"
-			if ft == subFieldFiles {
-				filesLabel = HelpKeyStyle.Render("Files:")
-			}
-
-			b.WriteString(fmt.Sprintf("  %s\n", filesLabel))
-
-			// Render file list
-			if len(m.subEntryForm.files) == 0 && !m.subEntryForm.addingFile {
-				b.WriteString(MutedTextStyle.Render("    (no files added)"))
-				b.WriteString("\n")
-			} else {
-				for i, file := range m.subEntryForm.files {
-					prefix := IndentSpaces
-					// Show input if editing this file
-					if m.subEntryForm.editingFile && m.subEntryForm.editingFileIndex == i {
-						b.WriteString(fmt.Sprintf("%s%s\n", prefix, m.subEntryForm.newFileInput.View()))
-					} else if ft == subFieldFiles && !m.subEntryForm.addingFile && !m.subEntryForm.editingFile && m.subEntryForm.filesCursor == i {
-						b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render("• "+file)))
-					} else {
-						b.WriteString(fmt.Sprintf("%s• %s\n", prefix, file))
-					}
-				}
-			}
-
-			// Add File button or input
-			if m.subEntryForm.addingFile {
-				b.WriteString(fmt.Sprintf("    %s\n", m.subEntryForm.newFileInput.View()))
-			} else if !m.subEntryForm.editingFile {
-				addFileText := "[+ Add File]"
-				if ft == subFieldFiles && m.subEntryForm.filesCursor == len(m.subEntryForm.files) {
-					b.WriteString(fmt.Sprintf("    %s\n", SelectedMenuItemStyle.Render(addFileText)))
-				} else {
-					b.WriteString(fmt.Sprintf("    %s\n", MutedTextStyle.Render(addFileText)))
-				}
-			}
-
-			b.WriteString("\n")
-		}
 	}
 
 	// Root toggle
@@ -986,10 +839,6 @@ func (m Model) renderSubEntryFieldValue(fieldType subEntryFieldType, placeholder
 		input = m.subEntryForm.windowsTargetInput
 	case subFieldBackup:
 		input = m.subEntryForm.backupInput
-	case subFieldRepo:
-		input = m.subEntryForm.repoInput
-	case subFieldBranch:
-		input = m.subEntryForm.branchInput
 	default:
 		return placeholder
 	}
@@ -1136,42 +985,26 @@ func (m *Model) saveSubEntryForm() error {
 		return fmt.Errorf("at least one target is required")
 	}
 
+	backup := strings.TrimSpace(m.subEntryForm.backupInput.Value())
+	if backup == "" {
+		return fmt.Errorf("backup path is required")
+	}
+
 	// Build SubEntry from form
 	subEntry := config.SubEntry{
 		Name:    name,
 		Targets: targets,
 		Sudo:    m.subEntryForm.isSudo,
+		Backup:  backup,
 	}
 
-	// Set Type field based on entryType
-	if m.subEntryForm.entryType == EntryTypeGit {
-		subEntry.Type = "git"
-	} else {
-		subEntry.Type = "config"
-	}
-
-	// Type-specific fields
-	if m.subEntryForm.entryType == EntryTypeGit {
-		repo := strings.TrimSpace(m.subEntryForm.repoInput.Value())
-		if repo == "" {
-			return fmt.Errorf("repository URL is required for git entries")
+	// Add files if in files mode
+	if !m.subEntryForm.isFolder {
+		if len(m.subEntryForm.files) == 0 {
+			return fmt.Errorf("at least one file is required when using Files mode")
 		}
-		subEntry.Repo = repo
-		subEntry.Branch = strings.TrimSpace(m.subEntryForm.branchInput.Value())
-	} else {
-		backup := strings.TrimSpace(m.subEntryForm.backupInput.Value())
-		if backup == "" {
-			return fmt.Errorf("backup path is required for config entries")
-		}
-		subEntry.Backup = backup
-
-		if !m.subEntryForm.isFolder {
-			if len(m.subEntryForm.files) == 0 {
-				return fmt.Errorf("at least one file is required when using Files mode")
-			}
-			subEntry.Files = make([]string, len(m.subEntryForm.files))
-			copy(subEntry.Files, m.subEntryForm.files)
-		}
+		subEntry.Files = make([]string, len(m.subEntryForm.files))
+		copy(subEntry.Files, m.subEntryForm.files)
 	}
 
 	// Route to correct save operation
@@ -1198,8 +1031,6 @@ func (m *Model) updateSubEntryFormFocus() {
 	m.subEntryForm.linuxTargetInput.Blur()
 	m.subEntryForm.windowsTargetInput.Blur()
 	m.subEntryForm.backupInput.Blur()
-	m.subEntryForm.repoInput.Blur()
-	m.subEntryForm.branchInput.Blur()
 	m.subEntryForm.newFileInput.Blur()
 
 	ft := m.getSubEntryFieldType()
@@ -1212,10 +1043,6 @@ func (m *Model) updateSubEntryFormFocus() {
 		m.subEntryForm.windowsTargetInput.Focus()
 	case subFieldBackup:
 		m.subEntryForm.backupInput.Focus()
-	case subFieldRepo:
-		m.subEntryForm.repoInput.Focus()
-	case subFieldBranch:
-		m.subEntryForm.branchInput.Focus()
 	}
 }
 
@@ -1245,14 +1072,6 @@ func (m *Model) enterSubEntryFieldEditMode() {
 		m.subEntryForm.originalValue = m.subEntryForm.backupInput.Value()
 		m.subEntryForm.backupInput.Focus()
 		m.subEntryForm.backupInput.SetCursor(len(m.subEntryForm.backupInput.Value()))
-	case subFieldRepo:
-		m.subEntryForm.originalValue = m.subEntryForm.repoInput.Value()
-		m.subEntryForm.repoInput.Focus()
-		m.subEntryForm.repoInput.SetCursor(len(m.subEntryForm.repoInput.Value()))
-	case subFieldBranch:
-		m.subEntryForm.originalValue = m.subEntryForm.branchInput.Value()
-		m.subEntryForm.branchInput.Focus()
-		m.subEntryForm.branchInput.SetCursor(len(m.subEntryForm.branchInput.Value()))
 	}
 }
 
@@ -1272,10 +1091,6 @@ func (m *Model) cancelSubEntryFieldEdit() {
 		m.subEntryForm.windowsTargetInput.SetValue(m.subEntryForm.originalValue)
 	case subFieldBackup:
 		m.subEntryForm.backupInput.SetValue(m.subEntryForm.originalValue)
-	case subFieldRepo:
-		m.subEntryForm.repoInput.SetValue(m.subEntryForm.originalValue)
-	case subFieldBranch:
-		m.subEntryForm.branchInput.SetValue(m.subEntryForm.originalValue)
 	}
 
 	m.subEntryForm.editingField = false
@@ -1357,7 +1172,7 @@ func (m *Model) isSubEntryTextInputField() bool {
 
 	ft := m.getSubEntryFieldType()
 	switch ft {
-	case subFieldName, subFieldLinux, subFieldWindows, subFieldBackup, subFieldRepo, subFieldBranch:
+	case subFieldName, subFieldLinux, subFieldWindows, subFieldBackup:
 		return true
 	}
 
@@ -1372,7 +1187,7 @@ func (m *Model) isSubEntryToggleField() bool {
 
 	ft := m.getSubEntryFieldType()
 
-	return ft == subFieldToggle || ft == subFieldIsFolder || ft == subFieldIsSudo
+	return ft == subFieldIsFolder || ft == subFieldIsSudo
 }
 
 // buildTargetsFromSubEntryForm creates Targets map from form inputs
@@ -1466,26 +1281,11 @@ func NewSubEntryForm(entry config.SubEntry) *SubEntryForm {
 	backupInput := textinput.New()
 	backupInput.SetValue(entry.Backup)
 
-	repoInput := textinput.New()
-	repoInput.SetValue(entry.Repo)
-
-	branchInput := textinput.New()
-	branchInput.SetValue(entry.Branch)
-
-	// Determine entry type
-	entryType := EntryTypeConfig
-	if entry.Type == TypeGit || entry.Repo != "" {
-		entryType = EntryTypeGit
-	}
-
 	return &SubEntryForm{
-		entryType:          entryType,
 		nameInput:          nameInput,
 		linuxTargetInput:   linuxTargetInput,
 		windowsTargetInput: windowsTargetInput,
 		backupInput:        backupInput,
-		repoInput:          repoInput,
-		branchInput:        branchInput,
 		isSudo:             entry.Sudo,
 		isFolder:           entry.IsFolder(),
 		files:              entry.Files,
@@ -1498,16 +1298,8 @@ func (f *SubEntryForm) Validate() error {
 		return errors.New("entry name is required")
 	}
 
-	if f.entryType == EntryTypeConfig {
-		if strings.TrimSpace(f.backupInput.Value()) == "" {
-			return errors.New("backup path is required for config entries")
-		}
-	}
-
-	if f.entryType == EntryTypeGit {
-		if strings.TrimSpace(f.repoInput.Value()) == "" {
-			return errors.New("repository URL is required for git entries")
-		}
+	if strings.TrimSpace(f.backupInput.Value()) == "" {
+		return errors.New("backup path is required")
 	}
 
 	// Check if at least one target is specified

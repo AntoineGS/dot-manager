@@ -151,19 +151,16 @@ type SubEntryForm struct {
 	originalValue      string
 	suggestions        []string
 	files              []string
-	repoInput          textinput.Model
 	nameInput          textinput.Model
 	linuxTargetInput   textinput.Model
 	windowsTargetInput textinput.Model
 	backupInput        textinput.Model
 	newFileInput       textinput.Model
-	branchInput        textinput.Model
 	editingFileIndex   int
 	targetAppIdx       int
 	editSubIdx         int
 	editAppIdx         int
 	focusIndex         int
-	entryType          EntryType
 	filesCursor        int
 	suggestionCursor   int
 	isFolder           bool
@@ -303,20 +300,12 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 					Description: app.Description,                // Use app description
 					Sudo:        subEntry.Sudo,
 					Filters:     app.Filters, // Use app filters
+					Files:       subEntry.Files,
+					Backup:      subEntry.Backup,
+					Targets:     subEntry.Targets,
 				}
 
-				var entryType EntryType
-				if subEntry.Type == TypeGit {
-					entryType = EntryTypeGit
-					entry.Repo = subEntry.Repo
-					entry.Branch = subEntry.Branch
-					entry.Targets = subEntry.Targets
-				} else {
-					entryType = EntryTypeConfig
-					entry.Files = subEntry.Files
-					entry.Backup = subEntry.Backup
-					entry.Targets = subEntry.Targets
-				}
+				entryType := EntryTypeConfig
 
 				// Add package from app-level if present
 				if app.Package != nil {
@@ -376,36 +365,10 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 			addedEntries[e.Name] = true
 		}
 
-		// Get all git entries filtered by filter context
-		gitEntries := cfg.GetFilteredGitEntries(filterCtx)
-		for _, e := range gitEntries {
-			target := e.GetTarget(plat.OS)
-			item := PathItem{
-				Entry:     e,
-				Target:    target,
-				Selected:  true, // Select all by default
-				EntryType: EntryTypeGit,
-			}
-			// Add package info if entry has a package
-			if e.HasPackage() {
-				spec := e.ToPackageSpec()
-				method := getPackageInstallMethod(spec, plat.OS)
-				item.PkgMethod = method
-
-				if method != TypeNone {
-					installed := isPackageInstalled(spec, method)
-					item.PkgInstalled = &installed
-				}
-			}
-
-			items = append(items, item)
-			addedEntries[e.Name] = true
-		}
-
-		// Add package-only entries (those not already added as config or git entries)
+		// Add package-only entries (those not already added as config entries)
 		packageEntries := cfg.GetFilteredPackageEntries(filterCtx)
 		for _, e := range packageEntries {
-			// Skip if already added as config or git entry
+			// Skip if already added as config entry
 			if addedEntries[e.Name] {
 				continue
 			}

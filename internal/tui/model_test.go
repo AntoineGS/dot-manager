@@ -242,22 +242,22 @@ func TestGetApplicationAtCursor(t *testing.T) {
 				Name:        "zsh",
 				Description: "Z Shell",
 				Entries: []config.SubEntry{
-					{Name: "zshrc", Type: "config", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+					{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
 				},
 			},
 			{
 				Name:        "nvim",
 				Description: "Neovim",
 				Entries: []config.SubEntry{
-					{Name: "init.lua", Type: "config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
-					{Name: "plugins", Type: "config", Backup: "./nvim/plugins", Targets: map[string]string{"linux": "~/.config/nvim/lua/plugins"}},
+					{Name: "init.lua", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
+					{Name: "plugins", Backup: "./nvim/plugins", Targets: map[string]string{"linux": "~/.config/nvim/lua/plugins"}},
 				},
 			},
 			{
 				Name:        "bash",
 				Description: "Bash Shell",
 				Entries: []config.SubEntry{
-					{Name: "bashrc", Type: "config", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+					{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
 				},
 			},
 		},
@@ -386,23 +386,23 @@ func TestGetApplicationAtCursorWithFiltering(t *testing.T) {
 				Name:        "zsh",
 				Description: "Z Shell",
 				Entries: []config.SubEntry{
-					{Name: "zshrc", Type: "config", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+					{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
 				},
 			},
 			{
 				Name:        "nvim",
 				Description: "Neovim",
 				Entries: []config.SubEntry{
-					{Name: "alpha", Type: "config", Backup: "./nvim/alpha", Targets: map[string]string{"linux": "~/.config/nvim/alpha.lua"}},
-					{Name: "beta", Type: "config", Backup: "./nvim/beta", Targets: map[string]string{"linux": "~/.config/nvim/beta.lua"}},
-					{Name: "gamma", Type: "config", Backup: "./nvim/gamma", Targets: map[string]string{"linux": "~/.config/nvim/gamma.lua"}},
+					{Name: "alpha", Backup: "./nvim/alpha", Targets: map[string]string{"linux": "~/.config/nvim/alpha.lua"}},
+					{Name: "beta", Backup: "./nvim/beta", Targets: map[string]string{"linux": "~/.config/nvim/beta.lua"}},
+					{Name: "gamma", Backup: "./nvim/gamma", Targets: map[string]string{"linux": "~/.config/nvim/gamma.lua"}},
 				},
 			},
 			{
 				Name:        "bash",
 				Description: "Bash Shell",
 				Entries: []config.SubEntry{
-					{Name: "bashrc", Type: "config", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+					{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
 				},
 			},
 		},
@@ -462,21 +462,21 @@ func TestEditAfterSortingBug(t *testing.T) {
 				Name:        "zsh", // Will be last after sorting
 				Description: "Z Shell",
 				Entries: []config.SubEntry{
-					{Name: "zshrc", Type: "config", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+					{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
 				},
 			},
 			{
 				Name:        "bash", // Will be first after sorting
 				Description: "Bash Shell",
 				Entries: []config.SubEntry{
-					{Name: "bashrc", Type: "config", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+					{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
 				},
 			},
 			{
 				Name:        "nvim", // Will be middle after sorting
 				Description: "Neovim",
 				Entries: []config.SubEntry{
-					{Name: "init", Type: "config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
+					{Name: "init", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
 				},
 			},
 		},
@@ -531,22 +531,22 @@ func TestEditWithSortedApplications(t *testing.T) {
 				Name:        "zsh",
 				Description: "Z Shell",
 				Entries: []config.SubEntry{
-					{Name: "zshrc", Type: "config", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+					{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
 				},
 			},
 			{
 				Name:        "bash",
 				Description: "Bash Shell",
 				Entries: []config.SubEntry{
-					{Name: "bashrc", Type: "config", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+					{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
 				},
 			},
 			{
 				Name:        "nvim",
 				Description: "Neovim",
 				Entries: []config.SubEntry{
-					{Name: "init", Type: "config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
-					{Name: "plugins", Type: "config", Backup: "./nvim/plugins", Targets: map[string]string{"linux": "~/.config/nvim/plugins"}},
+					{Name: "init", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
+					{Name: "plugins", Backup: "./nvim/plugins", Targets: map[string]string{"linux": "~/.config/nvim/plugins"}},
 				},
 			},
 		},

@@ -977,10 +977,6 @@ func TestFromEntries(t *testing.T) {
 					},
 				},
 				{
-					Name: "git-repo",
-					Repo: "https://github.com/user/repo.git",
-				},
-				{
 					Name: "tmux",
 					Package: &config.EntryPackage{
 						Managers: map[string]string{"pacman": "tmux"},
@@ -1011,7 +1007,6 @@ func TestFromEntries(t *testing.T) {
 			name: "no package entries",
 			entries: []config.Entry{
 				{Name: "dotfiles", Backup: "./dotfiles"},
-				{Name: "repo", Repo: "https://github.com/user/repo.git"},
 			},
 			want: []string{},
 		},
