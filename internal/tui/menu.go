@@ -15,6 +15,7 @@ var menuItems = []struct {
 	op   Operation
 }{
 	{"Restore", "Create symlinks from targets to backup sources", "󰁯", OpRestore},
+	{"Restore (Dry Run)", "Preview restore without making changes", "󰋖", OpRestoreDryRun},
 	{"Manage", "Browse, edit and install", "󰋗", OpList},
 }
 
