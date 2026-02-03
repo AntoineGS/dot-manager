@@ -1474,3 +1474,35 @@ managers:
 		t.Error("Expected sudo to be true")
 	}
 }
+
+func TestManager_InstallGitPackage_WithSudo(t *testing.T) {
+	tmpDir := t.TempDir()
+	cloneDest := filepath.Join(tmpDir, "cloned")
+
+	cfg := &Config{Packages: []Package{}}
+	mgr := NewManager(cfg, platform.OSLinux, true, false) // dry-run to avoid actual sudo
+
+	pkg := Package{
+		Name: "test-repo",
+		Managers: map[PackageManager]interface{}{
+			Git: GitConfig{
+				URL: "https://github.com/test/repo.git",
+				Targets: map[string]string{
+					platform.OSLinux: cloneDest,
+				},
+				Sudo: true,
+			},
+		},
+	}
+
+	result := mgr.Install(pkg)
+
+	if !result.Success {
+		t.Errorf("Expected success, got: %s", result.Message)
+	}
+
+	// Verify sudo is in the command
+	if !strings.Contains(result.Message, "sudo") {
+		t.Errorf("Expected 'sudo' in command, got: %s", result.Message)
+	}
+}
