@@ -11,6 +11,7 @@ import (
 
 	"github.com/AntoineGS/dot-manager/internal/config"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	"gopkg.in/yaml.v3"
 )
 
 // PackageManager represents a supported package manager identifier.
@@ -65,6 +66,57 @@ type Package struct {
 	Custom      map[string]string              `yaml:"custom,omitempty"` // OS -> command
 	URL         map[string]URLInstall          `yaml:"url,omitempty"`    // OS -> URL install
 	Filters     []config.Filter                `yaml:"filters,omitempty"`
+}
+
+// UnmarshalYAML implements custom YAML unmarshaling for Package.
+// It handles the Managers field specially to support both string values (for traditional
+// package managers) and GitConfig structs (for git repositories).
+func (p *Package) UnmarshalYAML(node *yaml.Node) error {
+	// Define a temporary struct that matches Package but with a different Managers type
+	type packageAlias struct {
+		Name        string                `yaml:"name"`
+		Description string                `yaml:"description,omitempty"`
+		Managers    map[string]yaml.Node  `yaml:"managers,omitempty"`
+		Custom      map[string]string     `yaml:"custom,omitempty"`
+		URL         map[string]URLInstall `yaml:"url,omitempty"`
+		Filters     []config.Filter       `yaml:"filters,omitempty"`
+	}
+
+	var alias packageAlias
+	if err := node.Decode(&alias); err != nil {
+		return err
+	}
+
+	// Copy simple fields
+	p.Name = alias.Name
+	p.Description = alias.Description
+	p.Custom = alias.Custom
+	p.URL = alias.URL
+	p.Filters = alias.Filters
+
+	// Process managers map
+	p.Managers = make(map[PackageManager]interface{})
+	for key, valueNode := range alias.Managers {
+		pm := PackageManager(key)
+
+		// Special handling for git manager
+		if pm == Git {
+			var gitCfg GitConfig
+			if err := valueNode.Decode(&gitCfg); err != nil {
+				return fmt.Errorf("failed to decode git config: %w", err)
+			}
+			p.Managers[pm] = gitCfg
+		} else {
+			// Traditional managers are strings
+			var pkgName string
+			if err := valueNode.Decode(&pkgName); err != nil {
+				return fmt.Errorf("failed to decode manager %s: %w", key, err)
+			}
+			p.Managers[pm] = pkgName
+		}
+	}
+
+	return nil
 }
 
 // URLInstall represents installation from a URL with download and command execution.

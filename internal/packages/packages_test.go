@@ -10,6 +10,7 @@ import (
 
 	"github.com/AntoineGS/dot-manager/internal/config"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	"gopkg.in/yaml.v3"
 )
 
 func TestNewManager(t *testing.T) {
@@ -1425,5 +1426,48 @@ func TestManager_InstallGitPackage_DryRun(t *testing.T) {
 	// Verify nothing was actually cloned
 	if _, err := os.Stat(cloneDest); err == nil {
 		t.Error("Expected no clone in dry-run mode, but directory exists")
+	}
+}
+
+func TestPackage_UnmarshalYAML(t *testing.T) {
+	yamlData := `
+name: "test-pkg"
+managers:
+  pacman: "neovim"
+  git:
+    url: "https://github.com/user/repo.git"
+    branch: "main"
+    targets:
+      linux: "~/.dotfiles"
+    sudo: true
+`
+
+	var pkg Package
+	err := yaml.Unmarshal([]byte(yamlData), &pkg)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	// Verify pacman manager (string)
+	pacmanPkg, ok := pkg.Managers[Pacman].(string)
+	if !ok {
+		t.Fatal("Expected pacman to be string")
+	}
+	if pacmanPkg != "neovim" {
+		t.Errorf("Expected 'neovim', got %s", pacmanPkg)
+	}
+
+	// Verify git manager (GitConfig)
+	gitCfg, ok := pkg.Managers[Git].(GitConfig)
+	if !ok {
+		t.Fatalf("Expected git to be GitConfig, got %T", pkg.Managers[Git])
+	}
+
+	if gitCfg.URL != "https://github.com/user/repo.git" {
+		t.Errorf("Expected URL, got %s", gitCfg.URL)
+	}
+
+	if !gitCfg.Sudo {
+		t.Error("Expected sudo to be true")
 	}
 }
