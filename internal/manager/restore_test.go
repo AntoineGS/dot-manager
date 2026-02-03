@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -403,5 +404,70 @@ func TestRestoreV3MultipleSubEntries(t *testing.T) {
 	dataTarget := filepath.Join(tmpDir, "home", ".local", "share", "nvim")
 	if !isSymlink(dataTarget) {
 		t.Error("data target is not a symlink")
+	}
+}
+
+func TestRestoreEntry_PathError(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(t *testing.T, tmpDir string) (*Manager, config.Entry)
+		wantErr     bool
+		wantPathErr bool
+	}{
+		{
+			name: "symlink_creation_failure_returns_path_error",
+			setup: func(t *testing.T, tmpDir string) (*Manager, config.Entry) {
+				// Create backup but make target dir read-only
+				backupRoot := filepath.Join(tmpDir, "backup")
+				backupDir := filepath.Join(backupRoot, "test")
+				os.MkdirAll(backupDir, 0755)
+
+				targetDir := filepath.Join(tmpDir, "readonly")
+				os.MkdirAll(targetDir, 0444) // read-only
+
+				cfg := &config.Config{
+					BackupRoot: backupRoot,
+					Version:    2,
+					Entries: []config.Entry{
+						{
+							Name:   "test",
+							Backup: "./test",
+							Targets: map[string]string{
+								"linux": filepath.Join(targetDir, "config"),
+							},
+						},
+					},
+				}
+
+				plat := &platform.Platform{OS: platform.OSLinux}
+				mgr := New(cfg, plat)
+
+				return mgr, cfg.Entries[0]
+			},
+			wantErr:     true,
+			wantPathErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			mgr, entry := tt.setup(t, tmpDir)
+
+			target := entry.GetTarget(mgr.Platform.OS)
+			err := mgr.restoreEntry(entry, target)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("restoreEntry() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantPathErr {
+				var pathErr *PathError
+				if !errors.As(err, &pathErr) {
+					t.Errorf("error is not PathError: %v", err)
+				}
+			}
+		})
 	}
 }

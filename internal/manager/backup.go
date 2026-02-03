@@ -80,7 +80,7 @@ func (m *Manager) backupFolderSubEntry(appName string, subEntry config.SubEntry,
 	m.log("Backing up folder %s -> %s", target, backup)
 	if !m.DryRun {
 		if err := os.MkdirAll(filepath.Dir(backup), 0755); err != nil {
-			return fmt.Errorf("creating backup parent directory: %w", err)
+			return NewPathError("backup", backup, fmt.Errorf("creating parent directory: %w", err))
 		}
 
 		// Copy source folder into backup directory (e.g., /source/nvim -> /backup/nvim)
@@ -103,7 +103,7 @@ func (m *Manager) backupFilesSubEntry(appName string, subEntry config.SubEntry, 
 
 	if !m.DryRun {
 		if err := os.MkdirAll(backup, 0755); err != nil {
-			return fmt.Errorf("creating backup directory: %w", err)
+			return NewPathError("backup", backup, fmt.Errorf("creating backup directory: %w", err))
 		}
 	}
 
@@ -121,11 +121,11 @@ func (m *Manager) backupFilesSubEntry(appName string, subEntry config.SubEntry, 
 			if subEntry.Sudo {
 				cmd := exec.Command("sudo", "cp", srcFile, dstFile)
 				if err := cmd.Run(); err != nil {
-					return fmt.Errorf("copying file: %w", err)
+					return NewPathError("backup", srcFile, fmt.Errorf("copying file: %w", err))
 				}
 			} else {
 				if err := copyFile(srcFile, dstFile); err != nil {
-					return fmt.Errorf("copying file: %w", err)
+					return NewPathError("backup", srcFile, fmt.Errorf("copying file: %w", err))
 				}
 			}
 		}
@@ -160,7 +160,7 @@ func (m *Manager) backupFolder(name, source, backup string) error {
 		// Copy source folder into backup directory (e.g., /source/config -> /backup/config)
 		destPath := filepath.Join(backup, filepath.Base(source))
 		if err := copyDir(source, destPath); err != nil {
-			return fmt.Errorf("copying folder: %w", err)
+			return NewPathError("backup", source, fmt.Errorf("copying folder: %w", err))
 		}
 	}
 	return nil
@@ -185,7 +185,7 @@ func (m *Manager) backupFiles(name string, files []string, source, backup string
 		m.log("Backing up file %s to %s", srcFile, dstFile)
 		if !m.DryRun {
 			if err := copyFile(srcFile, dstFile); err != nil {
-				return fmt.Errorf("copying file: %w", err)
+				return NewPathError("backup", srcFile, fmt.Errorf("copying file: %w", err))
 			}
 		}
 	}
