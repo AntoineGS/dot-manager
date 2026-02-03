@@ -291,3 +291,49 @@ func buildPackageSpec(managers map[string]string) *config.EntryPackage {
 		Managers: managers,
 	}
 }
+
+// saveNewApplication saves a new Application to the config
+func (m *Model) saveNewApplication(app config.Application) error {
+	// Check for duplicate names
+	for _, existing := range m.Config.Applications {
+		if existing.Name == app.Name {
+			return fmt.Errorf("an application with name '%s' already exists", app.Name)
+		}
+	}
+
+	m.Config.Applications = append(m.Config.Applications, app)
+
+	if err := config.Save(m.Config, m.ConfigPath); err != nil {
+		// Rollback
+		m.Config.Applications = m.Config.Applications[:len(m.Config.Applications)-1]
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	m.initApplicationItems()
+	return nil
+}
+
+// saveEditedApplication updates Application metadata only (no SubEntry changes)
+func (m *Model) saveEditedApplication(appIdx int, name, description string, filters []config.Filter, pkg *config.EntryPackage) error {
+	app := &m.Config.Applications[appIdx]
+
+	// Check for duplicate names (skip the one being edited)
+	for i, existing := range m.Config.Applications {
+		if i != appIdx && existing.Name == name {
+			return fmt.Errorf("an application with name '%s' already exists", name)
+		}
+	}
+
+	// Update Application metadata
+	app.Name = name
+	app.Description = description
+	app.Filters = filters
+	app.Package = pkg
+
+	if err := config.Save(m.Config, m.ConfigPath); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	m.initApplicationItems()
+	return nil
+}

@@ -80,80 +80,6 @@ type FilterCondition struct {
 	Value       string // the pattern/value
 }
 
-// AddForm holds the state for the Add path form
-type AddForm struct {
-	// Entry type (config vs git)
-	entryType EntryType
-
-	// Common fields
-	nameInput        textinput.Model
-	descriptionInput textinput.Model
-	isSudo           bool
-
-	// Target fields (both types)
-	linuxTargetInput   textinput.Model
-	windowsTargetInput textinput.Model
-
-	// Config-specific fields
-	backupInput textinput.Model
-	isFolder    bool
-
-	// Git-specific fields
-	repoInput   textinput.Model
-	branchInput textinput.Model
-
-	// Focus index: depends on entry type and mode
-	// Config type: 0=name, 1=description, 2=linuxTarget, 3=windowsTarget, 4=backup, 5=isFolder toggle, 6=isSudo toggle, 7=files list (when !isFolder), 8=filters
-	// Git type: 0=name, 1=description, 2=linuxTarget, 3=windowsTarget, 4=repo, 5=branch, 6=isSudo toggle, 7=filters
-	// New entries add type toggle at position 0, shifting others by 1
-	focusIndex int
-	err        string
-	editIndex  int // -1 for new, >= 0 for editing existing path
-
-	// Field editing state
-	editingField  bool   // Whether we're currently editing a text field
-	originalValue string // Original value before editing (for cancel)
-
-	// Files list state (when config type and !isFolder)
-	files            []string
-	filesCursor      int             // Cursor position in files list
-	newFileInput     textinput.Model // Input for adding/editing files
-	addingFile       bool            // Whether we're currently adding a file
-	editingFile      bool            // Whether we're currently editing a file
-	editingFileIndex int             // Index of the file being edited
-
-	// Filters list state
-	filters             []FilterCondition // Flattened list of filter conditions
-	filtersCursor       int               // Cursor position in filters list
-	addingFilter        bool              // Whether we're currently adding a filter
-	editingFilter       bool              // Whether we're currently editing a filter
-	editingFilterIndex  int               // Index of the filter being edited
-	filterAddStep       int               // 0=type(include/exclude), 1=key, 2=value
-	filterIsExclude     bool              // For adding: is this an exclude condition
-	editingFilterValue  bool              // Whether we're actively editing the filter value text
-	filterKeyInput      textinput.Model   // Input for filter key selection
-	filterValueInput    textinput.Model   // Input for filter value
-	filterKeyCursor     int               // Cursor for key selection (0-3: os, distro, hostname, user)
-
-	// Autocomplete state
-	suggestions      []string
-	suggestionCursor int
-	showSuggestions  bool
-
-	// Package managers state
-	packageManagers    map[string]string // Manager name -> package name
-	packagesCursor     int               // Position in package managers list
-	editingPackage     bool              // Whether we're editing a package name
-	packageNameInput   textinput.Model   // Input for package name
-	lastPackageName    string            // Last entered package name for auto-populate
-
-	// NEW fields for v3 hierarchical CRUD
-	applicationMode bool // true when adding new Application (A key)
-	targetAppIdx    int  // App to add SubEntry to (a key), -1 if new app
-	editAppIdx      int  // When editing, which Application, -1 if new
-	editSubIdx      int  // When editing, which SubEntry, -1 if app metadata only
-}
-
 // FormType distinguishes between different form types
 type FormType int
 
@@ -274,9 +200,6 @@ type Model struct {
 	filtering   bool              // Whether we're in filter mode
 	filterInput textinput.Model   // Text input for filter
 	filterText  string            // Current filter text (for highlighting)
-
-	// Add form
-	addForm AddForm
 
 	// Forms (only one active at a time)
 	applicationForm *ApplicationForm
