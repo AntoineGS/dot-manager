@@ -73,11 +73,11 @@ applications:
 
       # Git package entry
       - name: "nvim-plugins"
-        managers:
-          git: "https://github.com/user/plugins.git"
-        git_branch: "main"
-        git_targets:
-          linux: "~/.local/share/nvim/site/pack/plugins/start/myplugins"
+        git:
+          url: "https://github.com/user/plugins.git"
+          branch: "main"
+          targets:
+            linux: "~/.local/share/nvim/site/pack/plugins/start/myplugins"
 
     filters:
       - include:
@@ -103,17 +103,18 @@ Git repositories can be installed as packages using the git package manager:
 ```yaml
 packages:
   - name: "dotfiles"
-    managers:
-      git: "https://github.com/user/dotfiles.git"
-    git_branch: "main"  # Optional, defaults to default branch
-    git_targets:
-      linux: "~/.dotfiles"
-      windows: "~/dotfiles"
+    git:
+      url: "https://github.com/user/dotfiles.git"
+      branch: "main"  # Optional, defaults to default branch
+      targets:
+        linux: "~/.dotfiles"
+        windows: "~/dotfiles"
 ```
 
 **Behavior:**
 - If target directory exists with `.git/`: runs `git pull` to update
 - If target doesn't exist: clones repository with optional branch
+- All git configuration is nested under the `git` field for consistency
 
 **Migration from v2**
 
