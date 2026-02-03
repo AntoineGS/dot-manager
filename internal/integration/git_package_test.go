@@ -66,8 +66,11 @@ func TestGitPackageEndToEnd(t *testing.T) {
 		Managers: map[packages.PackageManager]string{
 			packages.Git: bareRepo,
 		},
-		GitTargets: map[string]string{
-			platform.OSLinux: cloneDest,
+		Git: &packages.GitConfig{
+			URL: bareRepo,
+			Targets: map[string]string{
+				platform.OSLinux: cloneDest,
+			},
 		},
 	}
 

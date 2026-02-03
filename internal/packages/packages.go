@@ -43,6 +43,14 @@ const (
 	Git PackageManager = "git"
 )
 
+// GitConfig represents git-specific package configuration.
+// It contains the repository URL, optional branch, and OS-specific clone destinations.
+type GitConfig struct {
+	URL     string            `yaml:"url"`
+	Branch  string            `yaml:"branch,omitempty"`
+	Targets map[string]string `yaml:"targets"`
+}
+
 // Package represents a package to install with multiple installation methods.
 // A package can be installed via a package manager (Managers), a custom shell
 // command (Custom), or by downloading from a URL (URL). The installation method
@@ -53,10 +61,9 @@ type Package struct {
 	Name        string                    `yaml:"name"`
 	Description string                    `yaml:"description,omitempty"`
 	Managers    map[PackageManager]string `yaml:"managers,omitempty"`
-	Custom      map[string]string         `yaml:"custom,omitempty"`      // OS -> command
-	URL         map[string]URLInstall     `yaml:"url,omitempty"`         // OS -> URL install
-	GitBranch   string                    `yaml:"git_branch,omitempty"`  // Optional branch for git repos
-	GitTargets  map[string]string         `yaml:"git_targets,omitempty"` // OS -> clone destination path
+	Git         *GitConfig                `yaml:"git,omitempty"`    // Git package configuration
+	Custom      map[string]string         `yaml:"custom,omitempty"` // OS -> command
+	URL         map[string]URLInstall     `yaml:"url,omitempty"`    // OS -> URL install
 	Filters     []config.Filter           `yaml:"filters,omitempty"`
 }
 
@@ -380,7 +387,11 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 // installGitPackage clones or updates a git repository.
 func (m *Manager) installGitPackage(pkg Package, repoURL string) (bool, string) {
 	// Get target path for current OS
-	targetPath, ok := pkg.GitTargets[m.OS]
+	if pkg.Git == nil {
+		return false, "Git configuration is nil"
+	}
+
+	targetPath, ok := pkg.Git.Targets[m.OS]
 	if !ok {
 		return false, fmt.Sprintf("No git target path defined for OS: %s", m.OS)
 	}
@@ -402,7 +413,7 @@ func (m *Manager) installGitPackage(pkg Package, repoURL string) (bool, string) 
 	}
 
 	// Not cloned yet, do git clone
-	return m.gitClone(repoURL, targetPath, pkg.GitBranch)
+	return m.gitClone(repoURL, targetPath, pkg.Git.Branch)
 }
 
 func (m *Manager) gitClone(repoURL, targetPath, branch string) (bool, string) {

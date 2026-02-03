@@ -1218,30 +1218,30 @@ func TestInstallAll_DryRun(t *testing.T) {
 	}
 }
 
-func TestPackage_GitFields(t *testing.T) {
+func TestPackage_GitConfig(t *testing.T) {
 	pkg := Package{
 		Name:        "my-dotfiles",
 		Description: "My dotfiles repo",
-		Managers: map[PackageManager]string{
-			Git: "https://github.com/user/dotfiles.git",
+		Git: &GitConfig{
+			URL:    "https://github.com/user/dotfiles.git",
+			Branch: "main",
+			Targets: map[string]string{
+				"linux":   "~/.dotfiles",
+				"windows": "~/dotfiles",
+			},
 		},
-		GitBranch: "main",
-		GitTargets: map[string]string{
-			"linux":   "~/.dotfiles",
-			"windows": "~/dotfiles",
-		},
 	}
 
-	if pkg.Managers[Git] != "https://github.com/user/dotfiles.git" {
-		t.Errorf("Expected git repo URL, got %s", pkg.Managers[Git])
+	if pkg.Git.URL != "https://github.com/user/dotfiles.git" {
+		t.Errorf("Expected git repo URL, got %s", pkg.Git.URL)
 	}
 
-	if pkg.GitBranch != "main" {
-		t.Errorf("Expected branch 'main', got %s", pkg.GitBranch)
+	if pkg.Git.Branch != "main" {
+		t.Errorf("Expected branch 'main', got %s", pkg.Git.Branch)
 	}
 
-	if pkg.GitTargets["linux"] != "~/.dotfiles" {
-		t.Errorf("Expected linux target, got %s", pkg.GitTargets["linux"])
+	if pkg.Git.Targets["linux"] != "~/.dotfiles" {
+		t.Errorf("Expected linux target, got %s", pkg.Git.Targets["linux"])
 	}
 }
 
@@ -1271,8 +1271,11 @@ func TestManager_InstallGitPackage_Clone(t *testing.T) {
 		Managers: map[PackageManager]string{
 			Git: bareRepo,
 		},
-		GitTargets: map[string]string{
-			platform.OSLinux: cloneDest,
+		Git: &GitConfig{
+			URL: bareRepo,
+			Targets: map[string]string{
+				platform.OSLinux: cloneDest,
+			},
 		},
 	}
 
@@ -1356,8 +1359,11 @@ func TestManager_InstallGitPackage_Pull(t *testing.T) {
 		Managers: map[PackageManager]string{
 			Git: bareRepo,
 		},
-		GitTargets: map[string]string{
-			platform.OSLinux: cloneDest,
+		Git: &GitConfig{
+			URL: bareRepo,
+			Targets: map[string]string{
+				platform.OSLinux: cloneDest,
+			},
 		},
 	}
 
@@ -1385,9 +1391,12 @@ func TestManager_InstallGitPackage_DryRun(t *testing.T) {
 		Managers: map[PackageManager]string{
 			Git: "https://github.com/test/repo.git",
 		},
-		GitBranch: "main",
-		GitTargets: map[string]string{
-			platform.OSLinux: cloneDest,
+		Git: &GitConfig{
+			URL:    "https://github.com/test/repo.git",
+			Branch: "main",
+			Targets: map[string]string{
+				platform.OSLinux: cloneDest,
+			},
 		},
 	}
 
