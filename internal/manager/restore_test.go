@@ -471,3 +471,163 @@ func TestRestoreEntry_PathError(t *testing.T) {
 		})
 	}
 }
+
+func TestRestoreV3_FilesSubEntry(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup files
+	backupRoot := filepath.Join(tmpDir, "backup", "bash")
+	os.MkdirAll(backupRoot, 0755)
+	os.WriteFile(filepath.Join(backupRoot, ".bashrc"), []byte("bashrc content"), 0644)
+	os.WriteFile(filepath.Join(backupRoot, ".profile"), []byte("profile content"), 0644)
+
+	// Target directory
+	homeDir := filepath.Join(tmpDir, "home")
+	os.MkdirAll(homeDir, 0755)
+
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: filepath.Join(tmpDir, "backup"),
+		Applications: []config.Application{
+			{
+				Name: "bash",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Type:   "config",
+						Files:  []string{".bashrc", ".profile"},
+						Backup: "./bash",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	err := mgr.Restore()
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+
+	// Check symlinks were created
+	bashrcTarget := filepath.Join(homeDir, ".bashrc")
+	profileTarget := filepath.Join(homeDir, ".profile")
+
+	if !isSymlink(bashrcTarget) {
+		t.Error(".bashrc is not a symlink")
+	}
+	if !isSymlink(profileTarget) {
+		t.Error(".profile is not a symlink")
+	}
+
+	// Read through symlinks to verify content
+	content, err := os.ReadFile(bashrcTarget)
+	if err != nil {
+		t.Fatalf("Failed to read .bashrc: %v", err)
+	}
+	if string(content) != "bashrc content" {
+		t.Errorf("Content = %q, want %q", string(content), "bashrc content")
+	}
+}
+
+func TestRestoreV3_GitSubEntryDryRun(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Target directory
+	targetDir := filepath.Join(tmpDir, "target", "repo")
+
+	cfg := &config.Config{
+		Version: 3,
+		Applications: []config.Application{
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "git-repo",
+						Type:   "git",
+						Repo:   "https://github.com/test/repo.git",
+						Branch: "main",
+						Targets: map[string]string{
+							"linux": targetDir,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.DryRun = true
+
+	err := mgr.Restore()
+	// Should succeed in dry-run mode
+	if err != nil {
+		t.Logf("Restore() returned: %v", err)
+	}
+
+	// Target should not exist in dry-run
+	if pathExists(targetDir) {
+		t.Error("Dry-run should not create target directory")
+	}
+}
+
+func TestRestore_ReplacesExistingFile(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup
+	backupDir := filepath.Join(tmpDir, "backup", "config")
+	os.MkdirAll(backupDir, 0755)
+	os.WriteFile(filepath.Join(backupDir, "file.txt"), []byte("new content"), 0644)
+
+	// Create existing file at target
+	targetDir := filepath.Join(tmpDir, "target")
+	os.MkdirAll(targetDir, 0755)
+	existingFile := filepath.Join(targetDir, "file.txt")
+	os.WriteFile(existingFile, []byte("old content"), 0644)
+
+	cfg := &config.Config{
+		Version:    2,
+		BackupRoot: filepath.Join(tmpDir, "backup"),
+		Entries: []config.Entry{
+			{
+				Name:   "test",
+				Files:  []string{"file.txt"},
+				Backup: "./config",
+				Targets: map[string]string{
+					"linux": targetDir,
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	err := mgr.Restore()
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+
+	// Should now be a symlink
+	if !isSymlink(existingFile) {
+		t.Error("file.txt should be a symlink")
+	}
+
+	// Read content through symlink
+	content, err := os.ReadFile(existingFile)
+	if err != nil {
+		t.Fatalf("Failed to read file: %v", err)
+	}
+	if string(content) != "new content" {
+		t.Errorf("Content = %q, want %q", string(content), "new content")
+	}
+}

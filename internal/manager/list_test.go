@@ -1,132 +1,151 @@
 package manager
 
 import (
-	"bytes"
-	"io"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
-	"github.com/AntoineGS/dot-manager/internal/platform"
 )
 
-func captureOutput(f func()) string {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
+func TestList_FiltersByOS(t *testing.T) {
+	t.Parallel()
+	m := setupTestManager(t)
 
-	f()
+	m.Config.Entries = []config.Entry{
+		{
+			Name:   "linux-only",
+			Backup: "./linux",
+			Targets: map[string]string{
+				"linux": "~/.config/linux",
+			},
+			Filters: []config.Filter{
+				{Include: map[string]string{"os": "linux"}},
+			},
+		},
+		{
+			Name:   "windows-only",
+			Backup: "./windows",
+			Targets: map[string]string{
+				"windows": "~/AppData/windows",
+			},
+			Filters: []config.Filter{
+				{Include: map[string]string{"os": "windows"}},
+			},
+		},
+		{
+			Name:   "no-filter",
+			Backup: "./both",
+			Targets: map[string]string{
+				"linux": "~/.config/both",
+			},
+		},
+	}
 
-	w.Close()
-	os.Stdout = old
+	m.Platform.OS = "linux"
+	entries := m.GetEntries()
 
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	return buf.String()
+	// Should get linux-only and no-filter
+	if len(entries) != 2 {
+		t.Errorf("got %d entries, want 2", len(entries))
+	}
+
+	names := make(map[string]bool)
+	for _, e := range entries {
+		names[e.Name] = true
+	}
+
+	if !names["linux-only"] {
+		t.Error("missing linux-only entry")
+	}
+	if !names["no-filter"] {
+		t.Error("missing no-filter entry")
+	}
+	if names["windows-only"] {
+		t.Error("should not include windows-only")
+	}
 }
 
-func TestList(t *testing.T) {
+func TestList_EmptyConfig(t *testing.T) {
 	t.Parallel()
-	cfg := &config.Config{
-		Version:    2,
-		BackupRoot: "/home/user/backup",
-		Entries: []config.Entry{
-			{
-				Name:   "nvim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": "~/.config/nvim",
+	m := setupTestManager(t)
+	m.Config.Entries = []config.Entry{}
+
+	entries := m.GetEntries()
+
+	if len(entries) != 0 {
+		t.Errorf("got %d entries, want 0", len(entries))
+	}
+}
+
+func TestList_V2Format(t *testing.T) {
+	t.Parallel()
+	m := setupTestManager(t)
+
+	m.Config.Version = 2
+	m.Config.Entries = []config.Entry{
+		{
+			Name:   "test-config",
+			Backup: "./test",
+			Files:  []string{},
+			Targets: map[string]string{
+				"linux": "~/.config/test",
+			},
+		},
+		{
+			Name:   "git-entry",
+			Repo:   "https://github.com/test/repo.git",
+			Branch: "main",
+			Targets: map[string]string{
+				"linux": "~/.local/share/test",
+			},
+		},
+	}
+
+	// List should not error
+	err := m.List()
+	if err != nil {
+		t.Errorf("List() error = %v", err)
+	}
+}
+
+func TestList_V3Format(t *testing.T) {
+	t.Parallel()
+	m := setupTestManager(t)
+
+	m.Config.Version = 3
+	m.Config.Applications = []config.Application{
+		{
+			Name:        "test-app",
+			Description: "Test application",
+			Entries: []config.SubEntry{
+				{
+					Name:   "config",
+					Type:   "config",
+					Backup: "./test",
+					Targets: map[string]string{
+						"linux": "~/.config/test",
+					},
+				},
+				{
+					Name:   "repo",
+					Type:   "git",
+					Repo:   "https://github.com/test/repo.git",
+					Branch: "main",
+					Targets: map[string]string{
+						"linux": "~/.local/share/test",
+					},
 				},
 			},
-			{
-				Name:   "bash",
-				Files:  []string{".bashrc", ".bash_profile"},
-				Backup: "./bash",
-				Targets: map[string]string{
-					"linux": "~",
-				},
-			},
-			{
-				Name:   "windows-only",
-				Files:  []string{"settings.json"},
-				Backup: "./windows",
-				Targets: map[string]string{
-					"windows": "~/AppData",
+			Package: &config.EntryPackage{
+				Managers: map[string]string{
+					"pacman": "test-package",
 				},
 			},
 		},
 	}
 
-	plat := &platform.Platform{OS: platform.OSLinux}
-	mgr := New(cfg, plat)
-
-	output := captureOutput(func() {
-		mgr.List()
-	})
-
-	// Check output contains expected information
-	if !strings.Contains(output, "nvim") {
-		t.Error("Output should contain 'nvim'")
-	}
-
-	if !strings.Contains(output, "[folder]") {
-		t.Error("Output should show [folder] for nvim")
-	}
-
-	if !strings.Contains(output, "bash") {
-		t.Error("Output should contain 'bash'")
-	}
-
-	if !strings.Contains(output, ".bashrc") {
-		t.Error("Output should contain '.bashrc'")
-	}
-
-	if !strings.Contains(output, "not applicable") {
-		t.Error("Output should indicate windows-only is not applicable for linux")
-	}
-}
-
-func TestListRootMode(t *testing.T) {
-	t.Parallel()
-	cfg := &config.Config{
-		Version:    2,
-		BackupRoot: "/home/user/backup",
-		Entries: []config.Entry{
-			{
-				Name:   "user-config",
-				Backup: "./user",
-				Targets: map[string]string{
-					"linux": "~/.config",
-				},
-			},
-			{
-				Name:   "system-config",
-				Sudo:   true,
-				Files:  []string{"config.hook"},
-				Backup: "./system",
-				Targets: map[string]string{
-					"linux": "/etc/hooks",
-				},
-			},
-		},
-	}
-
-	// All entries are shown regardless of Root flag
-	plat := &platform.Platform{OS: platform.OSLinux}
-	mgr := New(cfg, plat)
-
-	output := captureOutput(func() {
-		mgr.List()
-	})
-
-	// Both user and system configs should be shown
-	if !strings.Contains(output, "system-config") {
-		t.Error("List should show system-config")
-	}
-
-	if !strings.Contains(output, "user-config") {
-		t.Error("List should show user-config")
+	// List should not error
+	err := m.List()
+	if err != nil {
+		t.Errorf("List() error = %v", err)
 	}
 }

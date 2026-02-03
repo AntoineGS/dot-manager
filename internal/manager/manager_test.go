@@ -395,3 +395,48 @@ func TestGetApplications(t *testing.T) {
 		t.Errorf("Application name = %q, want %q", apps[0].Name, "test-app")
 	}
 }
+
+func TestGetPackageEntries(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{
+		Version: 2,
+		Entries: []config.Entry{
+			{
+				Name:   "with-package",
+				Backup: "./backup",
+				Package: &config.EntryPackage{
+					Managers: map[string]string{"pacman": "neovim"},
+				},
+			},
+			{
+				Name:   "without-package",
+				Backup: "./backup2",
+			},
+		},
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	pkgEntries := mgr.GetPackageEntries()
+
+	// Should only return entries with packages
+	if len(pkgEntries) != 1 {
+		t.Fatalf("GetPackageEntries() returned %d, want 1", len(pkgEntries))
+	}
+
+	if pkgEntries[0].Name != "with-package" {
+		t.Errorf("Entry name = %q, want %q", pkgEntries[0].Name, "with-package")
+	}
+}
+
+func TestLogWarn(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	// Just call it to get coverage - hard to test output
+	mgr.logWarn("test warning message")
+	mgr.logWarn("test warning with %s", "arg")
+}
