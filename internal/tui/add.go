@@ -1282,13 +1282,6 @@ const (
 	notFoundIndex = -1
 )
 
-// Filter add wizard step constants
-const (
-	filterStepType  = 0 // Select include/exclude
-	filterStepKey   = 1 // Select attribute key (os, distro, hostname, user)
-	filterStepValue = 2 // Enter value
-)
-
 // Form field index constants (after adjusting for type toggle offset)
 const (
 	fieldIdxName       = 0
@@ -1310,12 +1303,6 @@ const (
 	configFolderFieldCount = 5 // backup, isFolder, isSudo, packages, filters
 	configFilesFieldCount  = 6 // backup, isFolder, files, isSudo, packages, filters
 )
-
-// Filter attribute keys
-var filterKeys = []string{"os", "distro", "hostname", "user"}
-
-// Known package managers (in display order)
-var knownPackageManagers = []string{"pacman", "yay", "paru", "apt", "dnf", "brew", "winget", "scoop", "choco"}
 
 // getFieldType returns the field type at the current focus index
 func (m *Model) getFieldType() addFormFieldType {

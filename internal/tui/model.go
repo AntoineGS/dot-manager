@@ -154,6 +154,92 @@ type AddForm struct {
 	editSubIdx      int  // When editing, which SubEntry, -1 if app metadata only
 }
 
+// FormType distinguishes between different form types
+type FormType int
+
+const (
+	FormNone FormType = iota
+	FormApplication
+	FormSubEntry
+)
+
+// ApplicationForm holds state for editing Application metadata
+type ApplicationForm struct {
+	// Fields
+	nameInput        textinput.Model
+	descriptionInput textinput.Model
+
+	// Package managers
+	packageManagers  map[string]string
+	packagesCursor   int
+	editingPackage   bool
+	packageNameInput textinput.Model
+	lastPackageName  string
+
+	// Filters
+	filters            []FilterCondition
+	filtersCursor      int
+	addingFilter       bool
+	editingFilter      bool
+	editingFilterIndex int
+	filterAddStep      int
+	filterIsExclude    bool
+	editingFilterValue bool
+	filterValueInput   textinput.Model
+	filterKeyCursor    int
+
+	// Navigation
+	focusIndex    int
+	editingField  bool
+	originalValue string
+
+	// Context
+	editAppIdx int // -1 for new, >= 0 for editing
+	err        string
+}
+
+// SubEntryForm holds state for editing SubEntry data
+type SubEntryForm struct {
+	// Entry type
+	entryType EntryType
+
+	// Fields
+	nameInput          textinput.Model
+	linuxTargetInput   textinput.Model
+	windowsTargetInput textinput.Model
+	isSudo             bool
+
+	// Config-specific
+	backupInput      textinput.Model
+	isFolder         bool
+	files            []string
+	filesCursor      int
+	newFileInput     textinput.Model
+	addingFile       bool
+	editingFile      bool
+	editingFileIndex int
+
+	// Git-specific
+	repoInput   textinput.Model
+	branchInput textinput.Model
+
+	// Navigation
+	focusIndex    int
+	editingField  bool
+	originalValue string
+
+	// Autocomplete
+	suggestions      []string
+	suggestionCursor int
+	showSuggestions  bool
+
+	// Context
+	targetAppIdx int // App to add to (-1 if new app)
+	editAppIdx   int // -1 for new, >= 0 for editing
+	editSubIdx   int // -1 for new, >= 0 for editing
+	err          string
+}
+
 type Model struct {
 	Screen    Screen
 	Operation Operation
@@ -191,6 +277,11 @@ type Model struct {
 
 	// Add form
 	addForm AddForm
+
+	// Forms (only one active at a time)
+	applicationForm *ApplicationForm
+	subEntryForm    *SubEntryForm
+	activeForm      FormType
 
 	// Results
 	results    []ResultItem
