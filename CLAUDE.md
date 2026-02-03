@@ -73,11 +73,13 @@ applications:
 
       # Git package entry
       - name: "nvim-plugins"
-        git:
-          url: "https://github.com/user/plugins.git"
-          branch: "main"
-          targets:
-            linux: "~/.local/share/nvim/site/pack/plugins/start/myplugins"
+        managers:
+          git:
+            url: "https://github.com/user/plugins.git"
+            branch: "main"
+            targets:
+              linux: "~/.local/share/nvim/site/pack/plugins/start/myplugins"
+            sudo: false
 
     filters:
       - include:
@@ -98,23 +100,31 @@ applications:
 
 ### Git as a Package Manager
 
-Git repositories can be installed as packages using the git package manager:
+Git repositories can be installed as packages by adding git to the managers map:
 
 ```yaml
 packages:
   - name: "dotfiles"
-    git:
-      url: "https://github.com/user/dotfiles.git"
-      branch: "main"  # Optional, defaults to default branch
-      targets:
-        linux: "~/.dotfiles"
-        windows: "~/dotfiles"
+    managers:
+      git:
+        url: "https://github.com/user/dotfiles.git"
+        branch: "main"  # Optional
+        targets:
+          linux: "~/.dotfiles"
+          windows: "~/dotfiles"
+        sudo: false  # Optional, use true for system-level installs
 ```
+
+**Fields:**
+- `url`: Repository URL (required)
+- `branch`: Branch to clone (optional, defaults to default branch)
+- `targets`: OS-specific clone destinations (required)
+- `sudo`: Run git commands with sudo (optional, default false)
 
 **Behavior:**
 - If target directory exists with `.git/`: runs `git pull` to update
-- If target doesn't exist: clones repository with optional branch
-- All git configuration is nested under the `git` field for consistency
+- If target doesn't exist: clones repository
+- Git configuration is nested under `managers.git` for consistency with other package managers
 
 **Migration from v2**
 
