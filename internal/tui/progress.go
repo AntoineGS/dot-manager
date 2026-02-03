@@ -835,6 +835,13 @@ func (m Model) viewListTable() string {
 		}
 	}
 
+	// Calculate unified name width for status column alignment
+	// Sub-entries have " ├─ " (4 chars) before their name, so app names need +4 padding
+	unifiedNameWidth := maxAppNameWidth
+	if maxSubNameWidth+4 > unifiedNameWidth {
+		unifiedNameWidth = maxSubNameWidth + 4
+	}
+
 	// Render hierarchical tree structure
 	visualRow := 0
 	for _, app := range filtered {
@@ -847,7 +854,11 @@ func (m Model) viewListTable() string {
 			aggregateState := m.getAggregateState(app)
 
 			// Entry count
-			entryCount := fmt.Sprintf("%d entries", len(app.SubItems))
+			entryText := "entries"
+			if len(app.SubItems) == 1 {
+				entryText = "entry"
+			}
+			entryCount := fmt.Sprintf("%d %s", len(app.SubItems), entryText)
 
 			// Package indicator
 			var pkgIndicator string
@@ -862,8 +873,8 @@ func (m Model) viewListTable() string {
 				pkgIndicator = " "
 			}
 
-			// Pad to column widths
-			paddedName := padRight(app.Application.Name, maxAppNameWidth)
+			// Pad to column widths (use unified width for status alignment)
+			paddedName := padRight(app.Application.Name, unifiedNameWidth)
 			paddedCount := padRight(entryCount, 12) // Fixed width for entry count
 
 			// Build the complete line with or without selection styling
@@ -947,8 +958,8 @@ func (m Model) viewListTable() string {
 					// Target path
 					targetPath := truncateStr(subItem.Target)
 
-					// Pad to column widths
-					paddedName := padRight(subItem.SubEntry.Name, maxSubNameWidth)
+					// Pad to column widths (use unified width - 4 to account for tree prefix)
+					paddedName := padRight(subItem.SubEntry.Name, unifiedNameWidth-4)
 					paddedType := padRight(typeInfo, maxTypeWidth)
 					paddedSource := padRight(sourcePath, maxSourceWidth)
 
