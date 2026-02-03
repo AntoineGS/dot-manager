@@ -45,6 +45,14 @@ func (m *Manager) Restore() error {
 			return err
 		}
 
+		// Skip non-config entries (git entries are now handled as packages)
+		if !entry.IsConfig() {
+			m.logger.Debug("skipping entry (not a config entry)",
+				slog.String("entry", entry.Name),
+			)
+			continue
+		}
+
 		target := entry.GetTarget(m.Platform.OS)
 		if target == "" {
 			m.logger.Debug("skipping entry (no target)",
@@ -62,43 +70,6 @@ func (m *Manager) Restore() error {
 			m.logEntryRestore(entry, expandedTarget, err)
 		} else {
 			m.logEntryRestore(entry, expandedTarget, nil)
-		}
-	}
-
-	// Restore git entries (clones)
-	gitEntries := m.GetGitEntries()
-	m.logger.Debug("git entries to restore", slog.Int("count", len(gitEntries)))
-
-	for _, entry := range gitEntries {
-		// Check context before each entry
-		if err := m.checkContext(); err != nil {
-			return err
-		}
-
-		target := entry.GetTarget(m.Platform.OS)
-		if target == "" {
-			m.logger.Debug("skipping git entry (no target)",
-				slog.String("entry", entry.Name),
-				slog.String("os", m.Platform.OS),
-			)
-
-			continue
-		}
-
-		// Expand ~ and env vars in target path for file operations
-		expandedTarget := m.expandTarget(target)
-
-		if err := m.restoreGitEntry(entry, expandedTarget); err != nil {
-			m.logger.Error("git restore failed",
-				slog.String("entry", entry.Name),
-				slog.String("repo", entry.Repo),
-				slog.String("error", err.Error()),
-			)
-		} else {
-			m.logger.Info("git restore complete",
-				slog.String("entry", entry.Name),
-				slog.String("repo", entry.Repo),
-			)
 		}
 	}
 
@@ -340,82 +311,6 @@ func createSymlink(source, target string, useSudo bool) error {
 }
 
 // restoreGitEntry clones or updates a git repository
-func (m *Manager) restoreGitEntry(entry config.Entry, target string) error {
-	if pathExists(target) {
-		// Check if it's a git repository
-		gitDir := filepath.Join(target, ".git")
-		if pathExists(gitDir) {
-			m.logf("Updating git repo %s at %s...", entry.Name, target)
-
-			if !m.DryRun {
-				var cmd *exec.Cmd
-				if entry.Sudo {
-					cmd = exec.Command("sudo", "git", "-C", target, "pull")
-				} else {
-					cmd = exec.Command("git", "-C", target, "pull")
-				}
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-
-				if err := cmd.Run(); err != nil {
-					return NewGitError("pull", entry.Repo, entry.Branch, err)
-				}
-
-				m.logf("[ok] %s updated successfully", entry.Name)
-			}
-
-			return nil
-		}
-		// Target exists but is not a git repo - skip
-		m.logVerbosef("Target %s exists but is not a git repository, skipping", target)
-
-		return nil
-	}
-
-	// Clone the repository
-	m.logf("Cloning %s to %s...", entry.Name, target)
-
-	if !m.DryRun {
-		parentDir := filepath.Dir(target)
-		if !pathExists(parentDir) {
-			if entry.Sudo {
-				mkdirCmd := exec.Command("sudo", "mkdir", "-p", parentDir)
-				if err := mkdirCmd.Run(); err != nil {
-					return NewPathError("clone", parentDir, fmt.Errorf("creating parent: %w", err))
-				}
-			} else {
-				if err := os.MkdirAll(parentDir, 0755); err != nil {
-					return NewPathError("clone", parentDir, fmt.Errorf("creating parent: %w", err))
-				}
-			}
-		}
-
-		args := []string{"clone"}
-		if entry.Branch != "" {
-			args = append(args, "-b", entry.Branch)
-		}
-
-		args = append(args, entry.Repo, target)
-
-		var cmd *exec.Cmd
-		if entry.Sudo {
-			cmd = exec.Command("sudo", append([]string{"git"}, args...)...)
-		} else {
-			cmd = exec.Command("git", args...)
-		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Run(); err != nil {
-			return NewGitError("clone", entry.Repo, entry.Branch, err)
-		}
-
-		m.logf("[ok] %s cloned successfully", entry.Name)
-	}
-
-	return nil
-}
-
 func (m *Manager) restoreV3() error {
 	apps := m.GetApplications()
 
@@ -433,6 +328,12 @@ func (m *Manager) restoreV3() error {
 				return err
 			}
 
+			// Only process config entries (git entries are now handled as packages)
+			if !subEntry.IsConfig() {
+				m.logVerbosef("Skipping %s/%s: not a config entry", app.Name, subEntry.Name)
+				continue
+			}
+
 			target := subEntry.GetTarget(m.Platform.OS)
 			if target == "" {
 				m.logVerbosef("Skipping %s/%s: no target for OS %s", app.Name, subEntry.Name, m.Platform.OS)
@@ -442,14 +343,8 @@ func (m *Manager) restoreV3() error {
 			// Expand ~ and env vars in target path for file operations
 			expandedTarget := m.expandTarget(target)
 
-			if subEntry.IsConfig() {
-				if err := m.restoreSubEntry(app.Name, subEntry, expandedTarget); err != nil {
-					m.logf("Error restoring %s/%s: %v", app.Name, subEntry.Name, err)
-				}
-			} else if subEntry.IsGit() {
-				if err := m.restoreGitSubEntry(app.Name, subEntry, expandedTarget); err != nil {
-					m.logf("Error restoring git %s/%s: %v", app.Name, subEntry.Name, err)
-				}
+			if err := m.restoreSubEntry(app.Name, subEntry, expandedTarget); err != nil {
+				m.logf("Error restoring %s/%s: %v", app.Name, subEntry.Name, err)
 			}
 		}
 	}
@@ -642,77 +537,3 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 	return nil
 }
 
-func (m *Manager) restoreGitSubEntry(appName string, subEntry config.SubEntry, target string) error {
-	// Similar to restoreGitEntry but use subEntry fields
-	if pathExists(target) {
-		gitDir := filepath.Join(target, ".git")
-		if pathExists(gitDir) {
-			m.logf("Updating git repo %s/%s at %s...", appName, subEntry.Name, target)
-
-			if !m.DryRun {
-				var cmd *exec.Cmd
-				if subEntry.Sudo {
-					cmd = exec.Command("sudo", "git", "-C", target, "pull")
-				} else {
-					cmd = exec.Command("git", "-C", target, "pull")
-				}
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-
-				if err := cmd.Run(); err != nil {
-					return NewGitError("pull", subEntry.Repo, subEntry.Branch, err)
-				}
-
-				m.logf("[ok] %s/%s updated successfully", appName, subEntry.Name)
-			}
-
-			return nil
-		}
-
-		m.logVerbosef("Target %s exists but is not a git repository, skipping", target)
-
-		return nil
-	}
-
-	m.logf("Cloning %s/%s to %s...", appName, subEntry.Name, target)
-
-	if !m.DryRun {
-		parentDir := filepath.Dir(target)
-		if !pathExists(parentDir) {
-			if subEntry.Sudo {
-				mkdirCmd := exec.Command("sudo", "mkdir", "-p", parentDir)
-				if err := mkdirCmd.Run(); err != nil {
-					return NewPathError("clone", parentDir, fmt.Errorf("creating parent: %w", err))
-				}
-			} else {
-				if err := os.MkdirAll(parentDir, 0755); err != nil {
-					return NewPathError("clone", parentDir, fmt.Errorf("creating parent: %w", err))
-				}
-			}
-		}
-
-		args := []string{"clone"}
-		if subEntry.Branch != "" {
-			args = append(args, "-b", subEntry.Branch)
-		}
-
-		args = append(args, subEntry.Repo, target)
-
-		var cmd *exec.Cmd
-		if subEntry.Sudo {
-			cmd = exec.Command("sudo", append([]string{"git"}, args...)...)
-		} else {
-			cmd = exec.Command("git", args...)
-		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Run(); err != nil {
-			return NewGitError("clone", subEntry.Repo, subEntry.Branch, err)
-		}
-
-		m.logf("[ok] %s/%s cloned successfully", appName, subEntry.Name)
-	}
-
-	return nil
-}
