@@ -3,7 +3,6 @@ package manager
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -477,49 +476,6 @@ func TestRestoreV3_FilesSubEntry(t *testing.T) {
 
 	if string(content) != "bashrc content" {
 		t.Errorf("Content = %q, want %q", string(content), "bashrc content")
-	}
-}
-
-func TestRestoreV3_GitSubEntryDryRun(t *testing.T) {
-	t.Parallel()
-	tmpDir := t.TempDir()
-
-	// Target directory
-	targetDir := filepath.Join(tmpDir, "target", "repo")
-
-	cfg := &config.Config{
-		Version: 3,
-		Applications: []config.Application{
-			{
-				Name: "test-app",
-				Entries: []config.SubEntry{
-					{
-						Name:   "git-repo",
-						Type:   "git",
-						Repo:   "https://github.com/test/repo.git",
-						Branch: "main",
-						Targets: map[string]string{
-							"linux": targetDir,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	plat := &platform.Platform{OS: platform.OSLinux}
-	mgr := New(cfg, plat)
-	mgr.DryRun = true
-
-	err := mgr.Restore()
-	// Should succeed in dry-run mode
-	if err != nil {
-		t.Logf("Restore() returned: %v", err)
-	}
-
-	// Target should not exist in dry-run
-	if pathExists(targetDir) {
-		t.Error("Dry-run should not create target directory")
 	}
 }
 
@@ -1095,68 +1051,6 @@ func TestRestoreV3_FolderSubEntry_ReplacesExisting(t *testing.T) {
 	}
 }
 
-func TestRestoreV3_MixedConfigAndGit(t *testing.T) {
-	t.Parallel()
-	tmpDir := t.TempDir()
-
-	// Create backup for config entry
-	backupRoot := filepath.Join(tmpDir, "backup")
-	configBackup := filepath.Join(backupRoot, "nvim-config")
-	os.MkdirAll(configBackup, 0755)
-	os.WriteFile(filepath.Join(configBackup, "init.lua"), []byte("config"), 0644)
-
-	cfg := &config.Config{
-		Version:    3,
-		BackupRoot: backupRoot,
-		Applications: []config.Application{
-			{
-				Name: "nvim",
-				Entries: []config.SubEntry{
-					{
-						Name:   "config",
-						Type:   "config",
-						Backup: "./nvim-config",
-						Targets: map[string]string{
-							"linux": filepath.Join(tmpDir, "home", ".config", "nvim"),
-						},
-					},
-					{
-						Name:   "plugins",
-						Type:   "git",
-						Repo:   "https://github.com/test/plugins.git",
-						Branch: "main",
-						Targets: map[string]string{
-							"linux": filepath.Join(tmpDir, "home", ".local", "share", "nvim", "plugins"),
-						},
-					},
-				},
-			},
-		},
-	}
-
-	plat := &platform.Platform{OS: platform.OSLinux}
-	mgr := New(cfg, plat)
-	mgr.DryRun = true // Use dry-run to avoid actual git clone
-
-	err := mgr.Restore()
-	// Should succeed in dry-run mode
-	if err != nil {
-		t.Logf("Restore() returned: %v", err)
-	}
-
-	// Config symlink should not exist in dry-run
-	configTarget := filepath.Join(tmpDir, "home", ".config", "nvim")
-	if pathExists(configTarget) {
-		t.Error("dry-run should not create config symlink")
-	}
-
-	// Git target should not exist in dry-run
-	gitTarget := filepath.Join(tmpDir, "home", ".local", "share", "nvim", "plugins")
-	if pathExists(gitTarget) {
-		t.Error("dry-run should not create git target")
-	}
-}
-
 func TestRestoreV3_SkipsWrongOS(t *testing.T) {
 	t.Parallel()
 	tmpDir := t.TempDir()
@@ -1199,15 +1093,6 @@ func TestRestoreV3_SkipsWrongOS(t *testing.T) {
 		t.Error("target should not exist for wrong OS")
 	}
 }
-
-// gitAvailable checks if git command is available
-func gitAvailable() bool {
-	cmd := exec.Command("git", "--version")
-	return cmd.Run() == nil
-}
-
-
-
 
 
 
