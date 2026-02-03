@@ -1329,15 +1329,15 @@ func TestExpandPath(t *testing.T) {
 			expected: "./config",
 		},
 		{
-			name:    "env var expansion",
-			path:    "$HOME/.config",
-			envVars: nil,
+			name:     "env var expansion",
+			path:     "$HOME/.config",
+			envVars:  nil,
 			expected: filepath.Join(home, ".config"),
 		},
 		{
-			name:    "custom env var",
-			path:    "$MYVAR/config",
-			envVars: map[string]string{"MYVAR": "/custom/path"},
+			name:     "custom env var",
+			path:     "$MYVAR/config",
+			envVars:  map[string]string{"MYVAR": "/custom/path"},
 			expected: "/custom/path/config",
 		},
 		{
