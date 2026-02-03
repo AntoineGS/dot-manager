@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -18,9 +19,16 @@ type Manager struct {
 	DryRun    bool
 	Verbose   bool
 	ctx       context.Context // Internal context
+	logger    *slog.Logger    // Structured logger
 }
 
 func New(cfg *config.Config, plat *platform.Platform) *Manager {
+	// Create default logger
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}
+	handler := slog.NewTextHandler(os.Stdout, opts)
+
 	return &Manager{
 		Config:   cfg,
 		Platform: plat,
@@ -30,7 +38,8 @@ func New(cfg *config.Config, plat *platform.Platform) *Manager {
 			Hostname: plat.Hostname,
 			User:     plat.User,
 		},
-		ctx: context.Background(), // Default context
+		ctx:    context.Background(), // Default context
+		logger: slog.New(handler),
 	}
 }
 
@@ -39,6 +48,26 @@ func (m *Manager) WithContext(ctx context.Context) *Manager {
 	m2 := *m
 	m2.ctx = ctx
 	return &m2
+}
+
+// WithLogger sets a custom logger
+func (m *Manager) WithLogger(logger *slog.Logger) *Manager {
+	m2 := *m
+	m2.logger = logger
+	return &m2
+}
+
+// SetVerbose adjusts log level based on verbose flag
+func (m *Manager) SetVerbose(verbose bool) {
+	m.Verbose = verbose
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+	handler := slog.NewTextHandler(os.Stdout, opts)
+	m.logger = slog.New(handler)
 }
 
 // checkContext checks if context is cancelled and returns error
@@ -72,17 +101,35 @@ func (m *Manager) GetApplications() []config.Application {
 }
 
 func (m *Manager) log(format string, args ...interface{}) {
-	fmt.Printf(format+"\n", args...)
+	m.logger.Info(fmt.Sprintf(format, args...))
 }
 
 func (m *Manager) logVerbose(format string, args ...interface{}) {
-	if m.Verbose {
-		fmt.Printf(format+"\n", args...)
-	}
+	m.logger.Debug(fmt.Sprintf(format, args...))
 }
 
 func (m *Manager) logWarn(format string, args ...interface{}) {
-	fmt.Printf("[WARN] "+format+"\n", args...)
+	m.logger.Warn(fmt.Sprintf(format, args...))
+}
+
+func (m *Manager) logError(format string, args ...interface{}) {
+	m.logger.Error(fmt.Sprintf(format, args...))
+}
+
+// logEntryRestore logs restore operations with structured attributes
+func (m *Manager) logEntryRestore(entry config.Entry, target string, err error) {
+	if err != nil {
+		m.logger.Error("restore failed",
+			slog.String("entry", entry.Name),
+			slog.String("target", target),
+			slog.String("error", err.Error()),
+		)
+	} else {
+		m.logger.Info("restore complete",
+			slog.String("entry", entry.Name),
+			slog.String("target", target),
+		)
+	}
 }
 
 func (m *Manager) resolvePath(path string) string {

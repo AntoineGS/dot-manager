@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,7 +24,10 @@ func (m *Manager) Restore() error {
 		return err
 	}
 
-	m.log("Restoring configurations for OS: %s", m.Platform.OS)
+	m.logger.Info("starting restore",
+		slog.String("os", m.Platform.OS),
+		slog.Int("version", m.Config.Version),
+	)
 
 	// Check config version
 	if m.Config.Version == 3 {
@@ -32,6 +36,7 @@ func (m *Manager) Restore() error {
 
 	// v2 format - existing logic
 	entries := m.GetEntries()
+	m.logger.Debug("entries to restore", slog.Int("count", len(entries)))
 
 	for _, entry := range entries {
 		// Check context before each entry
@@ -41,17 +46,24 @@ func (m *Manager) Restore() error {
 
 		target := entry.GetTarget(m.Platform.OS)
 		if target == "" {
-			m.logVerbose("Skipping %s: no target for OS %s", entry.Name, m.Platform.OS)
+			m.logger.Debug("skipping entry (no target)",
+				slog.String("entry", entry.Name),
+				slog.String("os", m.Platform.OS),
+			)
 			continue
 		}
 
 		if err := m.restoreEntry(entry, target); err != nil {
-			m.log("Error restoring %s: %v", entry.Name, err)
+			m.logEntryRestore(entry, target, err)
+		} else {
+			m.logEntryRestore(entry, target, nil)
 		}
 	}
 
 	// Restore git entries (clones)
 	gitEntries := m.GetGitEntries()
+	m.logger.Debug("git entries to restore", slog.Int("count", len(gitEntries)))
+
 	for _, entry := range gitEntries {
 		// Check context before each entry
 		if err := m.checkContext(); err != nil {
@@ -60,12 +72,24 @@ func (m *Manager) Restore() error {
 
 		target := entry.GetTarget(m.Platform.OS)
 		if target == "" {
-			m.logVerbose("Skipping git entry %s: no target for OS %s", entry.Name, m.Platform.OS)
+			m.logger.Debug("skipping git entry (no target)",
+				slog.String("entry", entry.Name),
+				slog.String("os", m.Platform.OS),
+			)
 			continue
 		}
 
 		if err := m.restoreGitEntry(entry, target); err != nil {
-			m.log("Error restoring git entry %s: %v", entry.Name, err)
+			m.logger.Error("git restore failed",
+				slog.String("entry", entry.Name),
+				slog.String("repo", entry.Repo),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			m.logger.Info("git restore complete",
+				slog.String("entry", entry.Name),
+				slog.String("repo", entry.Repo),
+			)
 		}
 	}
 
