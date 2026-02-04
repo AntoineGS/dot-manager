@@ -33,6 +33,8 @@ const (
 	ScreenResults
 	// ScreenAddForm is the add/edit form screen
 	ScreenAddForm
+	// ScreenSummary is the summary/confirmation screen for batch operations
+	ScreenSummary
 )
 
 // Operation represents the type of operation being performed in the TUI.
@@ -217,6 +219,10 @@ type Model struct {
 	selectedApps       map[int]bool    // appIndex -> selected
 	selectedSubEntries map[string]bool // appIndex:subIndex -> selected
 	multiSelectActive  bool            // true when selections exist
+
+	// Summary screen state
+	summaryOperation   Operation //nolint:unused // Will be used in Task 9
+	summaryDoublePress string    // Track double-press state: "r", "i", or "d"
 }
 
 // EntryType distinguishes between config, git, and package-only type entries
@@ -579,6 +585,8 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ScreenAddForm:
 		// AddForm is handled earlier, but adding case for exhaustiveness
 		return m, nil
+	case ScreenSummary:
+		return m.updateSummary(msg)
 	}
 
 	return m, nil
@@ -612,6 +620,8 @@ func (m Model) View() string {
 		default:
 			return m.viewAddForm()
 		}
+	case ScreenSummary:
+		return m.viewSummary()
 	}
 
 	return ""

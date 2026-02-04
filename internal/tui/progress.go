@@ -608,7 +608,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 
 			return m, nil
-		case "n", "N", "esc":
+		case "n", "N", KeyEsc:
 			// Cancel delete
 			m.confirmingDeleteApp = false
 			m.confirmingDeleteSubEntry = false
