@@ -80,6 +80,12 @@ func (m *Manager) backupFolderSubEntry(_ string, subEntry config.SubEntry, backu
 		return nil
 	}
 
+	// Skip symlinks - they point to our backup already
+	if isSymlink(target) {
+		m.logVerbosef("Skipping symlink: %s", target)
+		return nil
+	}
+
 	m.logf("Backing up folder %s -> %s", target, backup)
 
 	if !m.DryRun {
@@ -119,6 +125,12 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 
 		if !pathExists(srcFile) {
 			m.logVerbosef("Source file does not exist: %s", srcFile)
+			continue
+		}
+
+		// Skip symlinks
+		if isSymlink(srcFile) {
+			m.logVerbosef("Skipping symlink: %s", srcFile)
 			continue
 		}
 

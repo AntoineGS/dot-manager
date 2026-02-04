@@ -37,9 +37,12 @@ func (m *Model) initApplicationItems() {
 				continue
 			}
 
+			// Expand ~ and env vars in target path for file operations
+			expandedTarget := config.ExpandPath(target, m.Platform.EnvVars)
+
 			subItem := SubEntryItem{
 				SubEntry: subEntry,
-				Target:   target,
+				Target:   expandedTarget,
 				Selected: true,
 				AppName:  app.Name,
 			}

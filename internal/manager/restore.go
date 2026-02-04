@@ -74,18 +74,30 @@ func (m *Manager) restoreEntry(entry config.Entry, target string) error {
 	backupPath := m.resolvePath(entry.Backup)
 
 	if entry.IsFolder() {
-		return m.restoreFolder(entry, backupPath, target)
+		return m.RestoreFolder(entry, backupPath, target)
 	}
 
-	return m.restoreFiles(entry, backupPath, target)
+	return m.RestoreFiles(entry, backupPath, target)
 }
 
+// RestoreFolder creates a symlink from target to source for a folder entry
+//
 //nolint:gocyclo,dupl // refactoring would risk breaking existing logic
-func (m *Manager) restoreFolder(entry config.Entry, source, target string) error {
-	// Skip if already a symlink
-	if isSymlink(target) {
-		m.logVerbosef("Already a symlink: %s", target)
+func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error {
+	// Check if already a symlink pointing to the correct source
+	if symlinkPointsTo(target, source) {
+		m.logVerbosef("Already a symlink pointing to correct source: %s", target)
 		return nil
+	}
+
+	// If it's a symlink but points to wrong location, remove it
+	if isSymlink(target) {
+		m.logf("Symlink points to wrong location, removing: %s", target)
+		if !m.DryRun {
+			if err := os.Remove(target); err != nil {
+				return NewPathError("restore", target, fmt.Errorf("removing incorrect symlink: %w", err))
+			}
+		}
 	}
 
 	// Check if we need to adopt: target exists but backup doesn't
@@ -168,8 +180,10 @@ func (m *Manager) restoreFolder(entry config.Entry, source, target string) error
 	return nil
 }
 
+// RestoreFiles creates symlinks from target to source for individual files in an entry
+//
 //nolint:dupl,gocyclo // similar logic for SubEntry version, complexity acceptable
-func (m *Manager) restoreFiles(entry config.Entry, source, target string) error {
+func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error {
 	// Create backup directory if it doesn't exist (needed for adopting)
 	if !pathExists(source) {
 		if !m.DryRun {
@@ -201,10 +215,20 @@ func (m *Manager) restoreFiles(entry config.Entry, source, target string) error 
 		srcFile := filepath.Join(source, file)
 		dstFile := filepath.Join(target, file)
 
-		// Skip if already a symlink
-		if isSymlink(dstFile) {
-			m.logVerbosef("Already a symlink: %s", dstFile)
+		// Check if already a symlink pointing to correct source
+		if symlinkPointsTo(dstFile, srcFile) {
+			m.logVerbosef("Already a symlink pointing to correct source: %s", dstFile)
 			continue
+		}
+
+		// If it's a symlink but points to wrong location, remove it
+		if isSymlink(dstFile) {
+			m.logf("Symlink points to wrong location, removing: %s", dstFile)
+			if !m.DryRun {
+				if err := os.Remove(dstFile); err != nil {
+					return NewPathError("restore", dstFile, fmt.Errorf("removing incorrect symlink: %w", err))
+				}
+			}
 		}
 
 		// Check if we need to adopt: target exists but backup doesn't
@@ -268,6 +292,20 @@ func (m *Manager) restoreFiles(entry config.Entry, source, target string) error 
 	return nil
 }
 
+// symlinkPointsTo checks if a symlink at 'path' points to 'expectedTarget'
+func symlinkPointsTo(path, expectedTarget string) bool {
+	if !isSymlink(path) {
+		return false
+	}
+
+	link, err := os.Readlink(path)
+	if err != nil {
+		return false
+	}
+
+	return link == expectedTarget
+}
+
 func createSymlink(source, target string, useSudo bool) error {
 	// Validate source exists
 	if _, err := os.Stat(source); err != nil {
@@ -318,9 +356,20 @@ func (m *Manager) restoreSubEntry(appName string, subEntry config.SubEntry, targ
 //nolint:gocyclo,dupl // refactoring would risk breaking existing logic
 func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, source, target string) error {
 	// Similar to restoreFolder but use subEntry fields
-	if isSymlink(target) {
-		m.logVerbosef("Already a symlink: %s", target)
+	// Check if already a symlink pointing to the correct source
+	if symlinkPointsTo(target, source) {
+		m.logVerbosef("Already a symlink pointing to correct source: %s", target)
 		return nil
+	}
+
+	// If it's a symlink but points to wrong location, remove it
+	if isSymlink(target) {
+		m.logf("Symlink points to wrong location, removing: %s", target)
+		if !m.DryRun {
+			if err := os.Remove(target); err != nil {
+				return NewPathError("restore", target, fmt.Errorf("removing incorrect symlink: %w", err))
+			}
+		}
 	}
 
 	if !pathExists(source) && pathExists(target) {
@@ -428,9 +477,20 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 		srcFile := filepath.Join(source, file)
 		dstFile := filepath.Join(target, file)
 
-		if isSymlink(dstFile) {
-			m.logVerbosef("Already a symlink: %s", dstFile)
+		// Check if already a symlink pointing to correct source
+		if symlinkPointsTo(dstFile, srcFile) {
+			m.logVerbosef("Already a symlink pointing to correct source: %s", dstFile)
 			continue
+		}
+
+		// If it's a symlink but points to wrong location, remove it
+		if isSymlink(dstFile) {
+			m.logf("Symlink points to wrong location, removing: %s", dstFile)
+			if !m.DryRun {
+				if err := os.Remove(dstFile); err != nil {
+					return NewPathError("restore", dstFile, fmt.Errorf("removing incorrect symlink: %w", err))
+				}
+			}
 		}
 
 		if !pathExists(srcFile) && pathExists(dstFile) {

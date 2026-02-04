@@ -312,9 +312,11 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 			}
 
 			target := entry.GetTarget(plat.OS)
+			// Expand ~ and env vars in target path for file operations
+			expandedTarget := config.ExpandPath(target, plat.EnvVars)
 			item := PathItem{
 				Entry:     entry,
-				Target:    target,
+				Target:    expandedTarget,
 				Selected:  true,
 				EntryType: entryType,
 			}

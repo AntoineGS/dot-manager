@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
@@ -655,5 +657,59 @@ func TestEditWithSortedApplications(t *testing.T) {
 
 	if model.subEntryForm.nameInput.Value() != "plugins" {
 		t.Errorf("Expected form to edit 'plugins', got %q", model.subEntryForm.nameInput.Value())
+	}
+}
+
+func TestPathItemTargetTildeExpansion(t *testing.T) {
+	// Test that PathItem.Target is expanded when created in NewModel
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: "/home/user/backup",
+		Applications: []config.Application{
+			{
+				Name:        "nvim",
+				Description: "Neovim editor",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim-config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": "~/.config/nvim",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{
+		OS: platform.OSLinux,
+		EnvVars: map[string]string{
+			"HOME": "/home/testuser",
+		},
+	}
+
+	model := NewModel(cfg, plat, false)
+
+	if len(model.Paths) != 1 {
+		t.Fatalf("Expected 1 path item, got %d", len(model.Paths))
+	}
+
+	pathItem := model.Paths[0]
+
+	// The target should NOT contain a literal tilde
+	if len(pathItem.Target) > 0 && pathItem.Target[0] == '~' {
+		t.Errorf("PathItem.Target should not start with '~' - tilde should be expanded. Got: %q", pathItem.Target)
+	}
+
+	// The Target should be expanded to an absolute path
+	if !filepath.IsAbs(pathItem.Target) {
+		t.Errorf("PathItem.Target should be an absolute path after expansion. Got: %q", pathItem.Target)
+	}
+
+	// Should end with .config/nvim
+	if !strings.HasSuffix(pathItem.Target, ".config/nvim") {
+		t.Errorf("PathItem.Target should end with '.config/nvim'. Got: %q", pathItem.Target)
 	}
 }
