@@ -205,3 +205,76 @@ func TestVisualWidth(t *testing.T) {
 		})
 	}
 }
+
+func TestNeedsAttention(t *testing.T) {
+	t.Run("status needs attention when not Installed", func(t *testing.T) {
+		if !needsAttention(StatusMissing) {
+			t.Errorf("StatusMissing should need attention")
+		}
+		if !needsAttention(StatusFiltered) {
+			t.Errorf("StatusFiltered should need attention")
+		}
+	})
+
+	t.Run("status does not need attention when Installed", func(t *testing.T) {
+		if needsAttention(StatusInstalled) {
+			t.Errorf("StatusInstalled should not need attention")
+		}
+	})
+
+	t.Run("sub-entry state needs attention when not Linked", func(t *testing.T) {
+		if !needsAttention(StateMissing.String()) {
+			t.Errorf("StateMissing should need attention")
+		}
+		if !needsAttention(StateReady.String()) {
+			t.Errorf("StateReady should need attention")
+		}
+		if !needsAttention(StateAdopt.String()) {
+			t.Errorf("StateAdopt should need attention")
+		}
+	})
+
+	t.Run("sub-entry state does not need attention when Linked", func(t *testing.T) {
+		if needsAttention(StateLinked.String()) {
+			t.Errorf("StateLinked should not need attention")
+		}
+	})
+}
+
+func TestAppInfoNeedsAttention(t *testing.T) {
+	t.Run("app info needs attention when any sub-entry is not Linked", func(t *testing.T) {
+		app := ApplicationItem{
+			SubItems: []SubEntryItem{
+				{State: StateLinked},
+				{State: StateMissing},
+			},
+		}
+		if !appInfoNeedsAttention(app) {
+			t.Errorf("App with non-Linked sub-entry should need attention")
+		}
+	})
+
+	t.Run("app info does not need attention when all sub-entries are Linked", func(t *testing.T) {
+		app := ApplicationItem{
+			SubItems: []SubEntryItem{
+				{State: StateLinked},
+				{State: StateLinked},
+			},
+		}
+		if appInfoNeedsAttention(app) {
+			t.Errorf("App with all Linked sub-entries should not need attention")
+		}
+	})
+
+	t.Run("app info does not need attention when filtered", func(t *testing.T) {
+		app := ApplicationItem{
+			IsFiltered: true,
+			SubItems: []SubEntryItem{
+				{State: StateMissing},
+			},
+		}
+		if appInfoNeedsAttention(app) {
+			t.Errorf("Filtered app should not need attention")
+		}
+	})
+}

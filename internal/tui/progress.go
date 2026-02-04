@@ -13,7 +13,8 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
-// sortTableRows sorts the table rows based on the current sort column and direction
+// sortTableRows sorts the table rows based on the current sort column and direction.
+// It preserves the application order from the existing tableRows and only sorts sub-entries.
 func (m *Model) sortTableRows() {
 	if len(m.tableRows) == 0 {
 		return
@@ -31,6 +32,8 @@ func (m *Model) sortTableRows() {
 	for _, row := range m.tableRows {
 		if _, exists := groups[row.AppIndex]; !exists {
 			groups[row.AppIndex] = &appGroup{}
+			// appIndices are added in the order they appear in tableRows,
+			// which preserves the current visual order
 			appIndices = append(appIndices, row.AppIndex)
 		}
 
@@ -41,25 +44,12 @@ func (m *Model) sortTableRows() {
 		}
 	}
 
-	// Sort applications by name or status (if applicable)
-	if m.sortColumn == SortColumnName || m.sortColumn == SortColumnStatus {
-		sort.SliceStable(appIndices, func(i, j int) bool {
-			rowI := groups[appIndices[i]].appRow
-			rowJ := groups[appIndices[j]].appRow
-
-			var less bool
-			if m.sortColumn == SortColumnName {
-				less = strings.ToLower(rowI.Data[0]) < strings.ToLower(rowJ.Data[0])
-			} else { // SortColumnStatus
-				less = strings.ToLower(rowI.Data[1]) < strings.ToLower(rowJ.Data[1])
-			}
-
-			if m.sortAscending {
-				return less
-			}
-			return !less
-		})
-	}
+	// NOTE: We do NOT sort appIndices here. The appIndices array already
+	// represents the current visual order from tableRows. Re-sorting would
+	// cause applications to jump positions when expanding/collapsing.
+	//
+	// Application sorting happens in initTableModel by sorting the filtered
+	// applications BEFORE calling flattenApplications.
 
 	// Sort sub-entries within each app
 	for _, group := range groups {
@@ -220,9 +210,29 @@ func (m *Model) refreshApplicationStates() {
 func (m *Model) initTableModel() {
 	// Flatten hierarchical data with current search
 	filtered := m.getSearchedApplications()
+
+	// Sort applications before flattening (only if sort column applies to apps)
+	if m.sortColumn == SortColumnName || m.sortColumn == SortColumnStatus {
+		sort.SliceStable(filtered, func(i, j int) bool {
+			var less bool
+			if m.sortColumn == SortColumnName {
+				less = strings.ToLower(filtered[i].Application.Name) < strings.ToLower(filtered[j].Application.Name)
+			} else { // SortColumnStatus
+				statusI := getApplicationStatus(filtered[i])
+				statusJ := getApplicationStatus(filtered[j])
+				less = strings.ToLower(statusI) < strings.ToLower(statusJ)
+			}
+
+			if m.sortAscending {
+				return less
+			}
+			return !less
+		})
+	}
+
 	m.tableRows = flattenApplications(filtered, m.Platform.OS)
 
-	// Apply sorting
+	// Apply sorting (only sorts sub-entries now, preserves app order)
 	m.sortTableRows()
 
 	// Ensure cursor is within bounds
@@ -321,7 +331,7 @@ func (m *Model) renderTable() string {
 		Rows(rows...).
 		BorderHeader(true).
 		Width(m.width - 4).
-		StyleFunc(func(row, _ int) lipgloss.Style {
+		StyleFunc(func(row, col int) lipgloss.Style {
 			switch row {
 			case table.HeaderRow:
 				// Header styling
@@ -336,8 +346,23 @@ func (m *Model) renderTable() string {
 					Bold(true).
 					Padding(0, 1)
 			default:
-				// Regular cell styling
-				return lipgloss.NewStyle().Padding(0, 1)
+				// Regular cell styling - check if needs attention
+				baseStyle := lipgloss.NewStyle().Padding(0, 1)
+
+				// Get the table row data
+				if row >= 0 && row < len(m.tableRows) {
+					tr := m.tableRows[row]
+
+					// Column 1 is status, column 2 is info
+					if col == 1 && tr.StatusAttention {
+						return baseStyle.Foreground(errorColor)
+					}
+					if col == 2 && tr.InfoAttention {
+						return baseStyle.Foreground(errorColor)
+					}
+				}
+
+				return baseStyle
 			}
 		})
 
