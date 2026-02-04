@@ -1,6 +1,7 @@
 package manager
 
-// MergeSummary tracks merge operations for a single application
+// MergeSummary tracks merge operations for a single application.
+// This type is not thread-safe and should not be used concurrently.
 type MergeSummary struct {
 	AppName       string
 	MergedFiles   []string
