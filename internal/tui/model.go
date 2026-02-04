@@ -10,6 +10,7 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/manager"
 	"github.com/AntoineGS/dot-manager/internal/packages"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -223,6 +224,14 @@ type Model struct {
 	// Summary screen state
 	summaryOperation   Operation // Which batch operation: restore, install, delete
 	summaryDoublePress string    // Track double-press state: "r", "i", or "d"
+
+	// Batch operation progress state
+	batchProgress     progress.Model // Progress bar for batch operations
+	batchCurrentItem  string         // Name of current item being processed
+	batchTotalItems   int            // Total items in batch
+	batchCurrentIndex int            // Current item index (0-based)
+	batchSuccessCount int            // Count of successful operations
+	batchFailCount    int            // Count of failed operations
 }
 
 // EntryType distinguishes between config, git, and package-only type entries
@@ -524,6 +533,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.Screen = ScreenResults
 
 		return m, nil
+
+	case BatchOperationMsg:
+		// Update batch progress state
+		m.batchCurrentItem = msg.ItemName
+		m.batchCurrentIndex = msg.ItemIndex
+		m.batchTotalItems = msg.TotalItems
+
+		if msg.Success {
+			m.batchSuccessCount++
+		} else {
+			m.batchFailCount++
+		}
+
+		return m, nil
+
+	case BatchCompleteMsg:
+		// Batch operation complete - show results
+		m.processing = false
+		m.results = msg.Results
+		m.Screen = ScreenResults
+		m.Operation = OpList
+
+		// Clear selections after operation
+		m.clearSelections()
+
+		return m, nil
+
+	case initBatchInstallMsg:
+		// Initialize batch package installation
+		m.pendingPackages = msg.packages
+		m.currentPackageIndex = 0
+
+		// Start installing first package
+		if len(m.pendingPackages) > 0 {
+			return m, m.installNextPackage()
+		}
+
+		// No packages to install
+		return m, func() tea.Msg {
+			return BatchCompleteMsg{
+				Results:      []ResultItem{},
+				SuccessCount: 0,
+				FailCount:    0,
+			}
+		}
 	}
 
 	return m, nil

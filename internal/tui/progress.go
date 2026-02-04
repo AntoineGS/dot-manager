@@ -547,9 +547,34 @@ func (m Model) viewProgress() string {
 	b.WriteString(TitleStyle.Render(title))
 	b.WriteString("\n\n")
 
-	// Spinner animation would go here
-	b.WriteString(SpinnerStyle.Render("Processing..."))
-	b.WriteString("\n")
+	// Show current item if batch operation
+	if m.batchTotalItems > 0 {
+		// Progress counter
+		progressText := fmt.Sprintf("Processing %d of %d items", m.batchCurrentIndex+1, m.batchTotalItems)
+		b.WriteString(SubtitleStyle.Render(progressText))
+		b.WriteString("\n\n")
+
+		// Current item being processed
+		if m.batchCurrentItem != "" {
+			b.WriteString(PathNameStyle.Render("Current: "))
+			b.WriteString(m.batchCurrentItem)
+			b.WriteString("\n\n")
+		}
+
+		// Progress bar
+		percent := float64(m.batchCurrentIndex) / float64(m.batchTotalItems)
+		b.WriteString(m.batchProgress.ViewAs(percent))
+		b.WriteString("\n\n")
+
+		// Stats
+		statsText := fmt.Sprintf("✓ %d successful  ✗ %d failed", m.batchSuccessCount, m.batchFailCount)
+		b.WriteString(MutedTextStyle.Render(statsText))
+		b.WriteString("\n")
+	} else {
+		// Fallback for non-batch operations
+		b.WriteString(SpinnerStyle.Render("Processing..."))
+		b.WriteString("\n")
+	}
 
 	return BaseStyle.Render(b.String())
 }
