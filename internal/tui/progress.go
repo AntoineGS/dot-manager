@@ -128,29 +128,32 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 	allLinked := true
 	anyBackup := false
 	anyTarget := false
+	checkedAnyFile := false
 
 	for _, file := range item.SubEntry.Files {
 		srcFile := filepath.Join(backupPath, file)
 		dstFile := filepath.Join(targetPath, file)
 
+		// Skip files that don't exist in backup (shouldn't affect state)
+		if !pathExists(srcFile) {
+			continue
+		}
+
+		checkedAnyFile = true
+		anyBackup = true
+
 		if info, err := os.Lstat(dstFile); err == nil {
+			anyTarget = true
 			if info.Mode()&os.ModeSymlink == 0 {
 				allLinked = false
 			}
 		} else {
 			allLinked = false
 		}
-
-		if pathExists(srcFile) {
-			anyBackup = true
-		}
-
-		if pathExists(dstFile) {
-			anyTarget = true
-		}
 	}
 
-	if allLinked && len(item.SubEntry.Files) > 0 {
+	// If all existing backup files are symlinked at target
+	if allLinked && checkedAnyFile {
 		return StateLinked
 	}
 
@@ -556,8 +559,13 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			appIdx, subIdx := m.getApplicationAtCursor()
 			if appIdx >= 0 && subIdx >= 0 {
 				subItem := &m.Applications[appIdx].SubItems[subIdx]
+				// Ensure Manager is in real mode (not dry-run) for Manage screen restores
+				originalDryRun := m.Manager.DryRun
+				m.Manager.DryRun = false
 				// Perform restore using SubEntry data
 				success, message := m.performRestoreSubEntry(subItem.SubEntry, subItem.Target)
+				// Restore original dry-run state
+				m.Manager.DryRun = originalDryRun
 				// Update the state after restore
 				if success {
 					m.Applications[appIdx].SubItems[subIdx].State = m.detectSubEntryState(subItem)
