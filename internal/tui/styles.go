@@ -187,6 +187,8 @@ func RenderHelp(keys ...string) string {
 
 // RenderHelpWithWidth renders help text with key bindings, wrapping to the specified width.
 // It takes a width and alternating key and description strings, formatting them with styling.
+// For single-character keys (except "q"), it highlights the matching letter within the description.
+// For "q" and multi-character keys, it renders them separately as "key desc".
 func RenderHelpWithWidth(width int, keys ...string) string {
 	if width < 20 {
 		width = 20
@@ -204,9 +206,40 @@ func RenderHelpWithWidth(width int, keys ...string) string {
 			desc = keys[i+1]
 		}
 
-		// Calculate the visual length of this item (without ANSI codes)
-		itemText := key + " " + desc
-		itemLen := len(itemText)
+		var itemText string
+		var itemLen int
+
+		// Special handling: if key is a single character and appears in desc,
+		// highlight it within the description
+		if len(key) == 1 {
+			// Find the first occurrence of the key character in the description (case-insensitive)
+			keyRune := []rune(key)[0]
+			descRunes := []rune(desc)
+			found := false
+
+			for j, r := range descRunes {
+				if r == keyRune || r == keyRune-32 || r == keyRune+32 {
+					// Found the key character - highlight it using the key's case
+					before := string(descRunes[:j])
+					highlighted := HelpKeyStyle.Render(key) // Use key's case, not matched character
+					after := string(descRunes[j+1:])
+					itemText = before + highlighted + after
+					itemLen = len(desc) // Visual length is just the description length
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				// Fallback: render as separate key and description
+				itemText = HelpKeyStyle.Render(key) + " " + desc
+				itemLen = len(key) + 1 + len(desc)
+			}
+		} else {
+			// For "q" and multi-character keys, render as separate key and description
+			itemText = HelpKeyStyle.Render(key) + " " + desc
+			itemLen = len(key) + 1 + len(desc)
+		}
 
 		// Calculate current line length (approximate, ignoring ANSI)
 		currentLen := 0
@@ -226,12 +259,12 @@ func RenderHelpWithWidth(width int, keys ...string) string {
 		if currentLine != "" && currentLen+len(separator)+itemLen > width-4 {
 			// Wrap to new line
 			lines = append(lines, currentLine)
-			currentLine = HelpKeyStyle.Render(key) + " " + desc
+			currentLine = itemText
 		} else {
 			if currentLine != "" {
 				currentLine += separator
 			}
-			currentLine += HelpKeyStyle.Render(key) + " " + desc
+			currentLine += itemText
 		}
 	}
 

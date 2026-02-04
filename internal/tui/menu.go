@@ -33,7 +33,7 @@ func (m Model) updateMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.menuCursor = 0
 		}
-	case KeyEnter, " ":
+	case KeyEnter, " ", "l":
 		m.Operation = menuItems[m.menuCursor].op
 		if m.Operation == OpList {
 			// List doesn't need path selection, show table view
@@ -100,7 +100,6 @@ func (m Model) viewMenu() string {
 	// Help
 	b.WriteString("\n")
 	b.WriteString(RenderHelp(
-		"enter", "select",
 		"q", "quit",
 	))
 

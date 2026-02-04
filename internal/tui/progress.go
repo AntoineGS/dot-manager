@@ -469,14 +469,14 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.Operation == OpList {
 			// Clear any previous restore results when navigating
 			m.results = nil
-			// If showing detail, close it; otherwise toggle expand or show detail
+			// If showing detail, close it; otherwise expand (not toggle)
 			if m.showingDetail {
 				m.showingDetail = false
 			} else {
 				appIdx, _ := m.getApplicationAtCursor()
 				if appIdx >= 0 {
-					// Toggle expansion
-					m.Applications[appIdx].Expanded = !m.Applications[appIdx].Expanded
+					// Only expand, don't collapse
+					m.Applications[appIdx].Expanded = true
 				}
 			}
 
@@ -876,8 +876,16 @@ func (m Model) viewListTable() string {
 				pkgIndicator = " "
 			}
 
-			// Pad to column widths (use unified width for status alignment)
-			paddedName := padRight(app.Application.Name, unifiedNameWidth)
+			// Expansion indicator
+			var expandIndicator string
+			if app.Expanded {
+				expandIndicator = "▼ "
+			} else {
+				expandIndicator = "▶ "
+			}
+
+			// Pad to column widths (use unified width for status alignment, accounting for indicator)
+			paddedName := padRight(expandIndicator+app.Application.Name, unifiedNameWidth+2)
 			paddedCount := padRight(entryCount, unifiedCountTypeWidth)
 
 			// Build the complete line with or without selection styling
@@ -1052,17 +1060,23 @@ func (m Model) viewListTable() string {
 			"q", "menu",
 		))
 	default:
-		b.WriteString(RenderHelpWithWidth(m.width,
+		// Build help text based on cursor position
+		helpItems := []string{
 			"/", "filter",
-			"l/→", "details",
 			"A", "add app",
 			"a", "add entry",
 			"e", "edit",
 			"d", "delete",
 			"r", "restore",
-			"i", "install",
-			"q", "menu",
-		))
+		}
+
+		// Only show "i install" when on level 1 (application), not on level 2 (sub-entry)
+		if subIdx < 0 {
+			helpItems = append(helpItems, "i", "install")
+		}
+
+		helpItems = append(helpItems, "q", "menu")
+		b.WriteString(RenderHelpWithWidth(m.width, helpItems...))
 	}
 
 	return BaseStyle.Render(b.String())
