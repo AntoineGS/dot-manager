@@ -305,22 +305,47 @@ func (m *Model) renderTable() string {
 		return SubtitleStyle.Render("No entries found")
 	}
 
+	// Determine if we have enough width to show backup column
+	// Width threshold: 140 chars allows for all columns including backup
+	showBackupColumn := m.width >= 140
+
 	// Build headers with highlighted shortcuts and sort indicators
-	headers := []string{
-		m.formatHeaderWithShortcut("name", 'n', SortColumnName),
-		m.formatHeaderWithShortcut("status", 's', SortColumnStatus),
-		"info",
-		m.formatHeaderWithShortcut("path", 'p', SortColumnPath),
+	var headers []string
+	if showBackupColumn {
+		headers = []string{
+			m.formatHeaderWithShortcut("name", 'n', SortColumnName),
+			m.formatHeaderWithShortcut("status", 's', SortColumnStatus),
+			"info",
+			"backup",
+			m.formatHeaderWithShortcut("path", 'p', SortColumnPath),
+		}
+	} else {
+		headers = []string{
+			m.formatHeaderWithShortcut("name", 'n', SortColumnName),
+			m.formatHeaderWithShortcut("status", 's', SortColumnStatus),
+			"info",
+			m.formatHeaderWithShortcut("path", 'p', SortColumnPath),
+		}
 	}
 
 	// Convert tableRows to string data for lipgloss table
 	rows := make([][]string, len(m.tableRows))
 	for i, tr := range m.tableRows {
-		rows[i] = []string{
-			tr.Data[0], // Name (with tree chars)
-			tr.Data[1], // Status
-			tr.Data[2], // Info
-			tr.Data[3], // Path
+		if showBackupColumn {
+			rows[i] = []string{
+				tr.Data[0],    // Name (with tree chars)
+				tr.Data[1],    // Status
+				tr.Data[2],    // Info
+				tr.BackupPath, // Backup path
+				tr.Data[3],    // Path (target)
+			}
+		} else {
+			rows[i] = []string{
+				tr.Data[0], // Name (with tree chars)
+				tr.Data[1], // Status
+				tr.Data[2], // Info
+				tr.Data[3], // Path
+			}
 		}
 	}
 
@@ -353,7 +378,7 @@ func (m *Model) renderTable() string {
 				if row >= 0 && row < len(m.tableRows) {
 					tr := m.tableRows[row]
 
-					// Column 1 is status, column 2 is info
+					// Column 1 is status, column 2 is info (regardless of backup column)
 					if col == 1 && tr.StatusAttention {
 						return baseStyle.Foreground(errorColor)
 					}

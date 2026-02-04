@@ -91,6 +91,10 @@ func (m Model) viewPathSelect() string {
 	b.WriteString(SubtitleStyle.Render(statusText))
 	b.WriteString("\n\n")
 
+	// Determine if we have enough width to show backup path inline
+	// Width threshold: 120 chars allows for cursor(2) + checkbox(2) + name(30) + state(8) + folder(8) + backup(25) + target(30) + margins
+	showBackupColumn := m.width >= 120
+
 	// Path list
 	startIdx, endIdx := CalculateVisibleRange(m.scrollOffset, m.viewHeight, len(m.Paths))
 	topIndicator, bottomIndicator := RenderScrollIndicators(startIdx, endIdx, len(m.Paths))
@@ -122,12 +126,25 @@ func (m Model) viewPathSelect() string {
 			folderBadge = FolderBadgeStyle.Render("folder")
 		}
 
-		line := fmt.Sprintf("%s%s %s%s%s", cursor, checkbox, name, stateBadge, folderBadge)
+		// Build line with optional backup column
+		var line string
+		if showBackupColumn {
+			// Show backup path inline
+			backupPath := PathBackupStyle.Render(truncatePath(item.Entry.Backup, 25))
+			targetPath := PathTargetStyle.Render(truncatePath(item.Target, 30))
+			line = fmt.Sprintf("%s%s %s%s%s  %s → %s",
+				cursor, checkbox, name, stateBadge, folderBadge,
+				backupPath, targetPath,
+			)
+		} else {
+			// Original single-line format
+			line = fmt.Sprintf("%s%s %s%s%s", cursor, checkbox, name, stateBadge, folderBadge)
+		}
 		b.WriteString(line)
 		b.WriteString("\n")
 
-		// Show target on selected line
-		if isSelected {
+		// Show target on selected line (only if not already shown inline)
+		if isSelected && !showBackupColumn {
 			targetLine := fmt.Sprintf("      %s → %s",
 				// Show backup path as-is (e.g., "./nvim") without resolving
 				PathBackupStyle.Render(truncatePath(item.Entry.Backup, 30)),

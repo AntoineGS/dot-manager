@@ -8,7 +8,7 @@ import (
 
 // TableRow wraps table.Row with hierarchy metadata
 type TableRow struct {
-	Data            table.Row // Actual display data [name, status, info, path]
+	Data            table.Row // Actual display data [name, status, info, path] or [name, status, info, backup, path]
 	Level           int       // 0 = application, 1 = sub-entry
 	TreeChar        string    // "▶ ", "▼ ", "├─", "└─"
 	IsExpanded      bool
@@ -17,6 +17,7 @@ type TableRow struct {
 	State           PathState // For badge rendering
 	StatusAttention bool      // Status column needs attention
 	InfoAttention   bool      // Info column needs attention
+	BackupPath      string    // Backup/source path for sub-entries (empty for app rows)
 }
 
 // flattenApplications converts hierarchical apps to flat table rows
@@ -84,6 +85,7 @@ func flattenApplications(apps []ApplicationItem, osType string) []TableRow {
 					State:           subItem.State,
 					StatusAttention: needsAttention(subItem.State.String()),
 					InfoAttention:   false, // Sub-entries don't have info attention
+					BackupPath:      subItem.SubEntry.Backup,
 				})
 			}
 		}
