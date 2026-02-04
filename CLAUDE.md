@@ -16,7 +16,12 @@ go test ./... -v
 
 # Run a single package's tests
 go test ./internal/manager/...
+
+# Run golangci-lint (REQUIRED after each feature change)
+golangci-lint run
 ```
+
+**IMPORTANT:** After implementing any feature change, bug fix, or refactoring, ALWAYS run `golangci-lint run` to ensure code quality and catch potential issues before committing.
 
 ## Architecture
 
