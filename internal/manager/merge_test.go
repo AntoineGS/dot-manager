@@ -338,3 +338,210 @@ func TestMergeFile_WithConflict(t *testing.T) {
 			summary.ConflictFiles[0].OriginalName, "config.json")
 	}
 }
+
+func TestMergeFolder_Recursive(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create nested target directory structure
+	targetDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	// Create nested files
+	files := []struct {
+		path    string
+		content string
+	}{
+		{"file1.txt", "content1"},
+		{"subdir/file2.txt", "content2"},
+		{"subdir/nested/file3.txt", "content3"},
+	}
+
+	for _, f := range files {
+		fullPath := filepath.Join(targetDir, f.path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), DirPerms); err != nil {
+			t.Fatalf("Failed to create directory for %q: %v", f.path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(f.content), 0600); err != nil {
+			t.Fatalf("Failed to create file %q: %v", f.path, err)
+		}
+	}
+
+	summary := NewMergeSummary("test-app")
+
+	// Act: Merge the entire folder
+	err := MergeFolder(backupDir, targetDir, false, summary)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("MergeFolder() error = %v, want nil", err)
+	}
+
+	// Assert: All files were merged
+	if len(summary.MergedFiles) != 3 {
+		t.Errorf("MergedFiles count = %d, want 3", len(summary.MergedFiles))
+	}
+
+	// Assert: No conflicts
+	if len(summary.ConflictFiles) != 0 {
+		t.Errorf("ConflictFiles count = %d, want 0", len(summary.ConflictFiles))
+	}
+
+	// Assert: All files exist in backup with correct content
+	for _, f := range files {
+		backupFile := filepath.Join(backupDir, f.path)
+		if !pathExists(backupFile) {
+			t.Errorf("Backup file not created at %q", backupFile)
+			continue
+		}
+
+		content, err := os.ReadFile(backupFile) //nolint:gosec // test file
+		if err != nil {
+			t.Errorf("Failed to read backup file %q: %v", backupFile, err)
+			continue
+		}
+		if string(content) != f.content {
+			t.Errorf("Backup file %q content = %q, want %q", f.path, string(content), f.content)
+		}
+
+		// Assert: Target files no longer exist
+		targetFile := filepath.Join(targetDir, f.path)
+		if pathExists(targetFile) {
+			t.Errorf("Target file still exists at %q, should have been moved", targetFile)
+		}
+	}
+}
+
+func TestMergeFolder_WithConflicts(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create target and backup directories with some overlapping files
+	targetDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	// Files that exist only in target (should be merged)
+	uniqueFiles := []struct {
+		path    string
+		content string
+	}{
+		{"unique1.txt", "unique content 1"},
+		{"subdir/unique2.txt", "unique content 2"},
+	}
+
+	// Files that exist in both (should create conflicts)
+	conflictFiles := []struct {
+		path          string
+		targetContent string
+		backupContent string
+	}{
+		{"conflict.json", "target version", "backup version"},
+		{"subdir/settings.conf", "target settings", "backup settings"},
+	}
+
+	// Create unique files in target
+	for _, f := range uniqueFiles {
+		fullPath := filepath.Join(targetDir, f.path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), DirPerms); err != nil {
+			t.Fatalf("Failed to create directory for %q: %v", f.path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(f.content), 0600); err != nil {
+			t.Fatalf("Failed to create file %q: %v", f.path, err)
+		}
+	}
+
+	// Create conflict files in both target and backup
+	for _, f := range conflictFiles {
+		// Target
+		targetPath := filepath.Join(targetDir, f.path)
+		if err := os.MkdirAll(filepath.Dir(targetPath), DirPerms); err != nil {
+			t.Fatalf("Failed to create directory for %q: %v", f.path, err)
+		}
+		if err := os.WriteFile(targetPath, []byte(f.targetContent), 0600); err != nil {
+			t.Fatalf("Failed to create target file %q: %v", f.path, err)
+		}
+
+		// Backup
+		backupPath := filepath.Join(backupDir, f.path)
+		if err := os.MkdirAll(filepath.Dir(backupPath), DirPerms); err != nil {
+			t.Fatalf("Failed to create backup directory for %q: %v", f.path, err)
+		}
+		if err := os.WriteFile(backupPath, []byte(f.backupContent), 0600); err != nil {
+			t.Fatalf("Failed to create backup file %q: %v", f.path, err)
+		}
+	}
+
+	summary := NewMergeSummary("test-app")
+
+	// Act: Merge the entire folder
+	err := MergeFolder(backupDir, targetDir, false, summary)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("MergeFolder() error = %v, want nil", err)
+	}
+
+	// Assert: Unique files were merged
+	if len(summary.MergedFiles) != 2 {
+		t.Errorf("MergedFiles count = %d, want 2", len(summary.MergedFiles))
+	}
+
+	// Assert: Conflicts were detected
+	if len(summary.ConflictFiles) != 2 {
+		t.Errorf("ConflictFiles count = %d, want 2", len(summary.ConflictFiles))
+	}
+
+	// Assert: Unique files exist in backup with correct content
+	for _, f := range uniqueFiles {
+		backupFile := filepath.Join(backupDir, f.path)
+		if !pathExists(backupFile) {
+			t.Errorf("Backup file not created at %q", backupFile)
+			continue
+		}
+
+		content, err := os.ReadFile(backupFile) //nolint:gosec // test file
+		if err != nil {
+			t.Errorf("Failed to read backup file %q: %v", backupFile, err)
+			continue
+		}
+		if string(content) != f.content {
+			t.Errorf("Backup file %q content = %q, want %q", f.path, string(content), f.content)
+		}
+	}
+
+	// Assert: Conflict files have backup version preserved and target renamed
+	for _, f := range conflictFiles {
+		backupFile := filepath.Join(backupDir, f.path)
+
+		// Original backup should still have backup content
+		content, err := os.ReadFile(backupFile) //nolint:gosec // test file
+		if err != nil {
+			t.Errorf("Failed to read backup file %q: %v", backupFile, err)
+			continue
+		}
+		if string(content) != f.backupContent {
+			t.Errorf("Backup file %q content = %q, want %q", f.path, string(content), f.backupContent)
+		}
+
+		// Conflict file should exist with target content
+		filename := filepath.Base(f.path)
+		dir := filepath.Dir(f.path)
+		pattern := filepath.Join(backupDir, dir, strings.TrimSuffix(filename, filepath.Ext(filename))+"_target_*"+filepath.Ext(filename))
+		conflictFiles, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Errorf("Failed to glob conflict files for %q: %v", f.path, err)
+			continue
+		}
+		if len(conflictFiles) != 1 {
+			t.Errorf("Conflict files for %q count = %d, want 1", f.path, len(conflictFiles))
+			continue
+		}
+
+		conflictContent, err := os.ReadFile(conflictFiles[0]) //nolint:gosec // test file
+		if err != nil {
+			t.Errorf("Failed to read conflict file %q: %v", conflictFiles[0], err)
+			continue
+		}
+		if string(conflictContent) != f.targetContent {
+			t.Errorf("Conflict file %q content = %q, want %q", f.path, string(conflictContent), f.targetContent)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -153,4 +154,51 @@ func mergeFile(targetFile, backupDir, relativePath string, useSudo bool, summary
 
 	summary.AddMerged(relativePath)
 	return nil
+}
+
+// MergeFolder recursively merges all files from targetDir into backupDir.
+// It walks the target directory tree and calls mergeFile for each file found.
+// Directories are skipped (only files are processed).
+// Individual file errors are logged but don't stop the overall operation.
+//
+// Parameters:
+//   - backupDir: Directory where backup files are stored
+//   - targetDir: Directory to merge files from
+//   - useSudo: Whether to use sudo for file operations (not yet implemented)
+//   - summary: MergeSummary to record all operations
+//
+// Returns error only if the directory walk itself fails.
+func MergeFolder(backupDir, targetDir string, useSudo bool, summary *MergeSummary) error {
+	return filepath.WalkDir(targetDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories, only process files
+		if d.IsDir() {
+			return nil
+		}
+
+		// Calculate relative path from targetDir
+		relativePath, err := filepath.Rel(targetDir, path)
+		if err != nil {
+			slog.Error("Failed to calculate relative path",
+				"path", path,
+				"target_dir", targetDir,
+				"error", err)
+			summary.AddFailed(path, err.Error())
+			return nil // Continue walking
+		}
+
+		// Merge the file
+		if err := mergeFile(path, backupDir, relativePath, useSudo, summary); err != nil {
+			slog.Error("Failed to merge file",
+				"file", relativePath,
+				"error", err)
+			summary.AddFailed(relativePath, err.Error())
+			return nil // Continue walking
+		}
+
+		return nil
+	})
 }
