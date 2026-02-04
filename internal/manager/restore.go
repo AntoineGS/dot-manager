@@ -458,6 +458,70 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 		}
 	}
 
+	// Handle merge case: both source and target exist
+	if pathExists(source) && pathExists(target) && !isSymlink(target) {
+		if m.NoMerge {
+			// List files and return error
+			var fileList []string
+			err := filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if !d.IsDir() {
+					relPath, _ := filepath.Rel(target, path)
+					fileList = append(fileList, relPath)
+				}
+				return nil
+			})
+			if err != nil {
+				return NewPathError("restore", target, fmt.Errorf("listing files: %w", err))
+			}
+			return NewPathError("restore", target, fmt.Errorf(
+				"target exists with %d file(s): %s. Use merge mode to combine with backup",
+				len(fileList),
+				strings.Join(fileList, ", ")))
+		}
+
+		// Merge target into backup
+		m.logger.Info("merging existing content into backup",
+			slog.String("target", target),
+			slog.String("backup", source))
+
+		if !m.DryRun {
+			summary := NewMergeSummary(subEntry.Name)
+			if err := MergeFolder(source, target, subEntry.Sudo, summary); err != nil {
+				return NewPathError("restore", target, fmt.Errorf("merging folder: %w", err))
+			}
+
+			// Log merge summary
+			if summary.HasOperations() {
+				m.logger.Info("merge complete",
+					slog.Int("merged", len(summary.MergedFiles)),
+					slog.Int("conflicts", len(summary.ConflictFiles)),
+					slog.Int("failed", len(summary.FailedFiles)))
+
+				for _, conflict := range summary.ConflictFiles {
+					m.logger.Warn("conflict resolved by renaming",
+						slog.String("file", conflict.OriginalName),
+						slog.String("renamed_to", conflict.RenamedTo))
+				}
+
+				for _, failed := range summary.FailedFiles {
+					m.logger.Error("merge failed for file",
+						slog.String("file", failed.FileName),
+						slog.String("error", failed.Error))
+				}
+			}
+
+			// Remove empty directories after merge
+			if err := removeEmptyDirs(target); err != nil {
+				m.logger.Warn("failed to clean up empty directories",
+					slog.String("target", target),
+					slog.String("error", err.Error()))
+			}
+		}
+	}
+
 	if !pathExists(source) && pathExists(target) {
 		m.logger.Info("adopting folder",
 			slog.String("from", target),

@@ -1191,16 +1191,26 @@ func TestRestoreV3_FolderSubEntry_ReplacesExisting(t *testing.T) {
 		t.Error("target should be a symlink")
 	}
 
-	// Old file should not exist at target
+	// Old file should exist at backup (merged from target)
+	oldFileBackup := filepath.Join(backupPath, "old.lua")
+	if !pathExists(oldFileBackup) {
+		t.Error("old.lua should exist in backup (merged from target)")
+	}
+	content, _ := os.ReadFile(oldFileBackup) //nolint:gosec // test file
+	if string(content) != "old config" {
+		t.Errorf("old.lua content = %q, want %q", string(content), "old config")
+	}
+
+	// Old file should be accessible through symlink (points to backup)
 	oldFile := filepath.Join(targetDir, "old.lua")
-	if pathExists(oldFile) {
-		t.Error("old.lua should not exist at target (folder was replaced)")
+	if !pathExists(oldFile) {
+		t.Error("old.lua should be accessible through symlink")
 	}
 
 	// New file should be accessible through symlink
 	newFile := filepath.Join(targetDir, "new.lua")
 
-	content, _ := os.ReadFile(newFile) //nolint:gosec // test file
+	content, _ = os.ReadFile(newFile) //nolint:gosec // test file
 	if string(content) != "new config" {
 		t.Errorf("content = %q, want %q", string(content), "new config")
 	}
