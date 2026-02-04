@@ -407,6 +407,7 @@ func TestCanInstall(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &Manager{
+				ctx:       context.Background(),
 				Config:    &Config{},
 				OS:        tt.osType,
 				Available: tt.available,
@@ -521,6 +522,7 @@ func TestGetInstallMethod(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &Manager{
+				ctx:       context.Background(),
 				Config:    &Config{},
 				OS:        tt.osType,
 				Available: tt.available,
@@ -615,6 +617,7 @@ func TestInstall_DryRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &Manager{
+				ctx:       context.Background(),
 				Config:    &Config{},
 				OS:        tt.osType,
 				DryRun:    true,
@@ -1192,6 +1195,7 @@ func TestInstallAll_DryRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &Manager{
+				ctx:       context.Background(),
 				Config:    &Config{},
 				OS:        tt.osType,
 				DryRun:    true,

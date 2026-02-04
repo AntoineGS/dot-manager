@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -57,7 +58,10 @@ func Detect() *Platform {
 func detectDistro() string {
 	data, err := os.ReadFile("/etc/os-release")
 	if err != nil {
-		slog.Debug("failed to read /etc/os-release", "error", err)
+		slog.Debug("unable to detect linux distribution",
+			slog.String("file", "/etc/os-release"),
+			slog.String("error", err.Error()),
+			slog.String("fallback", "empty"))
 		return ""
 	}
 
@@ -77,7 +81,9 @@ func detectDistro() string {
 func detectHostname() string {
 	hostname, err := os.Hostname()
 	if err != nil {
-		slog.Debug("failed to detect hostname", "error", err)
+		slog.Debug("unable to detect hostname",
+			slog.String("error", err.Error()),
+			slog.String("fallback", "empty"))
 		return ""
 	}
 
@@ -87,7 +93,9 @@ func detectHostname() string {
 func detectUser() string {
 	u, err := user.Current()
 	if err != nil {
-		slog.Debug("failed to detect current user", "error", err)
+		slog.Debug("unable to detect current user",
+			slog.String("error", err.Error()),
+			slog.String("fallback", "empty"))
 		return ""
 	}
 
@@ -119,30 +127,9 @@ func (p *Platform) detectPowerShellProfile() {
 	profile := strings.TrimSpace(string(output))
 	if profile != "" {
 		p.EnvVars["PWSH_PROFILE"] = profile
-		p.EnvVars["PWSH_PROFILE_FILE"] = getBasename(profile)
-		p.EnvVars["PWSH_PROFILE_PATH"] = getDirname(profile)
+		p.EnvVars["PWSH_PROFILE_FILE"] = filepath.Base(profile)
+		p.EnvVars["PWSH_PROFILE_PATH"] = filepath.Dir(profile)
 	}
-}
-
-func getBasename(path string) string {
-	// Handle both Unix and Windows separators
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			return path[i+1:]
-		}
-	}
-
-	return path
-}
-
-func getDirname(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			return path[:i]
-		}
-	}
-
-	return "."
 }
 
 // WithOS returns a copy of the Platform with the OS field overridden.

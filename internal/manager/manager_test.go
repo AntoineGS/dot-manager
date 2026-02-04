@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -495,9 +496,9 @@ func TestLogWarn(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	// Just call it to get coverage - hard to test output
-	mgr.logWarnf("test warning message")
-	mgr.logWarnf("test warning with %s", "arg")
+	// Just call it to get coverage - uses structured logging now
+	mgr.logger.Warn("test warning message", slog.String("test", "value"))
+	mgr.logger.Warn("test warning with arg", slog.String("arg", "value"))
 }
 
 func TestManager_SatisfiesInterface(t *testing.T) {

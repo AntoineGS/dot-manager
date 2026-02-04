@@ -19,6 +19,8 @@ func (m *Manager) RestoreWithContext(ctx context.Context) error {
 }
 
 // Restore creates symlinks from target locations to backup sources for all managed configuration files.
+//
+//nolint:dupl // similar structure to Backup, but semantically different operations
 func (m *Manager) Restore() error {
 	// Check context before starting
 	if err := m.checkContext(); err != nil {
@@ -38,7 +40,7 @@ func (m *Manager) Restore() error {
 			return err
 		}
 
-		m.logf("Restoring application: %s", app.Name)
+		m.logger.Info("restoring application", slog.String("app", app.Name))
 
 		for _, subEntry := range app.Entries {
 			// Check context before each entry
@@ -48,13 +50,20 @@ func (m *Manager) Restore() error {
 
 			// Only process config entries
 			if !subEntry.IsConfig() {
-				m.logVerbosef("Skipping %s/%s: not a config entry", app.Name, subEntry.Name)
+				m.logger.Debug("skipping entry",
+					slog.String("app", app.Name),
+					slog.String("entry", subEntry.Name),
+					slog.String("reason", "not a config entry"))
 				continue
 			}
 
 			target := subEntry.GetTarget(m.Platform.OS)
 			if target == "" {
-				m.logVerbosef("Skipping %s/%s: no target for OS %s", app.Name, subEntry.Name, m.Platform.OS)
+				m.logger.Debug("skipping entry",
+					slog.String("app", app.Name),
+					slog.String("entry", subEntry.Name),
+					slog.String("os", m.Platform.OS),
+					slog.String("reason", "no target for OS"))
 				continue
 			}
 
@@ -62,7 +71,10 @@ func (m *Manager) Restore() error {
 			expandedTarget := m.expandTarget(target)
 
 			if err := m.restoreSubEntry(app.Name, subEntry, expandedTarget); err != nil {
-				m.logf("Error restoring %s/%s: %v", app.Name, subEntry.Name, err)
+				m.logger.Error("restore failed",
+					slog.String("app", app.Name),
+					slog.String("entry", subEntry.Name),
+					slog.String("error", err.Error()))
 			}
 		}
 	}
@@ -86,13 +98,13 @@ func (m *Manager) restoreEntry(entry config.Entry, target string) error {
 func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error {
 	// Check if already a symlink pointing to the correct source
 	if symlinkPointsTo(target, source) {
-		m.logVerbosef("Already a symlink pointing to correct source: %s", target)
+		m.logger.Debug("already a symlink", slog.String("path", target))
 		return nil
 	}
 
 	// If it's a symlink but points to wrong location, remove it
 	if isSymlink(target) {
-		m.logf("Symlink points to wrong location, removing: %s", target)
+		m.logger.Info("removing incorrect symlink", slog.String("path", target))
 		if !m.DryRun {
 			if err := os.Remove(target); err != nil {
 				return NewPathError("restore", target, fmt.Errorf("removing incorrect symlink: %w", err))
@@ -102,13 +114,15 @@ func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error
 
 	// Check if we need to adopt: target exists but backup doesn't
 	if !pathExists(source) && pathExists(target) {
-		m.logf("Adopting folder %s -> %s", target, source)
+		m.logger.Info("adopting folder",
+			slog.String("from", target),
+			slog.String("to", source))
 
 		if !m.DryRun {
 			// Create backup parent directory
 			backupParent := filepath.Dir(source)
 			if !pathExists(backupParent) {
-				if err := os.MkdirAll(backupParent, 0750); err != nil {
+				if err := os.MkdirAll(backupParent, DirPerms); err != nil {
 					return NewPathError("adopt", source, fmt.Errorf("creating backup parent: %w", err))
 				}
 			}
@@ -128,14 +142,14 @@ func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error
 
 	// Now check if backup exists
 	if !pathExists(source) {
-		m.logVerbosef("Source folder does not exist: %s", source)
+		m.logger.Debug("source folder does not exist", slog.String("path", source))
 		return nil
 	}
 
 	// Create parent directory if it doesn't exist
 	parentDir := filepath.Dir(target)
 	if !pathExists(parentDir) {
-		m.logf("Creating directory %s", parentDir)
+		m.logger.Info("creating directory", slog.String("path", parentDir))
 
 		if !m.DryRun {
 			if entry.Sudo {
@@ -144,7 +158,7 @@ func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error
 					return NewPathError("restore", parentDir, fmt.Errorf("creating parent: %w", err))
 				}
 			} else {
-				if err := os.MkdirAll(parentDir, 0750); err != nil {
+				if err := os.MkdirAll(parentDir, DirPerms); err != nil {
 					return NewPathError("restore", parentDir, fmt.Errorf("creating parent: %w", err))
 				}
 			}
@@ -153,7 +167,7 @@ func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error
 
 	// Remove existing folder (if still there after adopt check)
 	if pathExists(target) && !isSymlink(target) {
-		m.logf("Removing folder %s", target)
+		m.logger.Info("removing folder", slog.String("path", target))
 
 		if !m.DryRun {
 			if entry.Sudo {
@@ -169,7 +183,9 @@ func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error
 		}
 	}
 
-	m.logf("Creating symlink %s -> %s", target, source)
+	m.logger.Info("creating symlink",
+		slog.String("target", target),
+		slog.String("source", source))
 
 	if !m.DryRun {
 		if err := createSymlink(source, target, entry.Sudo); err != nil {
@@ -187,7 +203,7 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 	// Create backup directory if it doesn't exist (needed for adopting)
 	if !pathExists(source) {
 		if !m.DryRun {
-			if err := os.MkdirAll(source, 0750); err != nil {
+			if err := os.MkdirAll(source, DirPerms); err != nil {
 				return NewPathError("restore", source, fmt.Errorf("creating backup directory: %w", err))
 			}
 		}
@@ -195,7 +211,7 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 
 	// Create target directory if it doesn't exist
 	if !pathExists(target) {
-		m.logf("Creating directory %s", target)
+		m.logger.Info("creating directory", slog.String("path", target))
 
 		if !m.DryRun {
 			if entry.Sudo {
@@ -204,7 +220,7 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 					return NewPathError("restore", target, fmt.Errorf("creating target directory: %w", err))
 				}
 			} else {
-				if err := os.MkdirAll(target, 0750); err != nil {
+				if err := os.MkdirAll(target, DirPerms); err != nil {
 					return NewPathError("restore", target, fmt.Errorf("creating target directory: %w", err))
 				}
 			}
@@ -217,13 +233,13 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 
 		// Check if already a symlink pointing to correct source
 		if symlinkPointsTo(dstFile, srcFile) {
-			m.logVerbosef("Already a symlink pointing to correct source: %s", dstFile)
+			m.logger.Debug("already a symlink", slog.String("path", dstFile))
 			continue
 		}
 
 		// If it's a symlink but points to wrong location, remove it
 		if isSymlink(dstFile) {
-			m.logf("Symlink points to wrong location, removing: %s", dstFile)
+			m.logger.Info("removing incorrect symlink", slog.String("path", dstFile))
 			if !m.DryRun {
 				if err := os.Remove(dstFile); err != nil {
 					return NewPathError("restore", dstFile, fmt.Errorf("removing incorrect symlink: %w", err))
@@ -233,7 +249,9 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 
 		// Check if we need to adopt: target exists but backup doesn't
 		if !pathExists(srcFile) && pathExists(dstFile) {
-			m.logf("Adopting file %s -> %s", dstFile, srcFile)
+			m.logger.Info("adopting file",
+				slog.String("from", dstFile),
+				slog.String("to", srcFile))
 
 			if !m.DryRun {
 				// Move target file to backup location
@@ -258,13 +276,13 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 		}
 
 		if !pathExists(srcFile) {
-			m.logVerbosef("Source file does not exist: %s", srcFile)
+			m.logger.Debug("source file does not exist", slog.String("path", srcFile))
 			continue
 		}
 
 		// Remove existing file (if still there after adopt check)
 		if pathExists(dstFile) && !isSymlink(dstFile) {
-			m.logf("Removing file %s", dstFile)
+			m.logger.Info("removing file", slog.String("path", dstFile))
 
 			if !m.DryRun {
 				if entry.Sudo {
@@ -280,7 +298,9 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 			}
 		}
 
-		m.logf("Creating symlink %s -> %s", dstFile, srcFile)
+		m.logger.Info("creating symlink",
+			slog.String("target", dstFile),
+			slog.String("source", srcFile))
 
 		if !m.DryRun {
 			if err := createSymlink(srcFile, dstFile, entry.Sudo); err != nil {
@@ -358,13 +378,13 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 	// Similar to restoreFolder but use subEntry fields
 	// Check if already a symlink pointing to the correct source
 	if symlinkPointsTo(target, source) {
-		m.logVerbosef("Already a symlink pointing to correct source: %s", target)
+		m.logger.Debug("already a symlink", slog.String("path", target))
 		return nil
 	}
 
 	// If it's a symlink but points to wrong location, remove it
 	if isSymlink(target) {
-		m.logf("Symlink points to wrong location, removing: %s", target)
+		m.logger.Info("removing incorrect symlink", slog.String("path", target))
 		if !m.DryRun {
 			if err := os.Remove(target); err != nil {
 				return NewPathError("restore", target, fmt.Errorf("removing incorrect symlink: %w", err))
@@ -373,12 +393,14 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 	}
 
 	if !pathExists(source) && pathExists(target) {
-		m.logf("Adopting folder %s -> %s", target, source)
+		m.logger.Info("adopting folder",
+			slog.String("from", target),
+			slog.String("to", source))
 
 		if !m.DryRun {
 			backupParent := filepath.Dir(source)
 			if !pathExists(backupParent) {
-				if err := os.MkdirAll(backupParent, 0750); err != nil {
+				if err := os.MkdirAll(backupParent, DirPerms); err != nil {
 					return NewPathError("adopt", source, fmt.Errorf("creating backup parent: %w", err))
 				}
 			}
@@ -397,13 +419,13 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 	}
 
 	if !pathExists(source) {
-		m.logVerbosef("Source folder does not exist: %s", source)
+		m.logger.Debug("source folder does not exist", slog.String("path", source))
 		return nil
 	}
 
 	parentDir := filepath.Dir(target)
 	if !pathExists(parentDir) {
-		m.logf("Creating directory %s", parentDir)
+		m.logger.Info("creating directory", slog.String("path", parentDir))
 
 		if !m.DryRun {
 			if subEntry.Sudo {
@@ -412,7 +434,7 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 					return NewPathError("restore", parentDir, fmt.Errorf("creating parent: %w", err))
 				}
 			} else {
-				if err := os.MkdirAll(parentDir, 0750); err != nil {
+				if err := os.MkdirAll(parentDir, DirPerms); err != nil {
 					return NewPathError("restore", parentDir, fmt.Errorf("creating parent: %w", err))
 				}
 			}
@@ -420,7 +442,7 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 	}
 
 	if pathExists(target) && !isSymlink(target) {
-		m.logf("Removing folder %s", target)
+		m.logger.Info("removing folder", slog.String("path", target))
 
 		if !m.DryRun {
 			if subEntry.Sudo {
@@ -436,7 +458,9 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 		}
 	}
 
-	m.logf("Creating symlink %s -> %s", target, source)
+	m.logger.Info("creating symlink",
+		slog.String("target", target),
+		slog.String("source", source))
 
 	if !m.DryRun {
 		return createSymlink(source, target, subEntry.Sudo)
@@ -450,14 +474,14 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 	// Similar to restoreFiles but use subEntry fields
 	if !pathExists(source) {
 		if !m.DryRun {
-			if err := os.MkdirAll(source, 0750); err != nil {
+			if err := os.MkdirAll(source, DirPerms); err != nil {
 				return NewPathError("restore", source, fmt.Errorf("creating backup directory: %w", err))
 			}
 		}
 	}
 
 	if !pathExists(target) {
-		m.logf("Creating directory %s", target)
+		m.logger.Info("creating directory", slog.String("path", target))
 
 		if !m.DryRun {
 			if subEntry.Sudo {
@@ -466,7 +490,7 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 					return NewPathError("restore", target, fmt.Errorf("creating target directory: %w", err))
 				}
 			} else {
-				if err := os.MkdirAll(target, 0750); err != nil {
+				if err := os.MkdirAll(target, DirPerms); err != nil {
 					return NewPathError("restore", target, fmt.Errorf("creating target directory: %w", err))
 				}
 			}
@@ -479,13 +503,13 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 
 		// Check if already a symlink pointing to correct source
 		if symlinkPointsTo(dstFile, srcFile) {
-			m.logVerbosef("Already a symlink pointing to correct source: %s", dstFile)
+			m.logger.Debug("already a symlink", slog.String("path", dstFile))
 			continue
 		}
 
 		// If it's a symlink but points to wrong location, remove it
 		if isSymlink(dstFile) {
-			m.logf("Symlink points to wrong location, removing: %s", dstFile)
+			m.logger.Info("removing incorrect symlink", slog.String("path", dstFile))
 			if !m.DryRun {
 				if err := os.Remove(dstFile); err != nil {
 					return NewPathError("restore", dstFile, fmt.Errorf("removing incorrect symlink: %w", err))
@@ -494,7 +518,9 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 		}
 
 		if !pathExists(srcFile) && pathExists(dstFile) {
-			m.logf("Adopting file %s -> %s", dstFile, srcFile)
+			m.logger.Info("adopting file",
+				slog.String("from", dstFile),
+				slog.String("to", srcFile))
 
 			if !m.DryRun {
 				if subEntry.Sudo {
@@ -517,12 +543,12 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 		}
 
 		if !pathExists(srcFile) {
-			m.logVerbosef("Source file does not exist: %s", srcFile)
+			m.logger.Debug("source file does not exist", slog.String("path", srcFile))
 			continue
 		}
 
 		if pathExists(dstFile) && !isSymlink(dstFile) {
-			m.logf("Removing file %s", dstFile)
+			m.logger.Info("removing file", slog.String("path", dstFile))
 
 			if !m.DryRun {
 				if subEntry.Sudo {
@@ -538,7 +564,9 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 			}
 		}
 
-		m.logf("Creating symlink %s -> %s", dstFile, srcFile)
+		m.logger.Info("creating symlink",
+			slog.String("target", dstFile),
+			slog.String("source", srcFile))
 
 		if !m.DryRun {
 			if err := createSymlink(srcFile, dstFile, subEntry.Sudo); err != nil {

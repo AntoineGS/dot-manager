@@ -12,6 +12,21 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/platform"
 )
 
+// File permissions constants
+const (
+	// DirPerms are the default permissions for created directories (rwxr-x---)
+	// Owner: read, write, execute; Group: read, execute; Other: none
+	DirPerms os.FileMode = 0750
+
+	// FilePerms are the default permissions for created files (rw-------)
+	// Owner: read, write; Group: none; Other: none
+	FilePerms os.FileMode = 0600
+
+	// ExecPerms are the permissions for executable files (rwxr-xr-x)
+	// Owner: read, write, execute; Group: read, execute; Other: read, execute
+	ExecPerms os.FileMode = 0755
+)
+
 // Manager handles dotfile operations including backup, restore, and listing of configuration entries.
 // It maintains references to the configuration, platform information, and operational settings.
 type Manager struct {
@@ -63,9 +78,11 @@ func (m *Manager) WithLogger(logger *slog.Logger) *Manager {
 	return &m2
 }
 
-// SetVerbose adjusts log level based on verbose flag
-func (m *Manager) SetVerbose(verbose bool) {
-	m.Verbose = verbose
+// WithVerbose returns a new Manager with adjusted log level based on verbose flag.
+// This follows the builder pattern used by WithContext and WithLogger.
+func (m *Manager) WithVerbose(verbose bool) *Manager {
+	m2 := *m
+	m2.Verbose = verbose
 
 	level := slog.LevelInfo
 	if verbose {
@@ -74,7 +91,9 @@ func (m *Manager) SetVerbose(verbose bool) {
 
 	opts := &slog.HandlerOptions{Level: level}
 	handler := slog.NewTextHandler(os.Stdout, opts)
-	m.logger = slog.New(handler)
+	m2.logger = slog.New(handler)
+
+	return &m2
 }
 
 // checkContext checks if context is canceled and returns error
@@ -90,22 +109,6 @@ func (m *Manager) checkContext() error {
 // GetApplications returns all filtered applications from the configuration.
 func (m *Manager) GetApplications() []config.Application {
 	return m.Config.GetFilteredApplications(m.FilterCtx)
-}
-
-func (m *Manager) logf(format string, args ...interface{}) {
-	m.logger.Info(fmt.Sprintf(format, args...))
-}
-
-func (m *Manager) logVerbosef(format string, args ...interface{}) {
-	m.logger.Debug(fmt.Sprintf(format, args...))
-}
-
-func (m *Manager) logWarnf(format string, args ...interface{}) {
-	m.logger.Warn(fmt.Sprintf(format, args...))
-}
-
-func (m *Manager) logErrorf(format string, args ...interface{}) {
-	m.logger.Error(fmt.Sprintf(format, args...))
 }
 
 // logEntryRestore logs restore operations with structured attributes
@@ -178,7 +181,7 @@ func copyFile(src, dst string) (err error) {
 		return fmt.Errorf("stating source: %w", statErr)
 	}
 
-	if mkdirErr := os.MkdirAll(filepath.Dir(dst), 0750); mkdirErr != nil {
+	if mkdirErr := os.MkdirAll(filepath.Dir(dst), DirPerms); mkdirErr != nil {
 		return fmt.Errorf("creating destination directory: %w", mkdirErr)
 	}
 

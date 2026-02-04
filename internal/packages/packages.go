@@ -14,6 +14,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// File permissions constants
+const (
+	// ExecPerms are the permissions for executable files (rwxr-xr-x)
+	// Owner: read, write, execute; Group: read, execute; Other: read, execute
+	ExecPerms os.FileMode = 0755
+)
+
 // PackageManager represents a supported package manager identifier.
 // It is used to specify which package manager should be used for installing
 // a package, such as pacman, apt, brew, winget, etc. The supported values
@@ -145,6 +152,7 @@ type Config struct {
 // the appropriate installation method. It supports dry-run mode for previewing
 // operations and verbose mode for detailed output.
 type Manager struct {
+	ctx       context.Context
 	Config    *Config
 	OS        string
 	Preferred PackageManager
@@ -160,6 +168,7 @@ type Manager struct {
 // and dryRun/verbose control the execution mode.
 func NewManager(cfg *Config, osType string, dryRun, verbose bool) *Manager {
 	m := &Manager{
+		ctx:     context.Background(),
 		Config:  cfg,
 		OS:      osType,
 		DryRun:  dryRun,
@@ -169,6 +178,13 @@ func NewManager(cfg *Config, osType string, dryRun, verbose bool) *Manager {
 	m.selectPreferredManager()
 
 	return m
+}
+
+// WithContext returns a new Manager with the given context for cancellation support.
+func (m *Manager) WithContext(ctx context.Context) *Manager {
+	m2 := *m
+	m2.ctx = ctx
+	return &m2
 }
 
 func (m *Manager) detectAvailableManagers() {
@@ -245,13 +261,18 @@ func (m *Manager) Install(pkg Package) InstallResult {
 
 	// Check if this is a git package
 	if gitValue, ok := pkg.Managers[Git]; ok {
-		if gitCfg, ok := gitValue.(GitConfig); ok {
-			result.Method = string(Git)
-			success, msg := m.installGitPackage(gitCfg)
-			result.Success = success
-			result.Message = msg
+		// UnmarshalYAML guarantees this is GitConfig for YAML-loaded packages
+		gitCfg, ok := gitValue.(GitConfig)
+		if !ok {
+			result.Success = false
+			result.Message = "invalid git package configuration"
 			return result
 		}
+		result.Method = string(Git)
+		success, msg := m.installGitPackage(gitCfg)
+		result.Success = success
+		result.Message = msg
+		return result
 	}
 
 	// Try package managers
@@ -309,23 +330,23 @@ func (m *Manager) installWithManager(mgr PackageManager, pkgName string) (bool, 
 
 	switch mgr {
 	case Pacman:
-		cmd = exec.CommandContext(context.Background(), "sudo", "pacman", "-S", "--noconfirm", pkgName)
+		cmd = exec.CommandContext(m.ctx, "sudo", "pacman", "-S", "--noconfirm", pkgName)
 	case Yay:
-		cmd = exec.CommandContext(context.Background(), "yay", "-S", "--noconfirm", pkgName)
+		cmd = exec.CommandContext(m.ctx, "yay", "-S", "--noconfirm", pkgName)
 	case Paru:
-		cmd = exec.CommandContext(context.Background(), "paru", "-S", "--noconfirm", pkgName)
+		cmd = exec.CommandContext(m.ctx, "paru", "-S", "--noconfirm", pkgName)
 	case Apt:
-		cmd = exec.CommandContext(context.Background(), "sudo", "apt-get", "install", "-y", pkgName)
+		cmd = exec.CommandContext(m.ctx, "sudo", "apt-get", "install", "-y", pkgName)
 	case Dnf:
-		cmd = exec.CommandContext(context.Background(), "sudo", "dnf", "install", "-y", pkgName)
+		cmd = exec.CommandContext(m.ctx, "sudo", "dnf", "install", "-y", pkgName)
 	case Brew:
-		cmd = exec.CommandContext(context.Background(), "brew", "install", pkgName)
+		cmd = exec.CommandContext(m.ctx, "brew", "install", pkgName)
 	case Winget:
-		cmd = exec.CommandContext(context.Background(), "winget", "install", "--accept-package-agreements", "--accept-source-agreements", pkgName)
+		cmd = exec.CommandContext(m.ctx, "winget", "install", "--accept-package-agreements", "--accept-source-agreements", pkgName)
 	case Scoop:
-		cmd = exec.CommandContext(context.Background(), "scoop", "install", pkgName)
+		cmd = exec.CommandContext(m.ctx, "scoop", "install", pkgName)
 	case Choco:
-		cmd = exec.CommandContext(context.Background(), "choco", "install", "-y", pkgName)
+		cmd = exec.CommandContext(m.ctx, "choco", "install", "-y", pkgName)
 	case Git:
 		return false, "Git packages should be installed via installGitPackage"
 	default:
@@ -358,9 +379,9 @@ func (m *Manager) runCustomCommand(command string) (bool, string) {
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == platform.OSWindows {
-		cmd = exec.CommandContext(context.Background(), "powershell", "-Command", command)
+		cmd = exec.CommandContext(m.ctx, "powershell", "-Command", command)
 	} else {
-		cmd = exec.CommandContext(context.Background(), "sh", "-c", command)
+		cmd = exec.CommandContext(m.ctx, "sh", "-c", command)
 	}
 
 	cmd.Stdout = os.Stdout
@@ -410,10 +431,10 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 		// Escape single quotes in URL and path for PowerShell
 		escapedURL := strings.ReplaceAll(urlInstall.URL, "'", "''")
 		escapedPath := strings.ReplaceAll(tmpPath, "'", "''")
-		downloadCmd = exec.CommandContext(context.Background(), "powershell", "-Command", //nolint:gosec // intentional download command
+		downloadCmd = exec.CommandContext(m.ctx, "powershell", "-Command", //nolint:gosec // intentional download command
 			fmt.Sprintf("Invoke-WebRequest -Uri '%s' -OutFile '%s'", escapedURL, escapedPath))
 	} else {
-		downloadCmd = exec.CommandContext(context.Background(), "curl", "-fsSL", "-o", tmpPath, urlInstall.URL) //nolint:gosec // intentional download command
+		downloadCmd = exec.CommandContext(m.ctx, "curl", "-fsSL", "-o", tmpPath, urlInstall.URL) //nolint:gosec // intentional download command
 	}
 
 	if err := downloadCmd.Run(); err != nil {
@@ -422,7 +443,7 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 
 	// Make executable on Unix
 	if runtime.GOOS != platform.OSWindows {
-		if err := os.Chmod(tmpPath, 0755); err != nil { //nolint:gosec // installer scripts need to be executable
+		if err := os.Chmod(tmpPath, ExecPerms); err != nil { //nolint:gosec // installer scripts need to be executable
 			return false, fmt.Sprintf("Failed to make executable: %v", err)
 		}
 	}
@@ -432,9 +453,9 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 
 	var installCmd *exec.Cmd
 	if runtime.GOOS == platform.OSWindows {
-		installCmd = exec.CommandContext(context.Background(), "powershell", "-Command", command) //nolint:gosec // intentional install command
+		installCmd = exec.CommandContext(m.ctx, "powershell", "-Command", command) //nolint:gosec // intentional install command
 	} else {
-		installCmd = exec.CommandContext(context.Background(), "sh", "-c", command) //nolint:gosec // intentional install command
+		installCmd = exec.CommandContext(m.ctx, "sh", "-c", command) //nolint:gosec // intentional install command
 	}
 
 	installCmd.Stdout = os.Stdout
@@ -485,9 +506,9 @@ func (m *Manager) gitClone(repoURL, targetPath, branch string, sudo bool) (bool,
 	if sudo {
 		// Prepend sudo to the command
 		args = append([]string{"git"}, args...)
-		cmd = exec.CommandContext(context.Background(), "sudo", args...)
+		cmd = exec.CommandContext(m.ctx, "sudo", args...)
 	} else {
-		cmd = exec.CommandContext(context.Background(), "git", args...)
+		cmd = exec.CommandContext(m.ctx, "git", args...)
 	}
 
 	if m.DryRun {
@@ -507,9 +528,9 @@ func (m *Manager) gitClone(repoURL, targetPath, branch string, sudo bool) (bool,
 func (m *Manager) gitPull(repoPath string, sudo bool) (bool, string) {
 	var cmd *exec.Cmd
 	if sudo {
-		cmd = exec.CommandContext(context.Background(), "sudo", "git", "-C", repoPath, "pull")
+		cmd = exec.CommandContext(m.ctx, "sudo", "git", "-C", repoPath, "pull")
 	} else {
-		cmd = exec.CommandContext(context.Background(), "git", "-C", repoPath, "pull")
+		cmd = exec.CommandContext(m.ctx, "git", "-C", repoPath, "pull")
 	}
 
 	if m.DryRun {

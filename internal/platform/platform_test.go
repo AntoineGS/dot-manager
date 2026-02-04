@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -70,17 +71,16 @@ func TestGetBasename(t *testing.T) {
 		want string
 	}{
 		{"/home/user/file.txt", "file.txt"},
-		{"C:\\Users\\user\\file.txt", "file.txt"},
 		{"file.txt", "file.txt"},
-		{"/home/user/", ""},
-		{"", ""},
+		{"/home/user/", "user"}, // filepath.Base handles trailing slash
+		{"", "."},               // filepath.Base returns "." for empty string
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			got := getBasename(tt.path)
+			got := filepath.Base(tt.path)
 			if got != tt.want {
-				t.Errorf("getBasename(%q) = %q, want %q", tt.path, got, tt.want)
+				t.Errorf("filepath.Base(%q) = %q, want %q", tt.path, got, tt.want)
 			}
 		})
 	}
@@ -93,17 +93,16 @@ func TestGetDirname(t *testing.T) {
 		want string
 	}{
 		{"/home/user/file.txt", "/home/user"},
-		{"C:\\Users\\user\\file.txt", "C:\\Users\\user"},
 		{"file.txt", "."},
-		{"/home/user/", "/home/user"},
+		{"/home/user/", "/home/user"}, // filepath.Dir handles trailing slash
 		{"", "."},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			got := getDirname(tt.path)
+			got := filepath.Dir(tt.path)
 			if got != tt.want {
-				t.Errorf("getDirname(%q) = %q, want %q", tt.path, got, tt.want)
+				t.Errorf("filepath.Dir(%q) = %q, want %q", tt.path, got, tt.want)
 			}
 		})
 	}

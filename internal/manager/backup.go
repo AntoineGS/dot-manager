@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,13 +18,15 @@ func (m *Manager) BackupWithContext(ctx context.Context) error {
 }
 
 // Backup copies configuration files from their target locations to the backup directory.
+//
+//nolint:dupl // similar structure to Restore, but semantically different operations
 func (m *Manager) Backup() error {
 	// Check context before starting
 	if err := m.checkContext(); err != nil {
 		return err
 	}
 
-	m.logf("Backing up configurations for OS: %s", m.Platform.OS) //nolint:dupl // similar structure to restoreV3, but semantically different
+	m.logger.Info("backing up configurations", slog.String("os", m.Platform.OS)) //nolint:dupl // similar structure to restoreV3, but semantically different
 	apps := m.GetApplications()
 
 	for _, app := range apps {
@@ -32,7 +35,7 @@ func (m *Manager) Backup() error {
 			return err
 		}
 
-		m.logf("Backing up application: %s", app.Name)
+		m.logger.Info("backing up application", slog.String("app", app.Name))
 
 		for _, subEntry := range app.Entries {
 			// Check context before each entry
@@ -41,13 +44,20 @@ func (m *Manager) Backup() error {
 			}
 
 			if !subEntry.IsConfig() {
-				m.logVerbosef("Skipping %s/%s: only config entries can be backed up", app.Name, subEntry.Name)
+				m.logger.Debug("skipping entry",
+					slog.String("app", app.Name),
+					slog.String("entry", subEntry.Name),
+					slog.String("reason", "only config entries can be backed up"))
 				continue
 			}
 
 			target := subEntry.GetTarget(m.Platform.OS)
 			if target == "" {
-				m.logVerbosef("Skipping %s/%s: no target for OS %s", app.Name, subEntry.Name, m.Platform.OS)
+				m.logger.Debug("skipping entry",
+					slog.String("app", app.Name),
+					slog.String("entry", subEntry.Name),
+					slog.String("os", m.Platform.OS),
+					slog.String("reason", "no target for OS"))
 				continue
 			}
 
@@ -55,7 +65,10 @@ func (m *Manager) Backup() error {
 			expandedTarget := m.expandTarget(target)
 
 			if err := m.backupSubEntry(app.Name, subEntry, expandedTarget); err != nil {
-				m.logf("Error backing up %s/%s: %v", app.Name, subEntry.Name, err)
+				m.logger.Error("backup failed",
+					slog.String("app", app.Name),
+					slog.String("entry", subEntry.Name),
+					slog.String("error", err.Error()))
 			}
 		}
 	}
@@ -76,20 +89,22 @@ func (m *Manager) backupSubEntry(appName string, subEntry config.SubEntry, targe
 func (m *Manager) backupFolderSubEntry(_ string, subEntry config.SubEntry, backup, target string) error {
 	// Similar to existing backupFolder logic
 	if !pathExists(target) {
-		m.logVerbosef("Target folder does not exist: %s", target)
+		m.logger.Debug("target folder does not exist", slog.String("path", target))
 		return nil
 	}
 
 	// Skip symlinks - they point to our backup already
 	if isSymlink(target) {
-		m.logVerbosef("Skipping symlink: %s", target)
+		m.logger.Debug("skipping symlink", slog.String("path", target))
 		return nil
 	}
 
-	m.logf("Backing up folder %s -> %s", target, backup)
+	m.logger.Info("backing up folder",
+		slog.String("from", target),
+		slog.String("to", backup))
 
 	if !m.DryRun {
-		if err := os.MkdirAll(filepath.Dir(backup), 0750); err != nil {
+		if err := os.MkdirAll(filepath.Dir(backup), DirPerms); err != nil {
 			return NewPathError("backup", backup, fmt.Errorf("creating parent directory: %w", err))
 		}
 
@@ -109,12 +124,12 @@ func (m *Manager) backupFolderSubEntry(_ string, subEntry config.SubEntry, backu
 func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup, target string) error {
 	// Similar to existing backupFiles logic
 	if !pathExists(target) {
-		m.logVerbosef("Target directory does not exist: %s", target)
+		m.logger.Debug("target directory does not exist", slog.String("path", target))
 		return nil
 	}
 
 	if !m.DryRun {
-		if err := os.MkdirAll(backup, 0750); err != nil {
+		if err := os.MkdirAll(backup, DirPerms); err != nil {
 			return NewPathError("backup", backup, fmt.Errorf("creating backup directory: %w", err))
 		}
 	}
@@ -124,17 +139,19 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 		dstFile := filepath.Join(backup, file)
 
 		if !pathExists(srcFile) {
-			m.logVerbosef("Source file does not exist: %s", srcFile)
+			m.logger.Debug("source file does not exist", slog.String("path", srcFile))
 			continue
 		}
 
 		// Skip symlinks
 		if isSymlink(srcFile) {
-			m.logVerbosef("Skipping symlink: %s", srcFile)
+			m.logger.Debug("skipping symlink", slog.String("path", srcFile))
 			continue
 		}
 
-		m.logf("Backing up file %s -> %s", srcFile, dstFile)
+		m.logger.Info("backing up file",
+			slog.String("from", srcFile),
+			slog.String("to", dstFile))
 
 		if !m.DryRun {
 			if subEntry.Sudo {
@@ -155,17 +172,19 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 
 func (m *Manager) backupFolder(_, source, backup string) error {
 	if !pathExists(source) {
-		m.logVerbosef("Source folder does not exist: %s", source)
+		m.logger.Debug("source folder does not exist", slog.String("path", source))
 		return nil
 	}
 
 	// Skip symlinks - they point to our backup already
 	if isSymlink(source) {
-		m.logVerbosef("Skipping symlink: %s", source)
+		m.logger.Debug("skipping symlink", slog.String("path", source))
 		return nil
 	}
 
-	m.logf("Backing up folder %s to %s", source, backup)
+	m.logger.Info("backing up folder",
+		slog.String("from", source),
+		slog.String("to", backup))
 
 	if !m.DryRun {
 		// Copy source folder into backup directory (e.g., /source/config -> /backup/config)
@@ -184,17 +203,19 @@ func (m *Manager) backupFiles(_ string, files []string, source, backup string) e
 		dstFile := filepath.Join(backup, file)
 
 		if !pathExists(srcFile) {
-			m.logVerbosef("Source file does not exist: %s", srcFile)
+			m.logger.Debug("source file does not exist", slog.String("path", srcFile))
 			continue
 		}
 
 		// Skip symlinks
 		if isSymlink(srcFile) {
-			m.logVerbosef("Skipping symlink: %s", srcFile)
+			m.logger.Debug("skipping symlink", slog.String("path", srcFile))
 			continue
 		}
 
-		m.logf("Backing up file %s to %s", srcFile, dstFile)
+		m.logger.Info("backing up file",
+			slog.String("from", srcFile),
+			slog.String("to", dstFile))
 
 		if !m.DryRun {
 			if err := copyFile(srcFile, dstFile); err != nil {

@@ -52,18 +52,18 @@ func Load(path string) (*Config, error) {
 // ExpandPaths expands environment variables and tilde (~) in all path fields
 // of the configuration, including backup paths, target paths, and file paths.
 func (c *Config) ExpandPaths(envVars map[string]string) {
-	c.BackupRoot = expandPath(c.BackupRoot, envVars)
+	c.BackupRoot = ExpandPath(c.BackupRoot, envVars)
 
 	// Expand Applications
 	for i := range c.Applications {
 		for j := range c.Applications[i].Entries {
-			c.Applications[i].Entries[j].Backup = expandPath(c.Applications[i].Entries[j].Backup, envVars)
+			c.Applications[i].Entries[j].Backup = ExpandPath(c.Applications[i].Entries[j].Backup, envVars)
 			for k, v := range c.Applications[i].Entries[j].Targets {
-				c.Applications[i].Entries[j].Targets[k] = expandPath(v, envVars)
+				c.Applications[i].Entries[j].Targets[k] = ExpandPath(v, envVars)
 			}
 
 			for k := range c.Applications[i].Entries[j].Files {
-				c.Applications[i].Entries[j].Files[k] = expandPath(c.Applications[i].Entries[j].Files[k], envVars)
+				c.Applications[i].Entries[j].Files[k] = ExpandPath(c.Applications[i].Entries[j].Files[k], envVars)
 			}
 		}
 	}
@@ -85,10 +85,14 @@ func (c *Config) GetFilteredApplications(ctx *FilterContext) []Application {
 // GetAllSubEntries returns all sub-entries from all applications filtered by context
 func (c *Config) GetAllSubEntries(ctx *FilterContext) []SubEntry {
 	apps := c.GetFilteredApplications(ctx)
-	// Estimate capacity based on average entries per app
-	estimatedCap := len(apps) * 5
 
-	result := make([]SubEntry, 0, estimatedCap)
+	// Count exact size to prevent slice growth
+	totalEntries := 0
+	for _, app := range apps {
+		totalEntries += len(app.Entries)
+	}
+
+	result := make([]SubEntry, 0, totalEntries)
 	for _, app := range apps {
 		result = append(result, app.Entries...)
 	}
@@ -165,11 +169,6 @@ func ExpandPath(path string, envVars map[string]string) string {
 	path = os.ExpandEnv(path)
 
 	return path
-}
-
-// expandPath is a private wrapper that calls ExpandPath for internal use
-func expandPath(path string, envVars map[string]string) string {
-	return ExpandPath(path, envVars)
 }
 
 // Save writes the config to the specified file path
