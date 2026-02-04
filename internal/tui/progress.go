@@ -397,6 +397,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "up", "k":
 		if m.Operation == OpList {
+			// Clear any previous restore results when navigating
+			m.results = nil
 			if m.appCursor > 0 {
 				m.appCursor--
 
@@ -409,6 +411,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "down", "j":
 		if m.Operation == OpList {
+			// Clear any previous restore results when navigating
+			m.results = nil
 			visibleCount := m.getVisibleRowCount()
 			if m.appCursor < visibleCount-1 {
 				m.appCursor++
@@ -431,6 +435,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "h", "left":
 		if m.Operation == OpList {
+			// Clear any previous restore results when navigating
+			m.results = nil
 			// Collapse node if expanded
 			appIdx, subIdx := m.getApplicationAtCursor()
 			if appIdx >= 0 && m.Applications[appIdx].Expanded {
@@ -458,6 +464,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case KeyEnter, "l", "right":
 		if m.Operation == OpList {
+			// Clear any previous restore results when navigating
+			m.results = nil
 			// If showing detail, close it; otherwise toggle expand or show detail
 			if m.showingDetail {
 				m.showingDetail = false
@@ -998,6 +1006,19 @@ func (m Model) viewListTable() string {
 
 	b.WriteString(SubtitleStyle.Render(scrollInfo))
 	b.WriteString("\n")
+
+	// Show restore result if present
+	if len(m.results) > 0 {
+		b.WriteString("\n")
+		result := m.results[len(m.results)-1] // Show most recent result
+		var resultText string
+		if result.Success {
+			resultText = SuccessStyle.Render(fmt.Sprintf("✓ %s: %s", result.Name, result.Message))
+		} else {
+			resultText = ErrorStyle.Render(fmt.Sprintf("✗ %s: %s", result.Name, result.Message))
+		}
+		b.WriteString(resultText)
+	}
 
 	// Help or confirmation prompt
 	b.WriteString("\n")
