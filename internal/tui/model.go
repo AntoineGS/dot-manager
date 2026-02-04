@@ -221,7 +221,7 @@ type Model struct {
 	multiSelectActive  bool            // true when selections exist
 
 	// Summary screen state
-	summaryOperation   Operation //nolint:unused // Will be used in Task 9
+	summaryOperation   Operation // Which batch operation: restore, install, delete
 	summaryDoublePress string    // Track double-press state: "r", "i", or "d"
 }
 

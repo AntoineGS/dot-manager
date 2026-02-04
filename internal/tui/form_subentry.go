@@ -584,7 +584,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case "d", "backspace", "delete":
+	case "d", "backspace", KeyDelete:
 		// Delete the selected file
 		if m.subEntryForm.filesCursor < len(m.subEntryForm.files) && len(m.subEntryForm.files) > 0 {
 			// Remove file at cursor
