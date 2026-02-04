@@ -8,13 +8,15 @@ import (
 
 // TableRow wraps table.Row with hierarchy metadata
 type TableRow struct {
-	Data       table.Row // Actual display data [name, status, info, path]
-	Level      int       // 0 = application, 1 = sub-entry
-	TreeChar   string    // "▶ ", "▼ ", "├─", "└─"
-	IsExpanded bool
-	AppIndex   int
-	SubIndex   int       // -1 for application rows
-	State      PathState // For badge rendering
+	Data            table.Row // Actual display data [name, status, info, path]
+	Level           int       // 0 = application, 1 = sub-entry
+	TreeChar        string    // "▶ ", "▼ ", "├─", "└─"
+	IsExpanded      bool
+	AppIndex        int
+	SubIndex        int       // -1 for application rows
+	State           PathState // For badge rendering
+	StatusAttention bool      // Status column needs attention
+	InfoAttention   bool      // Info column needs attention
 }
 
 // flattenApplications converts hierarchical apps to flat table rows
@@ -45,11 +47,13 @@ func flattenApplications(apps []ApplicationItem, osType string) []TableRow {
 				entryCount,
 				"", // No path for app rows
 			},
-			Level:      0,
-			TreeChar:   expandChar,
-			IsExpanded: app.Expanded,
-			AppIndex:   appIdx,
-			SubIndex:   -1,
+			Level:           0,
+			TreeChar:        expandChar,
+			IsExpanded:      app.Expanded,
+			AppIndex:        appIdx,
+			SubIndex:        -1,
+			StatusAttention: needsAttention(statusText),
+			InfoAttention:   appInfoNeedsAttention(app),
 		})
 
 		// Level 1: Sub-entry rows (if expanded)
@@ -73,11 +77,13 @@ func flattenApplications(apps []ApplicationItem, osType string) []TableRow {
 						typeInfo,
 						displayTarget, // Show original config path, not expanded
 					},
-					Level:    1,
-					TreeChar: treeChar,
-					AppIndex: appIdx,
-					SubIndex: subIdx,
-					State:    subItem.State,
+					Level:           1,
+					TreeChar:        treeChar,
+					AppIndex:        appIdx,
+					SubIndex:        subIdx,
+					State:           subItem.State,
+					StatusAttention: needsAttention(subItem.State.String()),
+					InfoAttention:   false, // Sub-entries don't have info attention
 				})
 			}
 		}
@@ -119,4 +125,26 @@ func getTypeInfo(subItem SubEntryItem) string {
 	}
 
 	return fmt.Sprintf("%d files", fileCount)
+}
+
+// needsAttention returns true if the status text indicates something needs attention
+func needsAttention(status string) bool {
+	return status != StatusInstalled && status != StateLinked.String()
+}
+
+// appInfoNeedsAttention returns true if the application has any configs that need attention
+func appInfoNeedsAttention(app ApplicationItem) bool {
+	// Filtered apps don't need attention
+	if app.IsFiltered {
+		return false
+	}
+
+	// Check if any sub-entry is not linked
+	for _, sub := range app.SubItems {
+		if sub.State != StateLinked {
+			return true
+		}
+	}
+
+	return false
 }
