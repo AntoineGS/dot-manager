@@ -786,8 +786,10 @@ func (m Model) viewListTable() string {
 	maxCountWidth := 0
 
 	for _, app := range filtered {
-		if len(app.Application.Name) > maxAppNameWidth {
-			maxAppNameWidth = len(app.Application.Name)
+		// Account for expansion indicator "▶ " or "▼ " (4 bytes each)
+		appNameWithIndicator := len(app.Application.Name) + 4
+		if appNameWithIndicator > maxAppNameWidth {
+			maxAppNameWidth = appNameWithIndicator
 		}
 
 		// Calculate entry count width for this app
@@ -841,10 +843,10 @@ func (m Model) viewListTable() string {
 	}
 
 	// Calculate unified name width for status column alignment
-	// Sub-entries have " ├─ " (4 chars) before their name, so app names need +4 padding
+	// Sub-entries have " ├─ " (1 space + 6 bytes + 1 space = 8 bytes) before their name
 	unifiedNameWidth := maxAppNameWidth
-	if maxSubNameWidth+4 > unifiedNameWidth {
-		unifiedNameWidth = maxSubNameWidth + 4
+	if maxSubNameWidth+8 > unifiedNameWidth {
+		unifiedNameWidth = maxSubNameWidth + 8
 	}
 
 	// Calculate unified width for entry count / type column
@@ -892,8 +894,8 @@ func (m Model) viewListTable() string {
 				expandIndicator = "▶ "
 			}
 
-			// Pad to column widths (use unified width for status alignment, accounting for indicator)
-			paddedName := padRight(expandIndicator+app.Application.Name, unifiedNameWidth+2)
+			// Pad to column widths (use unified width for status alignment)
+			paddedName := padRight(expandIndicator+app.Application.Name, unifiedNameWidth)
 			paddedCount := padRight(entryCount, unifiedCountTypeWidth)
 
 			// Build the complete line with or without selection styling
@@ -966,8 +968,8 @@ func (m Model) viewListTable() string {
 					// Target path
 					targetPath := truncateStr(subItem.Target)
 
-					// Pad to column widths (use unified width - 4 to account for tree prefix)
-					paddedName := padRight(subItem.SubEntry.Name, unifiedNameWidth-4)
+					// Pad to column widths (use unified width - 8 to account for tree prefix and spaces)
+					paddedName := padRight(subItem.SubEntry.Name, unifiedNameWidth-8)
 					paddedType := padRight(typeInfo, unifiedCountTypeWidth)
 
 					// Build the complete line with or without selection styling
