@@ -187,13 +187,7 @@ func (m Model) updateSummary(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "Y", KeyEnter:
 		// Confirm - execute the batch operation
-		// TODO: Wire up to actual execution in Task 16
-		m.Screen = ScreenResults
-		m.Operation = OpList
-		m.summaryDoublePress = ""
-		// Clear selections after operation
-		m.clearSelections()
-		return m, nil
+		return m.executeConfirmedOperation()
 
 	case "n", "N", KeyEsc:
 		// Cancel - return to manage view
@@ -249,4 +243,43 @@ func (m Model) updateSummary(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// executeConfirmedOperation executes the confirmed batch operation.
+// Initializes progress state and switches to progress screen.
+func (m Model) executeConfirmedOperation() (tea.Model, tea.Cmd) {
+	// Initialize progress bar
+	m.batchProgress = initBatchProgress()
+
+	// Reset progress counters
+	m.batchCurrentItem = ""
+	m.batchCurrentIndex = 0
+	m.batchTotalItems = 0
+	m.batchSuccessCount = 0
+	m.batchFailCount = 0
+
+	// Switch to progress screen
+	m.Screen = ScreenProgress
+	m.processing = true
+	m.summaryDoublePress = ""
+
+	// Execute appropriate batch operation based on summaryOperation
+	var cmd tea.Cmd
+	switch m.summaryOperation {
+	case OpRestore, OpRestoreDryRun:
+		cmd = m.executeBatchRestore()
+	case OpInstallPackages:
+		cmd = m.executeBatchInstall()
+	case OpAdd, OpList:
+		// Delete operation (OpList is used for delete in summary)
+		cmd = m.executeBatchDelete()
+	default:
+		// Unknown operation - return to manage view
+		m.Screen = ScreenResults
+		m.Operation = OpList
+		m.processing = false
+		cmd = nil
+	}
+
+	return m, cmd
 }
