@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/AntoineGS/dot-manager/internal/config"
+	"github.com/AntoineGS/dot-manager/internal/platform"
 )
 
 func TestMergeSummary_Add(t *testing.T) {
@@ -592,5 +595,347 @@ func TestRemoveEmptyDirs(t *testing.T) {
 	// Assert: Root directory still exists (should never be removed)
 	if !pathExists(rootDir) {
 		t.Errorf("Root directory was removed, should be preserved")
+	}
+}
+
+// TestRestoreFolder_NoMerge_Fails tests that restore fails when NoMerge is enabled
+// and target directory has content (without ForceDelete flag).
+func TestRestoreFolder_NoMerge_Fails(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup directory
+	backupDir := filepath.Join(tmpDir, "backup")
+	if err := os.MkdirAll(backupDir, DirPerms); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "config.txt"), []byte("backup"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create target directory with content
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.MkdirAll(targetDir, DirPerms); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "local.txt"), []byte("local config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.NoMerge = true
+	mgr.ForceDelete = false
+
+	entry := config.Entry{Name: "test"}
+
+	// Act: Should fail because NoMerge is enabled and target has content
+	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+
+	// Assert: Error should be returned
+	if err == nil {
+		t.Fatal("RestoreFolder() should have failed with NoMerge=true and non-empty target")
+	}
+
+	// Assert: Error message should be helpful
+	errMsg := err.Error()
+	if !contains(errMsg, "target exists with") {
+		t.Errorf("Error message should mention target exists, got: %v", errMsg)
+	}
+	if !contains(errMsg, "--force") || !contains(errMsg, "merge") {
+		t.Errorf("Error message should suggest --force or merge mode, got: %v", errMsg)
+	}
+
+	// Assert: Target directory still has content (nothing was deleted)
+	if !pathExists(filepath.Join(targetDir, "local.txt")) {
+		t.Error("Target file was deleted, should be preserved when operation fails")
+	}
+
+	// Assert: Symlink was not created
+	if isSymlink(targetDir) {
+		t.Error("Target should not be a symlink, operation should have failed before symlinking")
+	}
+}
+
+// TestRestoreFolder_NoMerge_ForceDelete_Succeeds tests that restore succeeds
+// when both NoMerge and ForceDelete are enabled, reverting to old destructive behavior.
+func TestRestoreFolder_NoMerge_ForceDelete_Succeeds(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup directory
+	backupDir := filepath.Join(tmpDir, "backup")
+	if err := os.MkdirAll(backupDir, DirPerms); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "config.txt"), []byte("backup"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create target directory with content
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.MkdirAll(targetDir, DirPerms); err != nil {
+		t.Fatal(err)
+	}
+	targetFile := filepath.Join(targetDir, "local.txt")
+	if err := os.WriteFile(targetFile, []byte("local config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.NoMerge = true
+	mgr.ForceDelete = true
+
+	entry := config.Entry{Name: "test"}
+
+	// Act: Should succeed because ForceDelete is enabled
+	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("RestoreFolder() failed: %v", err)
+	}
+
+	// Assert: Target is now a symlink
+	if !isSymlink(targetDir) {
+		t.Error("Target should be a symlink")
+	}
+
+	// Assert: Symlink points to backup
+	link, err := os.Readlink(targetDir)
+	if err != nil {
+		t.Fatalf("Failed to read symlink: %v", err)
+	}
+	if link != backupDir {
+		t.Errorf("Symlink target = %q, want %q", link, backupDir)
+	}
+
+	// Assert: Target file was deleted (not merged)
+	// Since targetDir is now a symlink, we can't check for the old file
+	// But we can verify the backup directory doesn't have the target file
+	if pathExists(filepath.Join(backupDir, "local.txt")) {
+		t.Error("Target file should NOT have been merged into backup with ForceDelete")
+	}
+}
+
+// TestMergeFolder_SymlinkInTarget tests that symlinks in the target folder
+// are moved to backup (current behavior: symlinks are preserved as-is).
+// NOTE: Future enhancement could resolve symlinks and copy their content.
+func TestMergeFolder_SymlinkInTarget(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create target and backup directories
+	tmpRoot := t.TempDir()
+	targetDir := filepath.Join(tmpRoot, "target")
+	backupDir := filepath.Join(tmpRoot, "backup")
+
+	if err := os.MkdirAll(targetDir, DirPerms); err != nil {
+		t.Fatalf("Failed to create target dir: %v", err)
+	}
+	if err := os.MkdirAll(backupDir, DirPerms); err != nil {
+		t.Fatalf("Failed to create backup dir: %v", err)
+	}
+
+	// Create a real file that we'll symlink to
+	realFileDir := filepath.Join(tmpRoot, "elsewhere")
+	if err := os.MkdirAll(realFileDir, DirPerms); err != nil {
+		t.Fatalf("Failed to create real file dir: %v", err)
+	}
+	realFile := filepath.Join(realFileDir, "realfile.txt")
+	if err := os.WriteFile(realFile, []byte("real content"), 0600); err != nil {
+		t.Fatalf("Failed to create real file: %v", err)
+	}
+
+	// Create a symlink in target pointing to the real file
+	symlinkInTarget := filepath.Join(targetDir, "linked.txt")
+	if err := os.Symlink(realFile, symlinkInTarget); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	// Create a regular file in target as well
+	regularFile := filepath.Join(targetDir, "regular.txt")
+	if err := os.WriteFile(regularFile, []byte("regular content"), 0600); err != nil {
+		t.Fatalf("Failed to create regular file: %v", err)
+	}
+
+	summary := NewMergeSummary("test-app")
+
+	// Act: Merge the folder
+	err := MergeFolder(backupDir, targetDir, false, summary)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("MergeFolder() error = %v, want nil", err)
+	}
+
+	// Assert: 2 files were merged
+	if len(summary.MergedFiles) != 2 {
+		t.Errorf("MergedFiles count = %d, want 2", len(summary.MergedFiles))
+	}
+
+	// Assert: Regular file exists in backup
+	regularBackup := filepath.Join(backupDir, "regular.txt")
+	if !pathExists(regularBackup) {
+		t.Error("Regular file not merged to backup")
+	}
+
+	// Assert: Symlink was moved to backup
+	linkedBackup := filepath.Join(backupDir, "linked.txt")
+	if !pathExists(linkedBackup) {
+		t.Error("Symlink not merged to backup")
+	}
+
+	// Current behavior: Symlink is preserved as-is
+	// (Future enhancement: could resolve and copy content instead)
+	if !isSymlink(linkedBackup) {
+		t.Error("Backup file should be a symlink (current behavior)")
+	}
+
+	// Assert: Symlink still points to original location
+	linkTarget, err := os.Readlink(linkedBackup)
+	if err != nil {
+		t.Fatalf("Failed to read symlink: %v", err)
+	}
+	if linkTarget != realFile {
+		t.Errorf("Symlink target = %q, want %q", linkTarget, realFile)
+	}
+}
+
+// TestRestoreFolder_NoMerge_FailsEvenIfEmpty tests that NoMerge fails
+// even if target directory exists but is empty (strict mode).
+func TestRestoreFolder_NoMerge_FailsEvenIfEmpty(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup directory
+	backupDir := filepath.Join(tmpDir, "backup")
+	if err := os.MkdirAll(backupDir, DirPerms); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "config.txt"), []byte("backup"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create empty target directory
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.MkdirAll(targetDir, DirPerms); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.NoMerge = true
+
+	entry := config.Entry{Name: "test"}
+
+	// Act: Should fail because NoMerge is strict (target exists)
+	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+
+	// Assert: Error should be returned
+	if err == nil {
+		t.Fatal("RestoreFolder() should fail with NoMerge even if target is empty")
+	}
+
+	// Assert: Error message shows 0 files
+	errMsg := err.Error()
+	if !contains(errMsg, "0 file(s)") {
+		t.Errorf("Error message should show 0 files for empty directory, got: %v", errMsg)
+	}
+}
+
+// TestMergeFolder_DuplicateConflicts tests handling of multiple conflicts
+// with same filename on the same day.
+// NOTE: Current behavior overwrites the first conflict file (no unique counter yet).
+// Future enhancement: Add counter suffix like _target_20260204_1.json
+func TestMergeFolder_DuplicateConflicts(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	// Create backup file
+	backupFile := filepath.Join(backupDir, "config.json")
+	if err := os.WriteFile(backupFile, []byte("backup version 1"), 0600); err != nil {
+		t.Fatalf("Failed to create backup file: %v", err)
+	}
+
+	// First merge: Create target file and merge
+	targetFile := filepath.Join(targetDir, "config.json")
+	if err := os.WriteFile(targetFile, []byte("target version 1"), 0600); err != nil {
+		t.Fatalf("Failed to create target file: %v", err)
+	}
+
+	summary1 := NewMergeSummary("test-app")
+	err := MergeFolder(backupDir, targetDir, false, summary1)
+	if err != nil {
+		t.Fatalf("First MergeFolder() error = %v", err)
+	}
+
+	// Assert: First conflict file was created
+	pattern1 := filepath.Join(backupDir, "config_target_*.json")
+	conflicts1, _ := filepath.Glob(pattern1)
+	if len(conflicts1) != 1 {
+		t.Fatalf("First merge should create 1 conflict file, got %d", len(conflicts1))
+	}
+
+	// Read first conflict content
+	firstConflictContent, _ := os.ReadFile(conflicts1[0]) //nolint:gosec // test file
+
+	// Second merge: Recreate target directory with same file
+	if err := os.MkdirAll(targetDir, DirPerms); err != nil {
+		t.Fatalf("Failed to recreate target dir: %v", err)
+	}
+	if err := os.WriteFile(targetFile, []byte("target version 2"), 0600); err != nil {
+		t.Fatalf("Failed to recreate target file: %v", err)
+	}
+
+	summary2 := NewMergeSummary("test-app")
+	err = MergeFolder(backupDir, targetDir, false, summary2)
+	if err != nil {
+		t.Fatalf("Second MergeFolder() error = %v", err)
+	}
+
+	// Assert: Still only 1 conflict file (current behavior: overwrites)
+	conflicts2, _ := filepath.Glob(pattern1)
+	if len(conflicts2) != 1 {
+		t.Fatalf("Second merge should still have 1 conflict file (overwrites), got %d", len(conflicts2))
+	}
+
+	// Assert: Conflict file has second merge content (overwrote first)
+	secondConflictContent, _ := os.ReadFile(conflicts2[0]) //nolint:gosec // test file
+	if string(secondConflictContent) == string(firstConflictContent) {
+		t.Error("Second merge should have overwritten first conflict file")
+	}
+	if string(secondConflictContent) != "target version 2" {
+		t.Errorf("Conflict file content = %q, want %q", string(secondConflictContent), "target version 2")
+	}
+}
+
+// TestMergeFolder_EmptyTargetDir tests that an empty target directory
+// doesn't cause merge errors and is cleanly removed.
+func TestMergeFolder_EmptyTargetDir(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	// Target is empty (nothing to merge)
+	summary := NewMergeSummary("test-app")
+
+	// Act: Merge empty folder
+	err := MergeFolder(backupDir, targetDir, false, summary)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("MergeFolder() error = %v, want nil", err)
+	}
+
+	// Assert: No operations recorded
+	if summary.HasOperations() {
+		t.Error("Summary should have no operations for empty target")
 	}
 }
