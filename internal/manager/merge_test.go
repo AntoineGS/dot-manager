@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -213,4 +214,127 @@ func TestGenerateConflictNameWithDate(t *testing.T) {
 // Helper function for string containment check
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
+}
+
+func TestMergeFile_NoConflict(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create target file and backup directory
+	targetDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	targetFile := filepath.Join(targetDir, "unique.txt")
+	if err := os.WriteFile(targetFile, []byte("target content"), 0600); err != nil {
+		t.Fatalf("Failed to create target file: %v", err)
+	}
+
+	summary := NewMergeSummary("test-app")
+
+	// Act: Merge the file
+	err := mergeFile(targetFile, backupDir, "unique.txt", false, summary)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("mergeFile() error = %v, want nil", err)
+	}
+
+	// Assert: Target file was moved to backup
+	backupFile := filepath.Join(backupDir, "unique.txt")
+	if !pathExists(backupFile) {
+		t.Errorf("Backup file not created at %q", backupFile)
+	}
+
+	// Assert: Target file no longer exists
+	if pathExists(targetFile) {
+		t.Errorf("Target file still exists at %q, should have been moved", targetFile)
+	}
+
+	// Assert: Content is correct
+	content, err := os.ReadFile(backupFile) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("Failed to read backup file: %v", err)
+	}
+	if string(content) != "target content" {
+		t.Errorf("Backup file content = %q, want %q", string(content), "target content")
+	}
+
+	// Assert: Summary shows merge (not conflict)
+	if len(summary.MergedFiles) != 1 {
+		t.Errorf("MergedFiles count = %d, want 1", len(summary.MergedFiles))
+	}
+	if len(summary.ConflictFiles) != 0 {
+		t.Errorf("ConflictFiles count = %d, want 0", len(summary.ConflictFiles))
+	}
+}
+
+func TestMergeFile_WithConflict(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create both target and backup files
+	targetDir := t.TempDir()
+	backupDir := t.TempDir()
+
+	targetFile := filepath.Join(targetDir, "config.json")
+	backupFile := filepath.Join(backupDir, "config.json")
+
+	if err := os.WriteFile(targetFile, []byte("target version"), 0600); err != nil {
+		t.Fatalf("Failed to create target file: %v", err)
+	}
+	if err := os.WriteFile(backupFile, []byte("backup version"), 0600); err != nil {
+		t.Fatalf("Failed to create backup file: %v", err)
+	}
+
+	summary := NewMergeSummary("test-app")
+
+	// Act: Merge the file
+	err := mergeFile(targetFile, backupDir, "config.json", false, summary)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("mergeFile() error = %v, want nil", err)
+	}
+
+	// Assert: Backup file still exists with original content
+	content, err := os.ReadFile(backupFile) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("Failed to read backup file: %v", err)
+	}
+	if string(content) != "backup version" {
+		t.Errorf("Backup file content = %q, want %q", string(content), "backup version")
+	}
+
+	// Assert: Conflict file was created with renamed name
+	conflictFiles, err := filepath.Glob(filepath.Join(backupDir, "config_target_*.json"))
+	if err != nil {
+		t.Fatalf("Failed to glob conflict files: %v", err)
+	}
+	if len(conflictFiles) != 1 {
+		t.Fatalf("Conflict files count = %d, want 1", len(conflictFiles))
+	}
+
+	// Assert: Conflict file has target content
+	conflictContent, err := os.ReadFile(conflictFiles[0]) //nolint:gosec // test file
+	if err != nil {
+		t.Fatalf("Failed to read conflict file: %v", err)
+	}
+	if string(conflictContent) != "target version" {
+		t.Errorf("Conflict file content = %q, want %q", string(conflictContent), "target version")
+	}
+
+	// Assert: Target file no longer exists
+	if pathExists(targetFile) {
+		t.Errorf("Target file still exists at %q, should have been moved", targetFile)
+	}
+
+	// Assert: Summary shows conflict (not merge)
+	if len(summary.MergedFiles) != 0 {
+		t.Errorf("MergedFiles count = %d, want 0", len(summary.MergedFiles))
+	}
+	if len(summary.ConflictFiles) != 1 {
+		t.Errorf("ConflictFiles count = %d, want 1", len(summary.ConflictFiles))
+	}
+	if summary.ConflictFiles[0].OriginalName != "config.json" {
+		t.Errorf("ConflictFiles[0].OriginalName = %q, want %q",
+			summary.ConflictFiles[0].OriginalName, "config.json")
+	}
 }
