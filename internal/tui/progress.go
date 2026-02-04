@@ -616,12 +616,20 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Handle ESC to clear active search (when not in search mode but search text is present)
-	if m.Operation == OpList && msg.String() == KeyEsc && m.searchText != "" && !m.searching {
-		m.searchText = ""
-		m.searchInput.SetValue("")
-		m.rebuildTable()
-		return m, nil
+	// Handle ESC to clear active search or selections (when not in search mode but search text or selections are present)
+	if m.Operation == OpList && msg.String() == KeyEsc && !m.searching {
+		// Priority 1: Clear search first if active
+		if m.searchText != "" {
+			m.searchText = ""
+			m.searchInput.SetValue("")
+			m.rebuildTable()
+			return m, nil
+		}
+		// Priority 2: Clear selections if any exist
+		if m.multiSelectActive {
+			m.clearSelections()
+			return m, nil
+		}
 	}
 
 	switch msg.String() {
