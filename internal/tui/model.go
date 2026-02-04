@@ -211,6 +211,11 @@ type Model struct {
 	confirmingDeleteSubEntry bool
 	confirmingDeleteApp      bool
 	showingDetail            bool
+
+	// Selection state for multi-select mode
+	selectedApps       map[int]bool    // appIndex -> selected
+	selectedSubEntries map[string]bool // appIndex:subIndex -> selected
+	multiSelectActive  bool            // true when selections exist
 }
 
 // EntryType distinguishes between config, git, and package-only type entries
@@ -367,20 +372,23 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 	searchInput.CharLimit = 100
 
 	m := Model{
-		Screen:        ScreenResults, // Start directly in Manage view
-		Operation:     OpList,        // Set operation to List (Manage)
-		Config:        cfg,
-		Platform:      plat,
-		FilterCtx:     filterCtx,
-		Paths:         items,
-		Packages:      pkgItems,
-		DryRun:        dryRun,
-		viewHeight:    15,
-		width:         80,
-		height:        24,
-		searchInput:   searchInput,
-		sortColumn:    SortColumnName, // Default sort by name
-		sortAscending: true,           // Ascending by default
+		Screen:             ScreenResults, // Start directly in Manage view
+		Operation:          OpList,        // Set operation to List (Manage)
+		Config:             cfg,
+		Platform:           plat,
+		FilterCtx:          filterCtx,
+		Paths:              items,
+		Packages:           pkgItems,
+		DryRun:             dryRun,
+		viewHeight:         15,
+		width:              80,
+		height:             24,
+		searchInput:        searchInput,
+		sortColumn:         SortColumnName, // Default sort by name
+		sortAscending:      true,           // Ascending by default
+		selectedApps:       make(map[int]bool),
+		selectedSubEntries: make(map[string]bool),
+		multiSelectActive:  false,
 	}
 
 	// Detect initial path states
