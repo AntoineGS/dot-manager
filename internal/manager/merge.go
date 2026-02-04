@@ -202,3 +202,57 @@ func MergeFolder(backupDir, targetDir string, useSudo bool, summary *MergeSummar
 		return nil
 	})
 }
+
+// removeEmptyDirs removes empty directories in a bottom-up manner.
+// It walks the directory tree, collects all subdirectories (excluding the root),
+// and attempts to remove them in reverse order (deepest first).
+// Only truly empty directories will be removed; os.Remove will fail for non-empty dirs.
+//
+// Parameters:
+//   - rootDir: The root directory to clean up (will not be removed itself)
+//
+// Returns error only if the directory walk itself fails.
+// Errors from individual directory removals are logged but don't stop the operation.
+func removeEmptyDirs(rootDir string) error {
+	// Collect all subdirectories (not the root itself)
+	var dirs []string
+
+	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip the root directory itself
+		if path == rootDir {
+			return nil
+		}
+
+		// Collect directories
+		if d.IsDir() {
+			dirs = append(dirs, path)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("walking directory tree: %w", err)
+	}
+
+	// Process directories in reverse order (deepest first)
+	for i := len(dirs) - 1; i >= 0; i-- {
+		dir := dirs[i]
+
+		if err := os.Remove(dir); err != nil {
+			// Ignore "directory not empty" errors (expected for dirs with content)
+			// Log other errors at debug level
+			if !strings.Contains(err.Error(), "directory not empty") {
+				slog.Debug("Failed to remove directory",
+					"dir", dir,
+					"error", err)
+			}
+		}
+	}
+
+	return nil
+}

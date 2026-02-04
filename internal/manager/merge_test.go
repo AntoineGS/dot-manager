@@ -545,3 +545,52 @@ func TestMergeFolder_WithConflicts(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoveEmptyDirs(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create directory structure
+	rootDir := t.TempDir()
+
+	// Create nested empty directories: a/b/c/d
+	deepDir := filepath.Join(rootDir, "a", "b", "c", "d")
+	if err := os.MkdirAll(deepDir, DirPerms); err != nil {
+		t.Fatalf("Failed to create deep directory: %v", err)
+	}
+
+	// Create directory with a file: e/f/file.txt
+	dirWithFile := filepath.Join(rootDir, "e", "f")
+	if err := os.MkdirAll(dirWithFile, DirPerms); err != nil {
+		t.Fatalf("Failed to create directory with file: %v", err)
+	}
+	fileInDir := filepath.Join(dirWithFile, "file.txt")
+	if err := os.WriteFile(fileInDir, []byte("content"), 0600); err != nil {
+		t.Fatalf("Failed to create file: %v", err)
+	}
+
+	// Act: Remove empty directories
+	err := removeEmptyDirs(rootDir)
+
+	// Assert: No error
+	if err != nil {
+		t.Fatalf("removeEmptyDirs() error = %v, want nil", err)
+	}
+
+	// Assert: Empty directories are removed (a/b/c/d should all be gone)
+	if pathExists(filepath.Join(rootDir, "a")) {
+		t.Errorf("Empty directory 'a' still exists, should be removed")
+	}
+
+	// Assert: Directory with file is preserved
+	if !pathExists(dirWithFile) {
+		t.Errorf("Directory with file 'e/f' was removed, should be preserved")
+	}
+	if !pathExists(fileInDir) {
+		t.Errorf("File 'e/f/file.txt' was removed, should be preserved")
+	}
+
+	// Assert: Root directory still exists (should never be removed)
+	if !pathExists(rootDir) {
+		t.Errorf("Root directory was removed, should be preserved")
+	}
+}
