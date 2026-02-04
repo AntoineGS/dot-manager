@@ -174,3 +174,42 @@ List fields have their own cursor (`filesCursor`, `filtersCursor`) separate from
 
 **Help Text**
 Use `RenderHelp()` to show context-sensitive help. Update help based on current state (editing vs navigating). Include vim-style keys alongside arrows (e.g., `"↑/k ↓/j", "navigate"`).
+
+### Multi-Selection Feature (internal/tui/)
+
+The TUI supports batch operations through multi-selection mode:
+
+**Selection Keybindings**
+- `tab`, `space` - Toggle selection of current item (app or sub-entry)
+- Selecting an app recursively selects all its visible sub-entries (configs/packages)
+- Deselecting an app deselects all its sub-entries
+- Sub-entries can be individually toggled even when parent app is not selected
+
+**Visual Indicators**
+- **Banner**: Shows at top when selections exist: "N app(s), M item(s) selected"
+- **Row Styling**: Selected rows highlighted with `SelectedRowStyle` (lighter purple background)
+- **Persistent**: Selections persist across search filtering, screen navigation, and edit operations
+
+**Batch Operations**
+All batch operations follow a three-screen flow:
+1. **Manage Screen** - Select items, press operation key
+2. **Summary Screen** - Review what will be changed, confirm or cancel
+3. **Progress Screen** - Watch real-time progress with progress bar
+
+Available operations in multi-select mode:
+- `r` - Batch restore: Create symlinks for all selected configs
+- `i` - Batch install: Install packages for all selected apps
+- `d` - Batch delete: Remove configs and packages for all selected items
+
+**Exit Behavior (Esc Priority)**
+The `esc` key follows a priority system:
+1. If in search mode → Exit search (keep selections)
+2. If selections exist → Clear all selections
+3. Otherwise → Return to previous screen
+
+**Implementation Notes**
+- Selection state tracked in `Model.selectedApps` (map[int]bool) and `Model.selectedSubEntries` (map[string]bool)
+- `multiSelectActive` flag enables batch operation mode
+- Summary screen shows operation details before execution
+- Progress screen shows real-time feedback with progress bar
+- All operations support dry-run mode via global `-n` flag
