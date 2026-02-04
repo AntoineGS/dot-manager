@@ -33,7 +33,7 @@ func TestRestoreFolder(t *testing.T) {
 
 	entry := config.Entry{Name: "test"}
 
-	err := mgr.restoreFolder(entry, srcDir, targetDir)
+	err := mgr.RestoreFolder(entry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -75,7 +75,7 @@ func TestRestoreFolderSkipsExistingSymlink(t *testing.T) {
 
 	entry := config.Entry{Name: "test"}
 
-	err := mgr.restoreFolder(entry, srcDir, targetDir)
+	err := mgr.RestoreFolder(entry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -111,7 +111,7 @@ func TestRestoreFiles(t *testing.T) {
 
 	entry := config.Entry{Name: "test", Files: []string{"file1.txt", "file2.txt"}}
 
-	err := mgr.restoreFiles(entry, srcDir, targetDir)
+	err := mgr.RestoreFiles(entry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFiles() error = %v", err)
 	}
@@ -158,7 +158,7 @@ func TestRestoreFilesRemovesExisting(t *testing.T) {
 
 	entry := config.Entry{Name: "test", Files: []string{"config.txt"}}
 
-	err := mgr.restoreFiles(entry, srcDir, targetDir)
+	err := mgr.RestoreFiles(entry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFiles() error = %v", err)
 	}
@@ -190,7 +190,7 @@ func TestRestoreDryRun(t *testing.T) {
 
 	entry := config.Entry{Name: "test"}
 
-	err := mgr.restoreFolder(entry, srcDir, targetDir)
+	err := mgr.RestoreFolder(entry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -1268,7 +1268,7 @@ func TestRestoreFiles_SourceMissing(t *testing.T) {
 
 	entry := config.Entry{Name: "test", Files: []string{"missing.txt"}}
 
-	err := mgr.restoreFiles(entry, backupDir, targetDir)
+	err := mgr.RestoreFiles(entry, backupDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFiles() error = %v", err)
 	}
@@ -1295,7 +1295,7 @@ func TestRestoreFolder_SourceMissing(t *testing.T) {
 
 	entry := config.Entry{Name: "test"}
 
-	err := mgr.restoreFolder(entry, backupDir, targetDir)
+	err := mgr.RestoreFolder(entry, backupDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -1444,5 +1444,142 @@ func TestRestoreFolderSubEntry_SourceMissing(t *testing.T) {
 	// Target should not be created
 	if pathExists(targetDir) {
 		t.Error("target should not be created when source is missing")
+	}
+}
+
+func TestRestoreFolder_RecreatesChangedSymlink(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create correct source directory
+	correctSrc := filepath.Join(tmpDir, "correct-source")
+	if err := os.MkdirAll(correctSrc, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(correctSrc, "config.txt"), []byte("correct"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create wrong source directory (symlink currently points here)
+	wrongSrc := filepath.Join(tmpDir, "wrong-source")
+	if err := os.MkdirAll(wrongSrc, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wrongSrc, "config.txt"), []byte("wrong"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Target is a symlink pointing to the wrong location
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.Symlink(wrongSrc, targetDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it points to wrong source
+	link, err := os.Readlink(targetDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link != wrongSrc {
+		t.Fatalf("Setup failed: symlink should point to %s, got %s", wrongSrc, link)
+	}
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.Verbose = true
+
+	entry := config.Entry{Name: "test"}
+
+	err = mgr.RestoreFolder(entry, correctSrc, targetDir)
+	if err != nil {
+		t.Fatalf("restoreFolder() error = %v", err)
+	}
+
+	// Check symlink still exists
+	if !isSymlink(targetDir) {
+		t.Error("Target should still be a symlink")
+	}
+
+	// Check symlink now points to correct source
+	link, err = os.Readlink(targetDir)
+	if err != nil {
+		t.Fatalf("Failed to read symlink: %v", err)
+	}
+	if link != correctSrc {
+		t.Errorf("Symlink should point to %s, got %s", correctSrc, link)
+	}
+}
+
+func TestRestoreFiles_RecreatesChangedSymlink(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create correct source
+	correctSrc := filepath.Join(tmpDir, "correct-source")
+	if err := os.MkdirAll(correctSrc, 0750); err != nil {
+		t.Fatal(err)
+	}
+	correctFile := filepath.Join(correctSrc, "config.txt")
+	if err := os.WriteFile(correctFile, []byte("correct"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create wrong source (symlink currently points here)
+	wrongSrc := filepath.Join(tmpDir, "wrong-source")
+	if err := os.MkdirAll(wrongSrc, 0750); err != nil {
+		t.Fatal(err)
+	}
+	wrongFile := filepath.Join(wrongSrc, "config.txt")
+	if err := os.WriteFile(wrongFile, []byte("wrong"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Target directory with symlink pointing to wrong file
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.MkdirAll(targetDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	targetFile := filepath.Join(targetDir, "config.txt")
+	if err := os.Symlink(wrongFile, targetFile); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify it points to wrong file
+	link, err := os.Readlink(targetFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link != wrongFile {
+		t.Fatalf("Setup failed: symlink should point to %s, got %s", wrongFile, link)
+	}
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+	mgr.Verbose = true
+
+	entry := config.Entry{
+		Name:  "test",
+		Files: []string{"config.txt"},
+	}
+
+	err = mgr.RestoreFiles(entry, correctSrc, targetDir)
+	if err != nil {
+		t.Fatalf("restoreFiles() error = %v", err)
+	}
+
+	// Check symlink still exists
+	if !isSymlink(targetFile) {
+		t.Error("Target file should still be a symlink")
+	}
+
+	// Check symlink now points to correct source
+	link, err = os.Readlink(targetFile)
+	if err != nil {
+		t.Fatalf("Failed to read symlink: %v", err)
+	}
+	if link != correctFile {
+		t.Errorf("Symlink should point to %s, got %s", correctFile, link)
 	}
 }

@@ -2,6 +2,8 @@
 package tui
 
 import (
+	"fmt"
+
 	"github.com/AntoineGS/dot-manager/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -117,9 +119,25 @@ func (m Model) performRestoreSubEntry(subEntry config.SubEntry, target string) (
 
 	backupPath := m.resolvePath(subEntry.Backup)
 
-	if subEntry.IsFolder() {
-		return m.restoreFolder(backupPath, target)
+	// Convert SubEntry to Entry for Manager call
+	entry := config.Entry{
+		Name:   subEntry.Name,
+		Files:  subEntry.Files,
+		Backup: subEntry.Backup,
+		Sudo:   subEntry.Sudo,
 	}
 
-	return m.restoreFiles(subEntry.Files, backupPath, target)
+	// Use Manager for actual restore operation
+	var err error
+	if subEntry.IsFolder() {
+		err = m.Manager.RestoreFolder(entry, backupPath, target)
+	} else {
+		err = m.Manager.RestoreFiles(entry, backupPath, target)
+	}
+
+	if err != nil {
+		return false, fmt.Sprintf("Failed: %v", err)
+	}
+
+	return true, fmt.Sprintf("Restored: %s → %s", target, backupPath)
 }

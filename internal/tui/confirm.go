@@ -3,9 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -344,217 +342,17 @@ func (m Model) buildInstallCommand(pkg PackageItem) *exec.Cmd {
 func (m Model) performRestore(item PathItem) (bool, string) {
 	backupPath := m.resolvePath(item.Entry.Backup)
 
+	// Use Manager for actual restore operation
+	var err error
 	if item.Entry.IsFolder() {
-		return m.restoreFolder(backupPath, item.Target)
+		err = m.Manager.RestoreFolder(item.Entry, backupPath, item.Target)
+	} else {
+		err = m.Manager.RestoreFiles(item.Entry, backupPath, item.Target)
 	}
 
-	return m.restoreFiles(item.Entry.Files, backupPath, item.Target)
-}
-
-func (m Model) restoreFolder(source, target string) (bool, string) {
-	// Check if already a symlink
-	if info, err := os.Lstat(target); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return true, "Already a symlink"
-		}
-	}
-
-	sourceExists := pathExists(source)
-	targetExists := pathExists(target)
-	adopted := false
-
-	// Check if we need to adopt: target exists but backup doesn't
-	if !sourceExists && targetExists {
-		if m.DryRun {
-			return true, fmt.Sprintf("Would adopt: %s → %s, then create symlink", target, source)
-		}
-
-		// Create backup parent directory
-		backupParent := filepath.Dir(source)
-		if _, err := os.Stat(backupParent); os.IsNotExist(err) {
-			if err := os.MkdirAll(backupParent, 0750); err != nil {
-				return false, fmt.Sprintf("Failed to create backup directory: %v", err)
-			}
-		}
-
-		// Move target to backup location
-		if err := os.Rename(target, source); err != nil {
-			return false, fmt.Sprintf("Failed to adopt (move to backup): %v", err)
-		}
-		adopted = true
-		sourceExists = true
-	}
-
-	if m.DryRun {
-		return true, fmt.Sprintf("Would create symlink: %s → %s", target, source)
-	}
-
-	// Check if source exists now
-	if !sourceExists {
-		return false, fmt.Sprintf("Source does not exist: %s", source)
-	}
-
-	// Create parent directory if needed
-	parentDir := filepath.Dir(target)
-	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(parentDir, 0750); err != nil {
-			return false, fmt.Sprintf("Failed to create directory: %v", err)
-		}
-	}
-
-	// Remove existing (if still there)
-	if info, err := os.Lstat(target); err == nil {
-		if info.Mode()&os.ModeSymlink == 0 {
-			if err := os.RemoveAll(target); err != nil {
-				return false, fmt.Sprintf("Failed to remove existing: %v", err)
-			}
-		}
-	}
-
-	// Create symlink
-	if err := os.Symlink(source, target); err != nil {
-		return false, fmt.Sprintf("Failed to create symlink: %v", err)
-	}
-
-	if adopted {
-		return true, fmt.Sprintf("Adopted and linked: %s → %s", target, source)
-	}
-
-	return true, fmt.Sprintf("Created symlink: %s → %s", target, source)
-}
-
-func (m Model) restoreFiles(files []string, source, target string) (bool, string) {
-	// Create backup directory if needed (for adopting)
-	if _, err := os.Stat(source); os.IsNotExist(err) {
-		if !m.DryRun {
-			if err := os.MkdirAll(source, 0750); err != nil {
-				return false, fmt.Sprintf("Failed to create backup directory: %v", err)
-			}
-		}
-	}
-
-	// Create target directory if needed
-	if _, err := os.Stat(target); os.IsNotExist(err) {
-		if !m.DryRun {
-			if err := os.MkdirAll(target, 0750); err != nil {
-				return false, fmt.Sprintf("Failed to create directory: %v", err)
-			}
-		}
-	}
-
-	created := 0
-	skipped := 0
-	adopted := 0
-	var lastErr string
-
-	for _, file := range files {
-		srcFile := filepath.Join(source, file)
-		dstFile := filepath.Join(target, file)
-
-		// Check if already a symlink
-		if info, err := os.Lstat(dstFile); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 {
-				skipped++
-				continue
-			}
-		}
-
-		srcExists := pathExists(srcFile)
-		dstExists := pathExists(dstFile)
-
-		// Check if we need to adopt: target exists but backup doesn't
-		if !srcExists && dstExists {
-			if m.DryRun {
-				adopted++
-				continue
-			}
-
-			// Move target file to backup location
-			if err := os.Rename(dstFile, srcFile); err != nil {
-				// If rename fails (cross-device), try copy and delete
-				if err := copyFileSimple(dstFile, srcFile); err != nil {
-					lastErr = fmt.Sprintf("Failed to adopt %s: %v", file, err)
-					continue
-				}
-
-				if err := os.Remove(dstFile); err != nil {
-					lastErr = fmt.Sprintf("Failed to remove original %s: %v", file, err)
-					continue
-				}
-			}
-
-			adopted++
-			srcExists = true
-		}
-
-		if !srcExists {
-			skipped++
-			continue
-		}
-
-		if m.DryRun {
-			created++
-			continue
-		}
-
-		// Remove existing (if still there)
-		if info, err := os.Lstat(dstFile); err == nil {
-			if info.Mode()&os.ModeSymlink == 0 {
-				if err := os.Remove(dstFile); err != nil {
-					lastErr = fmt.Sprintf("Failed to remove %s: %v", file, err)
-					continue
-				}
-			}
-		}
-
-		// Create symlink
-		if err := os.Symlink(srcFile, dstFile); err != nil {
-			lastErr = fmt.Sprintf("Failed to symlink %s: %v", file, err)
-			continue
-		}
-
-		created++
-	}
-
-	if lastErr != "" {
-		return false, lastErr
-	}
-
-	if m.DryRun {
-		msg := fmt.Sprintf("Would create %d symlink(s)", created)
-		if adopted > 0 {
-			msg += fmt.Sprintf(", adopt %d", adopted)
-		}
-
-		if skipped > 0 {
-			msg += fmt.Sprintf(", skip %d", skipped)
-		}
-
-		return true, msg
-	}
-
-	msg := fmt.Sprintf("Created %d symlink(s)", created)
-	if adopted > 0 {
-		msg += fmt.Sprintf(", adopted %d", adopted)
-	}
-
-	if skipped > 0 {
-		msg += fmt.Sprintf(", skipped %d", skipped)
-	}
-
-	return true, msg
-}
-
-func copyFileSimple(src, dst string) error {
-	data, err := os.ReadFile(src) //nolint:gosec // file path from config
 	if err != nil {
-		return err
+		return false, fmt.Sprintf("Failed: %v", err)
 	}
 
-	info, err := os.Stat(src)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(dst, data, info.Mode())
+	return true, fmt.Sprintf("Restored: %s → %s", item.Target, backupPath)
 }
