@@ -820,3 +820,24 @@ func (m *Model) isSubEntrySelected(appIdx, subIdx int) bool {
 	key := m.makeSubEntryKey(appIdx, subIdx)
 	return m.selectedSubEntries[key]
 }
+
+// getSelectionCounts returns the count of selected apps and independent sub-entries.
+// Independent sub-entries are those selected without their parent app being selected.
+func (m *Model) getSelectionCounts() (appCount int, subEntryCount int) {
+	appCount = len(m.selectedApps)
+
+	// Count sub-entries that are NOT under a selected app
+	for key := range m.selectedSubEntries {
+		var appIdx, subIdx int
+		if _, err := fmt.Sscanf(key, "%d:%d", &appIdx, &subIdx); err != nil {
+			continue // Skip malformed keys
+		}
+
+		// Only count if parent app is not selected
+		if !m.selectedApps[appIdx] {
+			subEntryCount++
+		}
+	}
+
+	return appCount, subEntryCount
+}

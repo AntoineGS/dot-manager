@@ -390,3 +390,63 @@ func TestIsSubEntrySelected(t *testing.T) {
 		t.Error("Sub-entry 1:0 should be selected after toggleSubEntrySelection")
 	}
 }
+
+func TestGetSelectionCounts(t *testing.T) {
+	cfg := &config.Config{
+		Applications: []config.Application{
+			{
+				Name: "nvim",
+				Entries: []config.SubEntry{
+					{Name: "config", Targets: map[string]string{"linux": "~/.config/nvim"}},
+					{Name: "plugins", Targets: map[string]string{"linux": "~/.local/share/nvim"}},
+				},
+			},
+			{
+				Name: "zsh",
+				Entries: []config.SubEntry{
+					{Name: "zshrc", Targets: map[string]string{"linux": "~/.zshrc"}},
+				},
+			},
+		},
+	}
+	plat := &platform.Platform{
+		OS:      "linux",
+		EnvVars: map[string]string{"HOME": "/home/test"},
+	}
+
+	m := NewModel(cfg, plat, false)
+	m.initApplicationItems()
+
+	// Select one app (nvim) - should count as 1 app, 0 independent sub-entries
+	m.toggleAppSelection(0)
+
+	appCount, subCount := m.getSelectionCounts()
+	if appCount != 1 {
+		t.Errorf("Expected 1 app selected, got %d", appCount)
+	}
+	if subCount != 0 {
+		t.Errorf("Expected 0 independent sub-entries, got %d", subCount)
+	}
+
+	// Select one sub-entry from zsh (not selecting the app)
+	m.toggleSubEntrySelection(1, 0)
+
+	appCount, subCount = m.getSelectionCounts()
+	if appCount != 1 {
+		t.Errorf("Expected 1 app selected, got %d", appCount)
+	}
+	if subCount != 1 {
+		t.Errorf("Expected 1 independent sub-entry, got %d", subCount)
+	}
+
+	// Deselect one sub-entry from nvim (partial selection)
+	m.toggleSubEntrySelection(0, 0)
+
+	appCount, subCount = m.getSelectionCounts()
+	if appCount != 1 {
+		t.Errorf("Expected 1 app selected, got %d", appCount)
+	}
+	if subCount != 1 {
+		t.Errorf("Expected 1 independent sub-entry (from zsh), got %d", subCount)
+	}
+}
