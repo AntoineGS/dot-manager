@@ -87,22 +87,7 @@ func (m *Manager) checkContext() error {
 	}
 }
 
-// GetPaths returns all path specifications from the configuration.
-func (m *Manager) GetPaths() []config.PathSpec {
-	return m.Config.GetPaths()
-}
-
-// GetEntries returns all filtered config entries (non-git) from the configuration.
-func (m *Manager) GetEntries() []config.Entry {
-	return m.Config.GetFilteredConfigEntries(m.FilterCtx)
-}
-
-// GetPackageEntries returns all filtered package entries from the configuration.
-func (m *Manager) GetPackageEntries() []config.Entry {
-	return m.Config.GetFilteredPackageEntries(m.FilterCtx)
-}
-
-// GetApplications returns all filtered applications from the V3 configuration format.
+// GetApplications returns all filtered applications from the configuration.
 func (m *Manager) GetApplications() []config.Application {
 	return m.Config.GetFilteredApplications(m.FilterCtx)
 }

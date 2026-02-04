@@ -126,14 +126,6 @@ packages:
 - If target doesn't exist: clones repository
 - Git configuration is nested under `managers.git` for consistency with other package managers
 
-**Migration from v2**
-
-Version 3 introduces an Application-centric structure:
-- **v2**: Flat `entries` array with mixed config/git/package entries
-- **v3**: Nested `applications` array, each with separate `configs`, `repos`, `packages` arrays
-- **Benefits**: Better organization, application-level filtering, clearer grouping of related resources
-- **Breaking change**: Existing v2 configs must be restructured (no automatic migration yet)
-
 ### CLI Flags
 
 - `-d, --dir` - Override configuration directory

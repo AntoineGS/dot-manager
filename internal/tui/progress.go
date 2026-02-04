@@ -61,17 +61,11 @@ func (m *Model) initApplicationItems() {
 
 		// Add package info
 		if app.HasPackage() {
-			spec := config.PackageSpec{
-				Name:     app.Name,
-				Managers: app.Package.Managers,
-				Custom:   app.Package.Custom,
-				URL:      app.Package.URL,
-			}
-			method := getPackageInstallMethod(spec, m.Platform.OS)
+			method := getPackageInstallMethodFromPackage(app.Package, m.Platform.OS)
 			appItem.PkgMethod = method
 
 			if method != "none" {
-				installed := isPackageInstalled(spec, method)
+				installed := isPackageInstalledFromPackage(app.Package, method, app.Name)
 				appItem.PkgInstalled = &installed
 			}
 		}

@@ -18,10 +18,15 @@ func setupTestManager(t *testing.T) *Manager {
 
 	// Create a simple config with some entries
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: tmpDir,
-		Entries: []config.Entry{
-			{Name: "test-entry", Backup: "./test", Targets: map[string]string{"linux": filepath.Join(tmpDir, "target")}},
+		Applications: []config.Application{
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{Name: "test-entry", Backup: "./test", Targets: map[string]string{"linux": filepath.Join(tmpDir, "target")}},
+				},
+			},
 		},
 	}
 
@@ -94,14 +99,19 @@ func TestBackup_ContextCancellation(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: backupRoot,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "nvim",
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "nvim-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim",
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 		},
@@ -140,14 +150,19 @@ func TestBackup_ContextTimeout(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: backupRoot,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "nvim",
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "nvim-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim",
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 		},

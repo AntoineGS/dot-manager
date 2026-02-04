@@ -30,13 +30,6 @@ func (e *Entry) IsConfig() bool {
 	return e.Backup != ""
 }
 
-// HasConfig returns true if this entry has configuration management (backup/targets)
-//
-// Deprecated: Use IsConfig() instead
-func (e *Entry) HasConfig() bool {
-	return e.IsConfig()
-}
-
 // HasPackage returns true if this entry has package installation configuration
 func (e *Entry) HasPackage() bool {
 	return e.Package != nil
@@ -44,7 +37,7 @@ func (e *Entry) HasPackage() bool {
 
 // IsFolder returns true if this config entry manages an entire folder (no specific files)
 func (e *Entry) IsFolder() bool {
-	return e.HasConfig() && len(e.Files) == 0
+	return e.IsConfig() && len(e.Files) == 0
 }
 
 // GetTarget returns the target path for the specified OS
@@ -56,67 +49,7 @@ func (e *Entry) GetTarget(osType string) string {
 	return ""
 }
 
-// ToPathSpec converts the Entry to a PathSpec for backward compatibility
-func (e *Entry) ToPathSpec() PathSpec {
-	return PathSpec{
-		Name:    e.Name,
-		Files:   e.Files,
-		Backup:  e.Backup,
-		Targets: e.Targets,
-	}
-}
-
-// ToPackageSpec converts the Entry to a PackageSpec for backward compatibility
-func (e *Entry) ToPackageSpec() PackageSpec {
-	if e.Package == nil {
-		return PackageSpec{
-			Name:        e.Name,
-			Description: e.Description,
-			Filters:     e.Filters,
-		}
-	}
-
-	return PackageSpec{
-		Name:        e.Name,
-		Description: e.Description,
-		Managers:    e.Package.Managers,
-		Custom:      e.Package.Custom,
-		URL:         e.Package.URL,
-		Filters:     e.Filters,
-	}
-}
-
-// EntryFromPathSpec creates an Entry from a PathSpec
-func EntryFromPathSpec(p PathSpec, sudo bool) Entry {
-	return Entry{
-		Name:    p.Name,
-		Sudo:    sudo,
-		Files:   p.Files,
-		Backup:  p.Backup,
-		Targets: p.Targets,
-	}
-}
-
-// EntryFromPackageSpec creates an Entry from a PackageSpec
-func EntryFromPackageSpec(p PackageSpec) Entry {
-	var pkg *EntryPackage
-	if len(p.Managers) > 0 || len(p.Custom) > 0 || len(p.URL) > 0 {
-		pkg = &EntryPackage{
-			Managers: p.Managers,
-			Custom:   p.Custom,
-			URL:      p.URL,
-		}
-	}
-
-	return Entry{
-		Name:        p.Name,
-		Description: p.Description,
-		Filters:     p.Filters,
-		Package:     pkg,
-	}
-}
-
-// Application represents a logical grouping of configuration entries (v3 format)
+// Application represents a logical grouping of configuration entries
 // An application has a name, optional description, filters, and contains multiple sub-entries.
 // It can also have an associated package for installation.
 type Application struct {
@@ -127,7 +60,7 @@ type Application struct {
 	Entries     []SubEntry    `yaml:"entries"`
 }
 
-// SubEntry represents an individual configuration entry within an application (v3 format)
+// SubEntry represents an individual configuration entry within an application
 type SubEntry struct {
 	Targets map[string]string `yaml:"targets,omitempty"`
 	Name    string            `yaml:"name"`

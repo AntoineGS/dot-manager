@@ -288,104 +288,50 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 
 	items := make([]PathItem, 0)
 
-	// For v3 configs, flatten applications into PathItems
-	if cfg.Version == 3 {
-		apps := cfg.GetFilteredApplications(filterCtx)
-		for _, app := range apps {
-			// Convert each SubEntry to a PathItem
-			for _, subEntry := range app.Entries {
-				// Create Entry from SubEntry
-				entry := config.Entry{
-					Name:        app.Name + "/" + subEntry.Name, // Prefix with app name
-					Description: app.Description,                // Use app description
-					Sudo:        subEntry.Sudo,
-					Filters:     app.Filters, // Use app filters
-					Files:       subEntry.Files,
-					Backup:      subEntry.Backup,
-					Targets:     subEntry.Targets,
-				}
-
-				entryType := EntryTypeConfig
-
-				// Add package from app-level if present
-				if app.Package != nil {
-					entry.Package = app.Package
-				}
-
-				target := entry.GetTarget(plat.OS)
-				item := PathItem{
-					Entry:     entry,
-					Target:    target,
-					Selected:  true,
-					EntryType: entryType,
-				}
-
-				// Add package info if entry has a package
-				if entry.HasPackage() {
-					spec := entry.ToPackageSpec()
-					method := getPackageInstallMethod(spec, plat.OS)
-					item.PkgMethod = method
-
-					if method != TypeNone {
-						installed := isPackageInstalled(spec, method)
-						item.PkgInstalled = &installed
-					}
-				}
-
-				items = append(items, item)
-				addedEntries[entry.Name] = true
+	// Flatten applications into PathItems
+	apps := cfg.GetFilteredApplications(filterCtx)
+	for _, app := range apps {
+		// Convert each SubEntry to a PathItem
+		for _, subEntry := range app.Entries {
+			// Create Entry from SubEntry
+			entry := config.Entry{
+				Name:        app.Name + "/" + subEntry.Name, // Prefix with app name
+				Description: app.Description,                // Use app description
+				Sudo:        subEntry.Sudo,
+				Filters:     app.Filters, // Use app filters
+				Files:       subEntry.Files,
+				Backup:      subEntry.Backup,
+				Targets:     subEntry.Targets,
 			}
-		}
-	} else {
-		// For v2 configs, use existing logic
-		// Get all config entries filtered by filter context
-		configEntries := cfg.GetFilteredConfigEntries(filterCtx)
 
-		for _, e := range configEntries {
-			target := e.GetTarget(plat.OS)
+			entryType := EntryTypeConfig
+
+			// Add package from app-level if present
+			if app.Package != nil {
+				entry.Package = app.Package
+			}
+
+			target := entry.GetTarget(plat.OS)
 			item := PathItem{
-				Entry:     e,
+				Entry:     entry,
 				Target:    target,
-				Selected:  true, // Select all by default
-				EntryType: EntryTypeConfig,
+				Selected:  true,
+				EntryType: entryType,
 			}
+
 			// Add package info if entry has a package
-			if e.HasPackage() {
-				spec := e.ToPackageSpec()
-				method := getPackageInstallMethod(spec, plat.OS)
+			if entry.HasPackage() {
+				method := getPackageInstallMethodFromPackage(entry.Package, plat.OS)
 				item.PkgMethod = method
 
 				if method != TypeNone {
-					installed := isPackageInstalled(spec, method)
+					installed := isPackageInstalledFromPackage(entry.Package, method, entry.Name)
 					item.PkgInstalled = &installed
 				}
 			}
 
 			items = append(items, item)
-			addedEntries[e.Name] = true
-		}
-
-		// Add package-only entries (those not already added as config entries)
-		packageEntries := cfg.GetFilteredPackageEntries(filterCtx)
-		for _, e := range packageEntries {
-			// Skip if already added as config entry
-			if addedEntries[e.Name] {
-				continue
-			}
-			spec := e.ToPackageSpec()
-			method := getPackageInstallMethod(spec, plat.OS)
-
-			if method != TypeNone {
-				installed := isPackageInstalled(spec, method)
-				items = append(items, PathItem{
-					Entry:        e,
-					Target:       "", // Package-only entries have no target
-					Selected:     true,
-					EntryType:    EntryTypePackage,
-					PkgMethod:    method,
-					PkgInstalled: &installed,
-				})
-			}
+			addedEntries[entry.Name] = true
 		}
 	}
 
@@ -433,22 +379,30 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 	return m
 }
 
-// isPackageInstalled checks if a package is installed using the packages package
-func isPackageInstalled(spec config.PackageSpec, method string) bool {
+// isPackageInstalledFromPackage checks if a package is installed using the packages package
+func isPackageInstalledFromPackage(pkg *config.EntryPackage, method, entryName string) bool {
+	if pkg == nil {
+		return false
+	}
+
 	// Get the package name for the detected manager
 	pkgName := ""
-	if name, ok := spec.Managers[method]; ok {
+	if name, ok := pkg.Managers[method]; ok {
 		pkgName = name
 	} else {
 		// For custom/url methods, use the entry name
-		pkgName = spec.Name
+		pkgName = entryName
 	}
 
 	return packages.IsInstalled(pkgName, method)
 }
 
-// getPackageInstallMethod determines how a package would be installed
-func getPackageInstallMethod(pkg config.PackageSpec, osType string) string {
+// getPackageInstallMethodFromPackage determines how a package would be installed
+func getPackageInstallMethodFromPackage(pkg *config.EntryPackage, osType string) string {
+	if pkg == nil {
+		return TypeNone
+	}
+
 	// Check package managers
 	availableManagers := detectAvailableManagers()
 	for _, mgr := range availableManagers {

@@ -23,39 +23,7 @@ func (m *Manager) Backup() error {
 		return err
 	}
 
-	m.logf("Backing up configurations for OS: %s", m.Platform.OS)
-
-	if m.Config.Version == 3 {
-		return m.backupV3()
-	}
-
-	// v2 format - existing logic
-	entries := m.GetEntries()
-
-	for _, entry := range entries {
-		// Check context before each entry
-		if err := m.checkContext(); err != nil {
-			return err
-		}
-
-		target := entry.GetTarget(m.Platform.OS)
-		if target == "" {
-			m.logVerbosef("Skipping %s: no target for OS %s", entry.Name, m.Platform.OS)
-			continue
-		}
-
-		// Expand ~ and env vars in target path for file operations
-		expandedTarget := m.expandTarget(target)
-
-		if err := m.backupEntry(entry, expandedTarget); err != nil {
-			m.logf("Error backing up %s: %v", entry.Name, err)
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) backupV3() error { //nolint:dupl // similar structure to restoreV3, but semantically different
+	m.logf("Backing up configurations for OS: %s", m.Platform.OS) //nolint:dupl // similar structure to restoreV3, but semantically different
 	apps := m.GetApplications()
 
 	for _, app := range apps {
@@ -171,16 +139,6 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 	}
 
 	return nil
-}
-
-func (m *Manager) backupEntry(entry config.Entry, source string) error {
-	backupPath := m.resolvePath(entry.Backup)
-
-	if entry.IsFolder() {
-		return m.backupFolder(entry.Name, source, backupPath)
-	}
-
-	return m.backupFiles(entry.Name, entry.Files, source, backupPath)
 }
 
 func (m *Manager) backupFolder(_, source, backup string) error {

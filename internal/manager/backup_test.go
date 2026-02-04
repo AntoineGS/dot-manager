@@ -237,23 +237,33 @@ func TestBackupIntegration(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: backupRoot,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "nvim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "nvim-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 			{
-				Name:   "bash",
-				Files:  []string{".bashrc"},
-				Backup: "./bash",
-				Targets: map[string]string{
-					"linux": homeDir,
+				Name: "bash-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "bash",
+						Files:  []string{".bashrc"},
+						Backup: "./bash",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
 				},
 			},
 		},
@@ -372,7 +382,7 @@ func TestBackup_SymlinkAlreadyExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entry := config.Entry{
+	subEntry := config.SubEntry{
 		Name:   "test",
 		Backup: "test",
 		Targets: map[string]string{
@@ -380,7 +390,8 @@ func TestBackup_SymlinkAlreadyExists(t *testing.T) {
 		},
 	}
 
-	err := m.backupEntry(entry, target)
+	backupPath := filepath.Join(m.Config.BackupRoot, "test")
+	err := m.backupFolderSubEntry("test", subEntry, backupPath, target)
 
 	// Should skip without error
 	if err != nil {
@@ -401,7 +412,7 @@ func TestBackup_FilePermissionsPreserved(t *testing.T) {
 
 	backupPath := filepath.Join(m.Config.BackupRoot, "test")
 
-	entry := config.Entry{
+	subEntry := config.SubEntry{
 		Name:   "test",
 		Files:  []string{"config"},
 		Backup: "test",
@@ -410,7 +421,7 @@ func TestBackup_FilePermissionsPreserved(t *testing.T) {
 		},
 	}
 
-	err := m.backupEntry(entry, targetDir)
+	err := m.backupFilesSubEntry("test", subEntry, backupPath, targetDir)
 	if err != nil {
 		t.Fatalf("backupEntry() error = %v", err)
 	}
@@ -443,7 +454,7 @@ func TestBackup_DryRunNoChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entry := config.Entry{
+	subEntry := config.SubEntry{
 		Name:   "dryrun-test",
 		Files:  []string{"config"},
 		Backup: "dryrun-backup",
@@ -452,13 +463,13 @@ func TestBackup_DryRunNoChanges(t *testing.T) {
 		},
 	}
 
-	err := m.backupEntry(entry, targetDir)
+	backupPath := filepath.Join(m.Config.BackupRoot, "dryrun-backup")
+	err := m.backupFilesSubEntry("dryrun-test", subEntry, backupPath, targetDir)
 	if err != nil {
 		t.Fatalf("backupEntry() error = %v", err)
 	}
 
 	// Verify no backup created
-	backupPath := filepath.Join(m.Config.BackupRoot, "dryrun-backup")
 	if _, err := os.Stat(backupPath); !os.IsNotExist(err) {
 		t.Error("dry-run created backup directory")
 	}
@@ -488,15 +499,20 @@ func TestBackupWithContext(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: backupRoot,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "nvim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "nvim-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 		},

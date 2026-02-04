@@ -225,23 +225,33 @@ func TestRestoreIntegration(t *testing.T) {
 
 	// Create config
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: backupRoot,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "nvim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": filepath.Join(tmpDir, "home", ".config", "nvim"),
+				Name: "nvim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(tmpDir, "home", ".config", "nvim"),
+						},
+					},
 				},
 			},
 			{
-				Name:   "bash",
-				Files:  []string{".bashrc"},
-				Backup: "./bash",
-				Targets: map[string]string{
-					"linux": filepath.Join(tmpDir, "home"),
+				Name: "bash",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{".bashrc"},
+						Backup: "./bash",
+						Targets: map[string]string{
+							"linux": filepath.Join(tmpDir, "home"),
+						},
+					},
 				},
 			},
 		},
@@ -416,13 +426,18 @@ func TestRestoreEntry_PathError(t *testing.T) {
 
 				cfg := &config.Config{
 					BackupRoot: backupRoot,
-					Version:    2,
-					Entries: []config.Entry{
+					Version:    3,
+					Applications: []config.Application{
 						{
-							Name:   "test",
-							Backup: "./test",
-							Targets: map[string]string{
-								"linux": filepath.Join(targetDir, "config"),
+							Name: "test",
+							Entries: []config.SubEntry{
+								{
+									Name:   "config",
+									Backup: "./test",
+									Targets: map[string]string{
+										"linux": filepath.Join(targetDir, "config"),
+									},
+								},
 							},
 						},
 					},
@@ -431,7 +446,17 @@ func TestRestoreEntry_PathError(t *testing.T) {
 				plat := &platform.Platform{OS: platform.OSLinux}
 				mgr := New(cfg, plat)
 
-				return mgr, cfg.Entries[0]
+				ctx := &config.FilterContext{}
+				entries := cfg.GetAllConfigSubEntries(ctx)
+				// Convert SubEntry to Entry for compatibility with test
+				entry := config.Entry{
+					Name:    entries[0].Name,
+					Backup:  entries[0].Backup,
+					Targets: entries[0].Targets,
+					Files:   entries[0].Files,
+					Sudo:    entries[0].Sudo,
+				}
+				return mgr, entry
 			},
 			wantErr:     true,
 			wantPathErr: true,
@@ -559,15 +584,20 @@ func TestRestore_ReplacesExistingFile(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: filepath.Join(tmpDir, "backup"),
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "test",
-				Files:  []string{"file.txt"},
-				Backup: "./config",
-				Targets: map[string]string{
-					"linux": targetDir,
+				Name: "test",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{"file.txt"},
+						Backup: "./config",
+						Targets: map[string]string{
+							"linux": targetDir,
+						},
+					},
 				},
 			},
 		},

@@ -10,30 +10,48 @@ import (
 
 func TestNewModel(t *testing.T) {
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "/home/user/backup",
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "nvim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": "~/.config/nvim",
+				Name:        "nvim",
+				Description: "Neovim editor",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim-config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": "~/.config/nvim",
+						},
+					},
 				},
 			},
 			{
-				Name:   "bash",
-				Files:  []string{".bashrc"},
-				Backup: "./bash",
-				Targets: map[string]string{
-					"linux": "~",
+				Name:        "bash",
+				Description: "Bash shell",
+				Entries: []config.SubEntry{
+					{
+						Name:   "bashrc",
+						Files:  []string{".bashrc"},
+						Backup: "./bash",
+						Targets: map[string]string{
+							"linux": "~",
+						},
+					},
 				},
 			},
 			{
-				Name:   "windows-only",
-				Backup: "./windows",
-				Targets: map[string]string{
-					"windows": "~/AppData",
+				Name:        "windows-only",
+				Description: "Windows only app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "windows-config",
+						Backup: "./windows",
+						Targets: map[string]string{
+							"windows": "~/AppData",
+						},
+					},
 				},
 				Filters: []config.Filter{{Include: map[string]string{"os": "windows"}}},
 			},
@@ -64,11 +82,21 @@ func TestNewModel(t *testing.T) {
 
 func TestNewModelRootPaths(t *testing.T) {
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "/home/user/backup",
-		Entries: []config.Entry{
-			{Name: "user-config", Backup: "./user", Targets: map[string]string{"linux": "~/.config"}},
-			{Name: "root-config", Backup: "./root", Targets: map[string]string{"linux": "/etc"}, Sudo: true},
+		Applications: []config.Application{
+			{
+				Name: "user-app",
+				Entries: []config.SubEntry{
+					{Name: "user-config", Backup: "./user", Targets: map[string]string{"linux": "~/.config"}},
+				},
+			},
+			{
+				Name: "root-app",
+				Entries: []config.SubEntry{
+					{Name: "root-config", Backup: "./root", Targets: map[string]string{"linux": "/etc"}, Sudo: true},
+				},
+			},
 		},
 	}
 
@@ -80,27 +108,32 @@ func TestNewModelRootPaths(t *testing.T) {
 		t.Errorf("Expected 2 paths, got %d", len(model.Paths))
 	}
 
-	// Verify both paths are present
+	// Verify both paths are present (names are prefixed with app name)
 	names := make(map[string]bool)
 	for _, p := range model.Paths {
 		names[p.Entry.Name] = true
 	}
 
-	if !names["user-config"] {
-		t.Error("Should include user-config")
+	if !names["user-app/user-config"] {
+		t.Error("Should include user-app/user-config")
 	}
 
-	if !names["root-config"] {
-		t.Error("Should include root-config")
+	if !names["root-app/root-config"] {
+		t.Error("Should include root-app/root-config")
 	}
 }
 
 func TestModelUpdate(t *testing.T) {
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "/home/user/backup",
-		Entries: []config.Entry{
-			{Name: "test", Backup: "./test", Targets: map[string]string{"linux": "~/.config"}},
+		Applications: []config.Application{
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{Name: "test", Backup: "./test", Targets: map[string]string{"linux": "~/.config"}},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: platform.OSLinux}
@@ -139,11 +172,21 @@ func TestOperationString(t *testing.T) {
 
 func TestPathItemIsFolder(t *testing.T) {
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "/backup",
-		Entries: []config.Entry{
-			{Name: "folder", Files: []string{}, Backup: "./folder", Targets: map[string]string{"linux": "~/.config/folder"}},
-			{Name: "files", Files: []string{"a.txt", "b.txt"}, Backup: "./files", Targets: map[string]string{"linux": "~/.config"}},
+		Applications: []config.Application{
+			{
+				Name: "folder-app",
+				Entries: []config.SubEntry{
+					{Name: "folder", Files: []string{}, Backup: "./folder", Targets: map[string]string{"linux": "~/.config/folder"}},
+				},
+			},
+			{
+				Name: "files-app",
+				Entries: []config.SubEntry{
+					{Name: "files", Files: []string{"a.txt", "b.txt"}, Backup: "./files", Targets: map[string]string{"linux": "~/.config"}},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: platform.OSLinux}
@@ -155,9 +198,9 @@ func TestPathItemIsFolder(t *testing.T) {
 
 	for i := range model.Paths {
 		switch model.Paths[i].Entry.Name {
-		case "folder":
+		case "folder-app/folder":
 			folderPath = &model.Paths[i]
-		case "files":
+		case "files-app/files":
 			filesPath = &model.Paths[i]
 		}
 	}
@@ -173,10 +216,15 @@ func TestPathItemIsFolder(t *testing.T) {
 
 func TestModelView(t *testing.T) {
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "/backup",
-		Entries: []config.Entry{
-			{Name: "test", Backup: "./test", Targets: map[string]string{"linux": "~/.config"}},
+		Applications: []config.Application{
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{Name: "test", Backup: "./test", Targets: map[string]string{"linux": "~/.config"}},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: platform.OSLinux}
@@ -217,10 +265,15 @@ func TestModelView(t *testing.T) {
 
 func TestDryRunMode(t *testing.T) {
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "/backup",
-		Entries: []config.Entry{
-			{Name: "test", Backup: "./test", Targets: map[string]string{"linux": "~/.config"}},
+		Applications: []config.Application{
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{Name: "test", Backup: "./test", Targets: map[string]string{"linux": "~/.config"}},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: platform.OSLinux}

@@ -49,23 +49,33 @@ func TestE2E_RestoreFromExistingBackup(t *testing.T) {
 
 	// Create config
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{}, // folder mode
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": filepath.Join(homeDir, ".config", "nvim"),
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{}, // folder mode
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".config", "nvim"),
+						},
+					},
 				},
 			},
 			{
-				Name:   "bash",
-				Files:  []string{".bashrc", ".bash_profile"}, // file mode
-				Backup: "./bash",
-				Targets: map[string]string{
-					"linux": homeDir,
+				Name: "bash",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{".bashrc", ".bash_profile"}, // file mode
+						Backup: "./bash",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
 				},
 			},
 		},
@@ -171,23 +181,33 @@ func TestE2E_AdoptExistingConfigs(t *testing.T) {
 
 	// Config with empty backup locations
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 			{
-				Name:   "bash",
-				Files:  []string{".bashrc"},
-				Backup: "./bash",
-				Targets: map[string]string{
-					"linux": homeDir,
+				Name: "bash",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{".bashrc"},
+						Backup: "./bash",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
 				},
 			},
 		},
@@ -279,23 +299,33 @@ func TestE2E_BackupThenRestore(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 			{
-				Name:   "zsh",
-				Files:  []string{".zshrc"},
-				Backup: "./zsh",
-				Targets: map[string]string{
-					"linux": homeDir,
+				Name: "zsh",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{".zshrc"},
+						Backup: "./zsh",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
 				},
 			},
 		},
@@ -329,23 +359,33 @@ func TestE2E_BackupThenRestore(t *testing.T) {
 
 	// Create a new manager for restore (simulating different config pointing to backed up folder)
 	restoreCfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim/nvim", // Points to the backed up folder
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim/nvim", // Points to the backed up folder
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 			{
-				Name:   "zsh",
-				Files:  []string{".zshrc"},
-				Backup: "./zsh",
-				Targets: map[string]string{
-					"linux": homeDir,
+				Name: "zsh",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{".zshrc"},
+						Backup: "./zsh",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
 				},
 			},
 		},
@@ -407,15 +447,20 @@ func TestE2E_RestoreIdempotent(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": filepath.Join(homeDir, ".config", "nvim"),
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".config", "nvim"),
+						},
+					},
 				},
 			},
 		},
@@ -473,15 +518,20 @@ func TestE2E_SymlinkModification(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": filepath.Join(homeDir, ".config", "nvim"),
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".config", "nvim"),
+						},
+					},
 				},
 			},
 		},
@@ -564,23 +614,33 @@ func TestE2E_MixedFolderAndFiles(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{}, // folder mode
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": filepath.Join(homeDir, ".config", "nvim"),
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{}, // folder mode
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".config", "nvim"),
+						},
+					},
 				},
 			},
 			{
-				Name:   "shell",
-				Files:  []string{".bashrc", ".zshrc", ".profile"}, // file mode
-				Backup: "./shell",
-				Targets: map[string]string{
-					"linux": homeDir,
+				Name: "shell",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{".bashrc", ".zshrc", ".profile"}, // file mode
+						Backup: "./shell",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
 				},
 			},
 		},
@@ -652,15 +712,20 @@ func TestE2E_DryRunNoChanges(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": filepath.Join(homeDir, ".config", "nvim"),
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".config", "nvim"),
+						},
+					},
 				},
 			},
 		},
@@ -710,15 +775,20 @@ func TestE2E_AdoptDryRunPreservesOriginal(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 		},
@@ -786,15 +856,20 @@ func TestE2E_SkipAlreadySymlinked(t *testing.T) {
 	initialModTime := initialInfo.ModTime()
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimTarget,
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimTarget,
+						},
+					},
 				},
 			},
 		},
@@ -845,16 +920,21 @@ func TestE2E_MultipleOSTargets(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux":   filepath.Join(linuxHome, ".config", "nvim"),
-					"windows": filepath.Join(windowsHome, "AppData", "Local", "nvim"),
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux":   filepath.Join(linuxHome, ".config", "nvim"),
+							"windows": filepath.Join(windowsHome, "AppData", "Local", "nvim"),
+						},
+					},
 				},
 			},
 		},
@@ -903,24 +983,34 @@ func TestE2E_RootPaths(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "user-app",
-				Files:  []string{},
-				Backup: "./user",
-				Targets: map[string]string{
-					"linux": filepath.Join(homeDir, ".config", "app"),
+				Name: "user-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./user",
+						Targets: map[string]string{
+							"linux": filepath.Join(homeDir, ".config", "app"),
+						},
+					},
 				},
 			},
 			{
-				Name:   "system-app",
-				Sudo:   true,
-				Files:  []string{"system.conf"},
-				Backup: "./system",
-				Targets: map[string]string{
-					"linux": etcDir,
+				Name: "system-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{"system.conf"},
+						Backup: "./system",
+						Sudo:   true,
+						Targets: map[string]string{
+							"linux": etcDir,
+						},
+					},
 				},
 			},
 		},
@@ -941,8 +1031,9 @@ func TestE2E_RootPaths(t *testing.T) {
 		t.Errorf("User target should be symlinked")
 	}
 
-	// Verify the Root flag is preserved in config entries
-	entries := cfg.GetConfigEntries()
+	// Verify the Sudo flag is preserved in config entries
+	ctx := &config.FilterContext{}
+	entries := cfg.GetAllConfigSubEntries(ctx)
 	rootCount := 0
 
 	for _, e := range entries {
@@ -952,7 +1043,7 @@ func TestE2E_RootPaths(t *testing.T) {
 	}
 
 	if rootCount != 1 {
-		t.Errorf("Expected 1 root entry, got %d", rootCount)
+		t.Errorf("Expected 1 sudo entry, got %d", rootCount)
 	}
 }
 
@@ -971,15 +1062,20 @@ func TestE2E_RestoreWithNoTarget(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"windows": "C:\\Users\\nvim", // Only Windows target
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"windows": "C:\\Users\\nvim", // Only Windows target
+						},
+					},
 				},
 			},
 		},
@@ -1007,15 +1103,20 @@ func TestE2E_BackupWithNoTarget(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "windows-only",
-				Files:  []string{},
-				Backup: "./windows",
-				Targets: map[string]string{
-					"windows": "C:\\Users\\config",
+				Name: "windows-only",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./windows",
+						Targets: map[string]string{
+							"windows": "C:\\Users\\config",
+						},
+					},
 				},
 			},
 		},
@@ -1042,15 +1143,20 @@ func TestE2E_BackupNonexistentSource(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": filepath.Join(tmpDir, "nonexistent", "nvim"),
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": filepath.Join(tmpDir, "nonexistent", "nvim"),
+						},
+					},
 				},
 			},
 		},
@@ -1278,15 +1384,20 @@ func TestE2E_RestoreCreatesNestedParentDirs(t *testing.T) {
 	deepTarget := filepath.Join(tmpDir, "home", "user", ".config", "deeply", "nested", "nvim")
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: repoDir,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": deepTarget,
+				Name: "neovim",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": deepTarget,
+						},
+					},
 				},
 			},
 		},

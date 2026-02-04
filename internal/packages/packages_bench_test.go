@@ -37,7 +37,7 @@ func BenchmarkFromEntries(b *testing.B) {
 		entries[i] = config.Entry{
 			Name: "test",
 			Package: &config.EntryPackage{
-				Managers: map[string]string{
+				Managers: map[string]interface{}{
 					"pacman": "test",
 				},
 			},

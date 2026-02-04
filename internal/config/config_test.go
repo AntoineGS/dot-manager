@@ -13,29 +13,38 @@ func TestLoad(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-version: 2
+version: 3
 backup_root: "~/gits/configurations"
 
-entries:
+applications:
   - name: "neovim"
-    files: []
-    backup: "./Both/Neovim/nvim"
-    targets:
-      linux: "~/.config/nvim"
-      windows: "~/AppData/Local/nvim"
+    description: "Text editor"
+    entries:
+      - name: "nvim-config"
+        files: []
+        backup: "./Both/Neovim/nvim"
+        targets:
+          linux: "~/.config/nvim"
+          windows: "~/AppData/Local/nvim"
 
   - name: "bash"
-    files: [".bashrc", ".bash_profile"]
-    backup: "./Linux/Bash"
-    targets:
-      linux: "~"
+    description: "Bash shell"
+    entries:
+      - name: "bashrc"
+        files: [".bashrc", ".bash_profile"]
+        backup: "./Linux/Bash"
+        targets:
+          linux: "~"
 
   - name: "pacman-hooks"
-    sudo: true
-    files: ["pkg-backup.hook"]
-    backup: "./Linux/pacman"
-    targets:
-      linux: "/etc/pacman.d/hooks"
+    description: "Pacman hooks"
+    entries:
+      - name: "pkg-backup-hook"
+        sudo: true
+        files: ["pkg-backup.hook"]
+        backup: "./Linux/pacman"
+        targets:
+          linux: "/etc/pacman.d/hooks"
 `
 
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
@@ -48,8 +57,8 @@ entries:
 	}
 
 	// Test version
-	if cfg.Version != 2 {
-		t.Errorf("Version = %d, want 2", cfg.Version)
+	if cfg.Version != 3 {
+		t.Errorf("Version = %d, want 3", cfg.Version)
 	}
 
 	// Test backup root
@@ -57,40 +66,44 @@ entries:
 		t.Errorf("BackupRoot = %q, want %q", cfg.BackupRoot, "~/gits/configurations")
 	}
 
-	// Test entries count
-	if len(cfg.Entries) != 3 {
-		t.Errorf("len(Entries) = %d, want 3", len(cfg.Entries))
+	// Test applications count
+	if len(cfg.Applications) != 3 {
+		t.Errorf("len(Applications) = %d, want 3", len(cfg.Applications))
 	}
 
-	// Test first entry (neovim)
-	if cfg.Entries[0].Name != "neovim" { // nolint:goconst // test data
-		t.Errorf("Entries[0].Name = %q, want %q", cfg.Entries[0].Name, "neovim")
+	// Test first application (neovim)
+	if cfg.Applications[0].Name != "neovim" { // nolint:goconst // test data
+		t.Errorf("Applications[0].Name = %q, want %q", cfg.Applications[0].Name, "neovim")
 	}
 
-	if !cfg.Entries[0].IsFolder() {
-		t.Error("Entries[0].IsFolder() = false, want true")
+	if len(cfg.Applications[0].Entries) != 1 {
+		t.Errorf("len(Applications[0].Entries) = %d, want 1", len(cfg.Applications[0].Entries))
 	}
 
-	// Test second entry (bash)
-	if cfg.Entries[1].Name != "bash" {
-		t.Errorf("Entries[1].Name = %q, want %q", cfg.Entries[1].Name, "bash")
+	if !cfg.Applications[0].Entries[0].IsFolder() {
+		t.Error("Applications[0].Entries[0].IsFolder() = false, want true")
 	}
 
-	if cfg.Entries[1].IsFolder() {
-		t.Error("Entries[1].IsFolder() = true, want false")
+	// Test second application (bash)
+	if cfg.Applications[1].Name != "bash" {
+		t.Errorf("Applications[1].Name = %q, want %q", cfg.Applications[1].Name, "bash")
 	}
 
-	if len(cfg.Entries[1].Files) != 2 {
-		t.Errorf("len(Entries[1].Files) = %d, want 2", len(cfg.Entries[1].Files))
+	if cfg.Applications[1].Entries[0].IsFolder() {
+		t.Error("Applications[1].Entries[0].IsFolder() = true, want false")
 	}
 
-	// Test third entry (root entry)
-	if cfg.Entries[2].Name != "pacman-hooks" {
-		t.Errorf("Entries[2].Name = %q, want %q", cfg.Entries[2].Name, "pacman-hooks")
+	if len(cfg.Applications[1].Entries[0].Files) != 2 {
+		t.Errorf("len(Applications[1].Entries[0].Files) = %d, want 2", len(cfg.Applications[1].Entries[0].Files))
 	}
 
-	if !cfg.Entries[2].Sudo {
-		t.Error("Entries[2].Sudo = false, want true")
+	// Test third application (pacman-hooks with sudo)
+	if cfg.Applications[2].Name != "pacman-hooks" {
+		t.Errorf("Applications[2].Name = %q, want %q", cfg.Applications[2].Name, "pacman-hooks")
+	}
+
+	if !cfg.Applications[2].Entries[0].Sudo {
+		t.Error("Applications[2].Entries[0].Sudo = false, want true")
 	}
 }
 
@@ -124,9 +137,9 @@ func TestLoadUnsupportedVersion(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-version: 1
+version: 2
 backup_root: "~/dotfiles"
-entries: []
+applications: []
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
@@ -134,78 +147,27 @@ entries: []
 
 	_, err := Load(configPath)
 	if err == nil {
-		t.Error("Load() expected error for unsupported version 1")
-	}
-}
-
-func TestPathSpecGetTarget(t *testing.T) {
-	t.Parallel()
-	spec := PathSpec{
-		Name: "test",
-		Targets: map[string]string{
-			"linux":   "/home/user/.config",
-			"windows": "C:\\Users\\user",
-		},
-	}
-
-	tests := []struct {
-		osType string
-		want   string
-	}{
-		{"linux", "/home/user/.config"},
-		{"windows", "C:\\Users\\user"},
-		{"darwin", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.osType, func(t *testing.T) {
-			t.Parallel()
-
-			got := spec.GetTarget(tt.osType)
-			if got != tt.want {
-				t.Errorf("GetTarget(%q) = %q, want %q", tt.osType, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestPathSpecIsFolder(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name  string
-		files []string
-		want  bool
-	}{
-		{"empty files", []string{}, true},
-		{"nil files", nil, true},
-		{"with files", []string{"file1", "file2"}, false},
-		{"single file", []string{"file"}, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			spec := PathSpec{Files: tt.files}
-			if got := spec.IsFolder(); got != tt.want {
-				t.Errorf("IsFolder() = %v, want %v", got, tt.want)
-			}
-		})
+		t.Error("Load() expected error for unsupported version 2")
 	}
 }
 
 func TestExpandPaths(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "~/gits/configs",
-		Entries: []Entry{
+		Applications: []Application{
 			{
-				Name:   "test",
-				Backup: "./test",
-				Files:  []string{"$CUSTOM_VAR"},
-				Targets: map[string]string{
-					"linux": "~/.config/test",
+				Name: "test-app",
+				Entries: []SubEntry{
+					{
+						Name:   "test",
+						Backup: "./test",
+						Files:  []string{"$CUSTOM_VAR"},
+						Targets: map[string]string{
+							"linux": "~/.config/test",
+						},
+					},
 				},
 			},
 		},
@@ -226,14 +188,14 @@ func TestExpandPaths(t *testing.T) {
 	}
 
 	// Test file variable expansion
-	if cfg.Entries[0].Files[0] != "expanded_value" {
-		t.Errorf("Files[0] = %q, want %q", cfg.Entries[0].Files[0], "expanded_value")
+	if cfg.Applications[0].Entries[0].Files[0] != "expanded_value" {
+		t.Errorf("Files[0] = %q, want %q", cfg.Applications[0].Entries[0].Files[0], "expanded_value")
 	}
 
 	// Test target expansion
 	expectedTarget := filepath.Join(home, ".config/test")
-	if cfg.Entries[0].Targets["linux"] != expectedTarget {
-		t.Errorf("Targets[linux] = %q, want %q", cfg.Entries[0].Targets["linux"], expectedTarget)
+	if cfg.Applications[0].Entries[0].Targets["linux"] != expectedTarget {
+		t.Errorf("Targets[linux] = %q, want %q", cfg.Applications[0].Entries[0].Targets["linux"], expectedTarget)
 	}
 }
 
@@ -243,25 +205,37 @@ func TestSave(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	cfg := &Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: "/home/user/dotfiles",
-		Entries: []Entry{
+		Applications: []Application{
 			{
-				Name:   "neovim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux":   "~/.config/nvim",
-					"windows": "~/AppData/Local/nvim",
+				Name:        "neovim",
+				Description: "Text editor",
+				Entries: []SubEntry{
+					{
+						Name:   "nvim-config",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux":   "~/.config/nvim",
+							"windows": "~/AppData/Local/nvim",
+						},
+					},
 				},
 			},
 			{
-				Name:   "pacman",
-				Sudo:   true,
-				Files:  []string{"hook.conf"},
-				Backup: "./pacman",
-				Targets: map[string]string{
-					"linux": "/etc/pacman.d/hooks",
+				Name:        "pacman",
+				Description: "Pacman hooks",
+				Entries: []SubEntry{
+					{
+						Name:   "pacman-hooks",
+						Sudo:   true,
+						Files:  []string{"hook.conf"},
+						Backup: "./pacman",
+						Targets: map[string]string{
+							"linux": "/etc/pacman.d/hooks",
+						},
+					},
 				},
 			},
 		},
@@ -291,12 +265,12 @@ func TestSave(t *testing.T) {
 		t.Errorf("BackupRoot = %q, want %q", loaded.BackupRoot, cfg.BackupRoot)
 	}
 
-	if len(loaded.Entries) != len(cfg.Entries) {
-		t.Errorf("len(Entries) = %d, want %d", len(loaded.Entries), len(cfg.Entries))
+	if len(loaded.Applications) != len(cfg.Applications) {
+		t.Errorf("len(Applications) = %d, want %d", len(loaded.Applications), len(cfg.Applications))
 	}
 
-	if loaded.Entries[0].Name != cfg.Entries[0].Name {
-		t.Errorf("Entries[0].Name = %q, want %q", loaded.Entries[0].Name, cfg.Entries[0].Name)
+	if loaded.Applications[0].Name != cfg.Applications[0].Name {
+		t.Errorf("Applications[0].Name = %q, want %q", loaded.Applications[0].Name, cfg.Applications[0].Name)
 	}
 }
 
@@ -305,7 +279,7 @@ func TestSaveToNonexistentDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "nonexistent", "subdir", "config.yaml")
 
-	cfg := &Config{Version: 2}
+	cfg := &Config{Version: 3}
 
 	err := Save(cfg, configPath)
 	if err == nil {
@@ -321,7 +295,7 @@ func TestLoadDefaultVersion(t *testing.T) {
 	// Config without explicit version
 	configContent := `
 backup_root: "~/dotfiles"
-entries: []
+applications: []
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 		t.Fatalf("Failed to write test config: %v", err)
@@ -332,35 +306,9 @@ entries: []
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	// Should default to version 2
-	if cfg.Version != 2 {
-		t.Errorf("Version = %d, want 2 (default)", cfg.Version)
-	}
-}
-
-func TestPathSpecGetTargetEmptyTargets(t *testing.T) {
-	t.Parallel()
-	spec := PathSpec{
-		Name:    "test",
-		Targets: map[string]string{},
-	}
-
-	got := spec.GetTarget("linux")
-	if got != "" {
-		t.Errorf("GetTarget() = %q, want empty string", got)
-	}
-}
-
-func TestPathSpecGetTargetNilTargets(t *testing.T) {
-	t.Parallel()
-	spec := PathSpec{
-		Name:    "test",
-		Targets: nil,
-	}
-
-	got := spec.GetTarget("linux")
-	if got != "" {
-		t.Errorf("GetTarget() = %q, want empty string", got)
+	// Should default to version 3
+	if cfg.Version != 3 {
+		t.Errorf("Version = %d, want 3 (default)", cfg.Version)
 	}
 }
 
@@ -370,7 +318,7 @@ func TestLoadWithPackages(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-version: 2
+version: 3
 backup_root: "~/dotfiles"
 default_manager: "pacman"
 manager_priority:
@@ -378,7 +326,7 @@ manager_priority:
   - yay
   - pacman
 
-entries:
+applications:
   - name: neovim
     description: "Editor"
     filters:
@@ -406,28 +354,28 @@ entries:
 		t.Errorf("len(ManagerPriority) = %d, want 3", len(cfg.ManagerPriority))
 	}
 
-	if len(cfg.Entries) != 1 {
-		t.Errorf("len(Entries) = %d, want 1", len(cfg.Entries))
+	if len(cfg.Applications) != 1 {
+		t.Errorf("len(Applications) = %d, want 1", len(cfg.Applications))
 	}
 
-	if cfg.Entries[0].Name != "neovim" { // nolint:goconst // test data
-		t.Errorf("Entries[0].Name = %q, want %q", cfg.Entries[0].Name, "neovim")
+	if cfg.Applications[0].Name != "neovim" { // nolint:goconst // test data
+		t.Errorf("Applications[0].Name = %q, want %q", cfg.Applications[0].Name, "neovim")
 	}
 
-	if len(cfg.Entries[0].Filters) != 1 {
-		t.Errorf("len(Filters) = %d, want 1", len(cfg.Entries[0].Filters))
+	if len(cfg.Applications[0].Filters) != 1 {
+		t.Errorf("len(Filters) = %d, want 1", len(cfg.Applications[0].Filters))
 	}
 
-	if cfg.Entries[0].Filters[0].Include["os"] != "linux" {
-		t.Errorf("Filters[0].Include[os] = %q, want %q", cfg.Entries[0].Filters[0].Include["os"], "linux")
+	if cfg.Applications[0].Filters[0].Include["os"] != "linux" {
+		t.Errorf("Filters[0].Include[os] = %q, want %q", cfg.Applications[0].Filters[0].Include["os"], "linux")
 	}
 
-	if cfg.Entries[0].Package == nil {
-		t.Fatal("Entries[0].Package is nil, want non-nil")
+	if cfg.Applications[0].Package == nil {
+		t.Fatal("Applications[0].Package is nil, want non-nil")
 	}
 
-	if cfg.Entries[0].Package.Managers["pacman"] != "neovim" {
-		t.Errorf("Package.Managers[pacman] = %q, want %q", cfg.Entries[0].Package.Managers["pacman"], "neovim")
+	if cfg.Applications[0].Package.Managers["pacman"] != "neovim" {
+		t.Errorf("Package.Managers[pacman] = %q, want %q", cfg.Applications[0].Package.Managers["pacman"], "neovim")
 	}
 }
 
@@ -435,9 +383,9 @@ func TestExpandPathOnlyTilde(t *testing.T) {
 	t.Parallel()
 
 	cfg := &Config{
-		Version:    2,
-		BackupRoot: "~",
-		Entries:    []Entry{},
+		Version:      3,
+		BackupRoot:   "~",
+		Applications: []Application{},
 	}
 
 	cfg.ExpandPaths(nil)
@@ -452,9 +400,9 @@ func TestExpandPathEmpty(t *testing.T) {
 	t.Parallel()
 
 	cfg := &Config{
-		Version:    2,
-		BackupRoot: "",
-		Entries:    []Entry{},
+		Version:      3,
+		BackupRoot:   "",
+		Applications: []Application{},
 	}
 
 	cfg.ExpandPaths(nil)
@@ -470,11 +418,12 @@ func TestLoadWithURLInstall(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-version: 2
+version: 3
 backup_root: "~/dotfiles"
 
-entries:
+applications:
   - name: custom-tool
+    description: "Custom tool"
     package:
       url:
         linux:
@@ -490,15 +439,15 @@ entries:
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if len(cfg.Entries) != 1 {
-		t.Fatalf("len(Entries) = %d, want 1", len(cfg.Entries))
+	if len(cfg.Applications) != 1 {
+		t.Fatalf("len(Applications) = %d, want 1", len(cfg.Applications))
 	}
 
-	if cfg.Entries[0].Package == nil {
+	if cfg.Applications[0].Package == nil {
 		t.Fatal("Package is nil")
 	}
 
-	urlSpec := cfg.Entries[0].Package.URL["linux"]
+	urlSpec := cfg.Applications[0].Package.URL["linux"]
 	if urlSpec.URL != "https://example.com/tool.tar.gz" {
 		t.Errorf("URL = %q, want %q", urlSpec.URL, "https://example.com/tool.tar.gz")
 	}
@@ -514,11 +463,12 @@ func TestLoadWithCustomInstall(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-version: 2
+version: 3
 backup_root: "~/dotfiles"
 
-entries:
+applications:
   - name: custom-tool
+    description: "Custom tool"
     package:
       custom:
         linux: "curl -fsSL https://example.com/install.sh | bash"
@@ -533,184 +483,17 @@ entries:
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if len(cfg.Entries) != 1 {
-		t.Fatalf("len(Entries) = %d, want 1", len(cfg.Entries))
+	if len(cfg.Applications) != 1 {
+		t.Fatalf("len(Applications) = %d, want 1", len(cfg.Applications))
 	}
 
-	if cfg.Entries[0].Package == nil {
+	if cfg.Applications[0].Package == nil {
 		t.Fatal("Package is nil")
 	}
 
-	custom := cfg.Entries[0].Package.Custom
+	custom := cfg.Applications[0].Package.Custom
 	if custom["linux"] != "curl -fsSL https://example.com/install.sh | bash" {
 		t.Errorf("Custom[linux] = %q", custom["linux"])
-	}
-}
-
-func TestGetConfigEntries(t *testing.T) {
-	t.Parallel()
-
-	cfg := &Config{
-		Version: 2,
-		Entries: []Entry{
-			{Name: "neovim", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
-			{Name: "pacman", Sudo: true, Backup: "./pacman", Targets: map[string]string{"linux": "/etc/pacman.d"}},
-			{Name: "ripgrep", Package: &EntryPackage{Managers: map[string]string{"pacman": "ripgrep"}}},
-		},
-	}
-
-	// Test getting all config entries (both root and non-root)
-	entries := cfg.GetConfigEntries()
-	if len(entries) != 2 {
-		t.Errorf("GetConfigEntries() returned %d entries, want 2", len(entries))
-	}
-
-	// Check both entries are present
-	names := make(map[string]bool)
-	for _, e := range entries {
-		names[e.Name] = true
-	}
-
-	if !names["neovim"] {
-		t.Error("GetConfigEntries() should include 'neovim'")
-	}
-
-	if !names["pacman"] {
-		t.Error("GetConfigEntries() should include 'pacman'")
-	}
-}
-
-func TestGetPackageEntries(t *testing.T) {
-	t.Parallel()
-
-	cfg := &Config{
-		Version: 2,
-		Entries: []Entry{
-			{Name: "neovim", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
-			{Name: "ripgrep", Package: &EntryPackage{Managers: map[string]string{"pacman": "ripgrep"}}},
-			{Name: "both", Backup: "./both", Targets: map[string]string{"linux": "~/.both"}, Package: &EntryPackage{Managers: map[string]string{"pacman": "both"}}},
-		},
-	}
-
-	entries := cfg.GetPackageEntries()
-	if len(entries) != 2 {
-		t.Errorf("GetPackageEntries() returned %d entries, want 2", len(entries))
-	}
-
-	// Should include both ripgrep and "both" entries
-	names := make(map[string]bool)
-	for _, e := range entries {
-		names[e.Name] = true
-	}
-
-	if !names["ripgrep"] {
-		t.Error("GetPackageEntries() should include 'ripgrep'")
-	}
-
-	if !names["both"] {
-		t.Error("GetPackageEntries() should include 'both'")
-	}
-}
-
-func TestGetFilteredConfigEntries(t *testing.T) {
-	t.Parallel()
-
-	cfg := &Config{
-		Version: 2,
-		Entries: []Entry{
-			{Name: "linux-config", Backup: "./linux", Targets: map[string]string{"linux": "~/.config/linux"}, Filters: []Filter{{Include: map[string]string{"os": "linux"}}}},
-			{Name: "windows-config", Backup: "./windows", Targets: map[string]string{"windows": "~/AppData"}, Filters: []Filter{{Include: map[string]string{"os": "windows"}}}},
-			{Name: "all-config", Backup: "./all", Targets: map[string]string{"linux": "~/.config/all"}},
-			{Name: "root-config", Sudo: true, Backup: "./root", Targets: map[string]string{"linux": "/etc/root"}},
-		},
-	}
-
-	linuxCtx := &FilterContext{OS: "linux", Hostname: "desktop", User: "john"}
-
-	// Test entries on Linux (includes both root and non-root)
-	entries := cfg.GetFilteredConfigEntries(linuxCtx)
-	if len(entries) != 3 {
-		t.Errorf("GetFilteredConfigEntries(linux) returned %d entries, want 3", len(entries))
-	}
-
-	names := make(map[string]bool)
-	for _, e := range entries {
-		names[e.Name] = true
-	}
-
-	if !names["linux-config"] {
-		t.Error("Expected linux-config to be included")
-	}
-
-	if !names["all-config"] {
-		t.Error("Expected all-config to be included")
-	}
-
-	if !names["root-config"] {
-		t.Error("Expected root-config to be included")
-	}
-
-	if names["windows-config"] {
-		t.Error("Expected windows-config to be excluded")
-	}
-
-	// Test with Windows context (windows-config, all-config, root-config pass filters)
-	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
-
-	windowsEntries := cfg.GetFilteredConfigEntries(windowsCtx)
-	if len(windowsEntries) != 3 {
-		t.Errorf("GetFilteredConfigEntries(windows) returned %d entries, want 3", len(windowsEntries))
-	}
-}
-
-func TestGetFilteredPackageEntries(t *testing.T) {
-	t.Parallel()
-
-	cfg := &Config{
-		Version: 2,
-		Entries: []Entry{
-			{Name: "linux-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "linux-pkg"}}, Filters: []Filter{{Include: map[string]string{"os": "linux"}}}},
-			{Name: "work-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "work-pkg"}}, Filters: []Filter{{Include: map[string]string{"hostname": "work-.*"}}}},
-			{Name: "non-root-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "non-root"}}, Filters: []Filter{{Exclude: map[string]string{"user": "root"}}}},
-			{Name: "all-pkg", Package: &EntryPackage{Managers: map[string]string{"pacman": "all-pkg"}}},
-		},
-	}
-
-	// Test with linux context on work-laptop as non-root
-	linuxCtx := &FilterContext{OS: "linux", Hostname: "work-laptop", User: "john"}
-
-	entries := cfg.GetFilteredPackageEntries(linuxCtx)
-	if len(entries) != 4 {
-		t.Errorf("GetFilteredPackageEntries(linux, work-laptop, john) returned %d entries, want 4", len(entries))
-	}
-
-	// Test with linux context on home-desktop as root
-	rootCtx := &FilterContext{OS: "linux", Hostname: "home-desktop", User: "root"}
-
-	rootEntries := cfg.GetFilteredPackageEntries(rootCtx)
-	if len(rootEntries) != 2 {
-		t.Errorf("GetFilteredPackageEntries(linux, home-desktop, root) returned %d entries, want 2", len(rootEntries))
-	}
-
-	names := make(map[string]bool)
-	for _, e := range rootEntries {
-		names[e.Name] = true
-	}
-
-	if !names["linux-pkg"] {
-		t.Error("Expected linux-pkg to be included")
-	}
-
-	if !names["all-pkg"] {
-		t.Error("Expected all-pkg to be included")
-	}
-
-	if names["non-root-pkg"] {
-		t.Error("Expected non-root-pkg to be excluded for root user")
-	}
-
-	if names["work-pkg"] {
-		t.Error("Expected work-pkg to be excluded for home-desktop")
 	}
 }
 
@@ -872,7 +655,7 @@ func TestGetFilteredApplications(t *testing.T) {
 				Entries: []SubEntry{
 					{Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
 				},
-				Package: &EntryPackage{Managers: map[string]string{"pacman": "neovim"}},
+				Package: &EntryPackage{Managers: map[string]interface{}{"pacman": "neovim"}},
 			},
 			{
 				Name:        "vscode",
@@ -1272,13 +1055,15 @@ func TestLoad_FileHandleClosed(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfgPath := filepath.Join(tmpDir, "config.yaml")
 
-	content := `version: 2
+	content := `version: 3
 backup_root: /test
-entries:
+applications:
   - name: test
-    backup: ./test
-    targets:
-      linux: ~/.config/test
+    entries:
+      - name: test-config
+        backup: ./test
+        targets:
+          linux: ~/.config/test
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0600); err != nil {
 		t.Fatal(err)

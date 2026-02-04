@@ -30,11 +30,11 @@ func TestAdoptFolder(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.restoreFolder(entry, backupDir, targetDir)
+	err := mgr.restoreFolderSubEntry("test", subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFolder() error = %v", err)
+		t.Fatalf("restoreFolderSubEntry() error = %v", err)
 	}
 
 	// Check that backup now exists with the content
@@ -83,15 +83,15 @@ func TestAdoptFiles(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	entry := config.Entry{Name: "test", Files: []string{"config1.txt", "config2.txt"}}
+	subEntry := config.SubEntry{Name: "test", Files: []string{"config1.txt", "config2.txt"}}
 
-	err := mgr.restoreFiles(entry, backupDir, targetDir)
+	err := mgr.restoreFilesSubEntry("test", subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFiles() error = %v", err)
+		t.Fatalf("restoreFilesSubEntry() error = %v", err)
 	}
 
 	// Check that backup files now exist
-	for _, file := range entry.Files {
+	for _, file := range subEntry.Files {
 		backupFile := filepath.Join(backupDir, file)
 		if !pathExists(backupFile) {
 			t.Errorf("Backup file %s should exist after adopt", file)
@@ -136,11 +136,11 @@ func TestAdoptSkipsExistingBackup(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.restoreFolder(entry, backupDir, targetDir)
+	err := mgr.restoreFolderSubEntry("test", subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFolder() error = %v", err)
+		t.Fatalf("restoreFolderSubEntry() error = %v", err)
 	}
 
 	// Backup content should be preserved (not overwritten)
@@ -175,11 +175,11 @@ func TestAdoptDryRun(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.DryRun = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.restoreFolder(entry, backupDir, targetDir)
+	err := mgr.restoreFolderSubEntry("test", subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFolder() error = %v", err)
+		t.Fatalf("restoreFolderSubEntry() error = %v", err)
 	}
 
 	// Backup should NOT be created in dry run
@@ -226,23 +226,33 @@ func TestAdoptIntegration(t *testing.T) {
 	}
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: backupRoot,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "nvim",
-				Files:  []string{},
-				Backup: "./nvim",
-				Targets: map[string]string{
-					"linux": nvimDir,
+				Name: "nvim-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "nvim",
+						Files:  []string{},
+						Backup: "./nvim",
+						Targets: map[string]string{
+							"linux": nvimDir,
+						},
+					},
 				},
 			},
 			{
-				Name:   "bash",
-				Files:  []string{".bashrc"},
-				Backup: "./bash",
-				Targets: map[string]string{
-					"linux": homeDir,
+				Name: "bash-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "bash",
+						Files:  []string{".bashrc"},
+						Backup: "./bash",
+						Targets: map[string]string{
+							"linux": homeDir,
+						},
+					},
 				},
 			},
 		},

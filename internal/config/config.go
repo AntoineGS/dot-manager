@@ -9,38 +9,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the main configuration structure supporting both v2 and v3 formats
+// Config is the main configuration structure
 type Config struct {
 	BackupRoot      string        `yaml:"backup_root"`
 	DefaultManager  string        `yaml:"default_manager,omitempty"`
-	Entries         []Entry       `yaml:"entries,omitempty"`
 	Applications    []Application `yaml:"applications,omitempty"`
 	ManagerPriority []string      `yaml:"manager_priority,omitempty"`
 	Version         int           `yaml:"version"`
-}
-
-// PackageSpec defines a package to install (for backward compatibility)
-type PackageSpec struct {
-	Name        string                    `yaml:"name"`
-	Description string                    `yaml:"description,omitempty"`
-	Managers    map[string]string         `yaml:"managers,omitempty"` // manager -> package name
-	Custom      map[string]string         `yaml:"custom,omitempty"`   // os -> command
-	URL         map[string]URLInstallSpec `yaml:"url,omitempty"`      // os -> url install
-	Filters     []Filter                  `yaml:"filters,omitempty"`
 }
 
 // URLInstallSpec defines URL-based installation
 type URLInstallSpec struct {
 	URL     string `yaml:"url"`
 	Command string `yaml:"command"` // Use {file} as placeholder for downloaded file
-}
-
-// PathSpec defines a path configuration (for backward compatibility)
-type PathSpec struct {
-	Targets map[string]string `yaml:"targets"`
-	Name    string            `yaml:"name"`
-	Backup  string            `yaml:"backup"`
-	Files   []string          `yaml:"files"`
 }
 
 // Load reads and parses the configuration file from the given path.
@@ -58,11 +39,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	if cfg.Version == 0 {
-		cfg.Version = 2
+		cfg.Version = 3
 	}
 
-	if cfg.Version != 2 && cfg.Version != 3 {
-		return nil, fmt.Errorf("unsupported config version %d (expected 2 or 3)", cfg.Version)
+	if cfg.Version != 3 {
+		return nil, fmt.Errorf("unsupported config version %d (expected 3)", cfg.Version)
 	}
 
 	return &cfg, nil
@@ -70,23 +51,10 @@ func Load(path string) (*Config, error) {
 
 // ExpandPaths expands environment variables and tilde (~) in all path fields
 // of the configuration, including backup paths, target paths, and file paths.
-// It processes both v2 entries and v3 application entries.
 func (c *Config) ExpandPaths(envVars map[string]string) {
 	c.BackupRoot = expandPath(c.BackupRoot, envVars)
 
-	// Expand v2 Entries
-	for i := range c.Entries {
-		c.Entries[i].Backup = expandPath(c.Entries[i].Backup, envVars)
-		for k, v := range c.Entries[i].Targets {
-			c.Entries[i].Targets[k] = expandPath(v, envVars)
-		}
-
-		for j := range c.Entries[i].Files {
-			c.Entries[i].Files[j] = expandPath(c.Entries[i].Files[j], envVars)
-		}
-	}
-
-	// Expand v3 Applications
+	// Expand Applications
 	for i := range c.Applications {
 		for j := range c.Applications[i].Entries {
 			c.Applications[i].Entries[j].Backup = expandPath(c.Applications[i].Entries[j].Backup, envVars)
@@ -101,59 +69,7 @@ func (c *Config) ExpandPaths(envVars map[string]string) {
 	}
 }
 
-// GetConfigEntries returns entries that are config type (have backup)
-func (c *Config) GetConfigEntries() []Entry {
-	result := make([]Entry, 0, len(c.Entries))
-
-	for _, e := range c.Entries {
-		if e.IsConfig() {
-			result = append(result, e)
-		}
-	}
-
-	return result
-}
-
-// GetFilteredConfigEntries returns config entries filtered by filter context
-func (c *Config) GetFilteredConfigEntries(ctx *FilterContext) []Entry {
-	result := make([]Entry, 0, len(c.Entries))
-
-	for _, e := range c.Entries {
-		if e.IsConfig() && MatchesFilters(e.Filters, ctx) {
-			result = append(result, e)
-		}
-	}
-
-	return result
-}
-
-// GetPackageEntries returns entries that have package configuration
-func (c *Config) GetPackageEntries() []Entry {
-	result := make([]Entry, 0, len(c.Entries))
-
-	for _, e := range c.Entries {
-		if e.HasPackage() {
-			result = append(result, e)
-		}
-	}
-
-	return result
-}
-
-// GetFilteredPackageEntries returns package entries filtered by filter context
-func (c *Config) GetFilteredPackageEntries(ctx *FilterContext) []Entry {
-	result := make([]Entry, 0, len(c.Entries))
-
-	for _, e := range c.Entries {
-		if e.HasPackage() && MatchesFilters(e.Filters, ctx) {
-			result = append(result, e)
-		}
-	}
-
-	return result
-}
-
-// GetFilteredApplications returns applications filtered by filter context (v3)
+// GetFilteredApplications returns applications filtered by filter context
 func (c *Config) GetFilteredApplications(ctx *FilterContext) []Application {
 	result := make([]Application, 0, len(c.Applications))
 
@@ -166,7 +82,7 @@ func (c *Config) GetFilteredApplications(ctx *FilterContext) []Application {
 	return result
 }
 
-// GetAllSubEntries returns all sub-entries from all applications filtered by context (v3)
+// GetAllSubEntries returns all sub-entries from all applications filtered by context
 func (c *Config) GetAllSubEntries(ctx *FilterContext) []SubEntry {
 	apps := c.GetFilteredApplications(ctx)
 	// Estimate capacity based on average entries per app
@@ -180,7 +96,7 @@ func (c *Config) GetAllSubEntries(ctx *FilterContext) []SubEntry {
 	return result
 }
 
-// GetAllConfigSubEntries returns only config type sub-entries from filtered applications (v3)
+// GetAllConfigSubEntries returns only config type sub-entries from filtered applications
 func (c *Config) GetAllConfigSubEntries(ctx *FilterContext) []SubEntry {
 	apps := c.GetFilteredApplications(ctx)
 	// Estimate capacity based on average entries per app
@@ -198,25 +114,22 @@ func (c *Config) GetAllConfigSubEntries(ctx *FilterContext) []SubEntry {
 	return result
 }
 
-// GetPaths returns PathSpecs for entries with config (for backward compatibility)
-func (c *Config) GetPaths() []PathSpec {
-	entries := c.GetConfigEntries()
-	result := make([]PathSpec, 0, len(entries))
+// GetFilteredPackages returns all packages from filtered applications as pseudo-Entry objects
+func (c *Config) GetFilteredPackages(ctx *FilterContext) []Entry {
+	apps := c.GetFilteredApplications(ctx)
+	result := make([]Entry, 0, len(apps))
 
-	for _, e := range entries {
-		result = append(result, e.ToPathSpec())
-	}
-
-	return result
-}
-
-// GetPackageSpecs returns PackageSpecs for entries with packages (for backward compatibility)
-func (c *Config) GetPackageSpecs() []PackageSpec {
-	entries := c.GetPackageEntries()
-	result := make([]PackageSpec, 0, len(entries))
-
-	for _, e := range entries {
-		result = append(result, e.ToPackageSpec())
+	for _, app := range apps {
+		if app.HasPackage() {
+			// Create a pseudo-entry for the package
+			entry := Entry{
+				Name:        app.Name,
+				Description: app.Description,
+				Package:     app.Package,
+				Filters:     app.Filters,
+			}
+			result = append(result, entry)
+		}
 	}
 
 	return result
@@ -257,22 +170,6 @@ func ExpandPath(path string, envVars map[string]string) string {
 // expandPath is a private wrapper that calls ExpandPath for internal use
 func expandPath(path string, envVars map[string]string) string {
 	return ExpandPath(path, envVars)
-}
-
-// IsFolder returns true if this PathSpec manages an entire folder rather than
-// specific files. A PathSpec is considered a folder if its Files slice is empty.
-func (p *PathSpec) IsFolder() bool {
-	return len(p.Files) == 0
-}
-
-// GetTarget returns the target path for the specified OS type (linux/windows).
-// It returns an empty string if no target is defined for the given OS.
-func (p *PathSpec) GetTarget(osType string) string {
-	if target, ok := p.Targets[osType]; ok {
-		return target
-	}
-
-	return ""
 }
 
 // Save writes the config to the specified file path

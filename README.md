@@ -39,39 +39,49 @@ go build ./cmd/dot-manager
 2. **Create a configuration file** (`dot-manager.yaml`) in your dotfiles repo:
 
    ```yaml
-   version: 2
+   version: 3
    backup_root: "."
 
-   entries:
-     # Config entry - manages symlinks
+   applications:
+     # Neovim application with config and package
      - name: "neovim"
-       backup: "./nvim"
-       targets:
-         linux: "~/.config/nvim"
-         windows: "~/AppData/Local/nvim"
+       description: "Neovim text editor"
 
-     # Config entry with specific files
+       configs:
+         - name: "nvim-config"
+           backup: "./nvim"
+           targets:
+             linux: "~/.config/nvim"
+             windows: "~/AppData/Local/nvim"
+
+       packages:
+         - name: "neovim"
+           managers:
+             pacman: "neovim"
+             apt: "neovim"
+
+       filters:
+         - include:
+             os: "linux"
+
+     # Zsh configuration
      - name: "zsh"
-       files: [".zshrc", ".zshenv"]
-       backup: "./zsh"
-       targets:
-         linux: "~"
+       description: "Z shell configuration"
 
-     # Git entry - clones a repository
-     - name: "oh-my-zsh"
-       repo: "https://github.com/ohmyzsh/ohmyzsh.git"
-       targets:
-         linux: "~/.oh-my-zsh"
+       configs:
+         - name: "zshrc"
+           files: [".zshrc", ".zshenv"]
+           backup: "./zsh"
+           targets:
+             linux: "~"
 
-     # Entry with package installation
-     - name: "neovim"
-       backup: "./nvim"
-       targets:
-         linux: "~/.config/nvim"
-       package:
-         managers:
-           pacman: "neovim"
-           apt: "neovim"
+       packages:
+         - name: "oh-my-zsh"
+           managers:
+             git:
+               url: "https://github.com/ohmyzsh/ohmyzsh.git"
+               targets:
+                 linux: "~/.oh-my-zsh"
    ```
 
 3. **Restore your configs**:
@@ -95,108 +105,124 @@ config_dir: "/path/to/your/dotfiles"
 Located in your dotfiles repo as `dot-manager.yaml`:
 
 ```yaml
-version: 2
+version: 3
 backup_root: "."
 
 # Package manager settings
 default_manager: "pacman"
 manager_priority: ["yay", "paru", "pacman"]
 
-entries:
-  # Config entry (symlink management)
-  - name: "config-name"
+applications:
+  # Application with config
+  - name: "app-name"
     description: "Optional description"
-    files: []              # Empty = entire folder
-    backup: "./backup/path"
-    targets:
-      linux: "~/.config/app"
-      windows: "~/AppData/Local/app"
 
-  # Git entry (repository clone)
-  - name: "repo-name"
-    repo: "https://github.com/user/repo.git"
-    branch: "main"         # Optional, defaults to default branch
-    targets:
-      linux: "~/path/to/clone"
+    configs:
+      - name: "config-name"
+        files: []              # Empty = entire folder
+        backup: "./backup/path"
+        targets:
+          linux: "~/.config/app"
+          windows: "~/AppData/Local/app"
 
-  # Entry with package
-  - name: "tool"
-    package:
-      managers:
-        pacman: "tool"
-        apt: "tool-package"
-      custom:
-        linux: "curl -fsSL https://example.com/install.sh | sh"
-      url:
-        linux:
-          url: "https://example.com/binary"
-          command: "sudo install {file} /usr/local/bin/"
+    packages:
+      - name: "tool"
+        managers:
+          pacman: "tool"
+          apt: "tool-package"
 
-  # Root entry (requires sudo)
+      - name: "git-repo"
+        managers:
+          git:
+            url: "https://github.com/user/repo.git"
+            branch: "main"         # Optional
+            targets:
+              linux: "~/path/to/clone"
+            sudo: false
+
+    filters:
+      - include:
+          os: "linux"
+
+  # System-level application (requires sudo)
   - name: "pacman-hooks"
-    root: true
-    files: ["my-hook.hook"]
-    backup: "./Linux/pacman"
-    targets:
-      linux: "/usr/share/libalpm/hooks"
+    sudo: true
+
+    configs:
+      - name: "hooks"
+        files: ["my-hook.hook"]
+        backup: "./Linux/pacman"
+        targets:
+          linux: "/usr/share/libalpm/hooks"
+
+    filters:
+      - include:
+          distro: "arch"
 ```
 
-### Entry Types
+### Configuration Structure
 
-**Config entries** (have `backup` field):
-- Manage symlinks from backup location to target
-- Can manage entire folders or specific files
+**Applications** group related configs and packages together:
+- Each application can have multiple configs
+- Each application can have multiple packages
+- Filters can be applied at the application level
 
-**Git entries** (have `repo` field):
-- Clone repositories to target locations
-- Optionally specify a branch
-
-Both types can include a `package` field for installation.
-
-### Entry Fields
+### Application Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Display name for the entry |
+| `name` | string | Application name |
 | `description` | string | Optional description |
-| `root` | bool | Requires root/sudo to manage |
-| `files` | []string | Specific files (empty = entire folder) |
-| `backup` | string | Path in dotfiles repo (config type) |
-| `targets` | map | OS-specific target paths |
-| `repo` | string | Git repository URL (git type) |
-| `branch` | string | Git branch to checkout |
-| `package` | object | Package installation config |
+| `sudo` | bool | Requires root/sudo for all configs |
+| `configs` | []Config | Configuration entries |
+| `packages` | []Package | Package definitions |
 | `filters` | []Filter | Conditional filters |
+
+### Config Entry Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Config entry name |
+| `files` | []string | Specific files (empty = entire folder) |
+| `backup` | string | Path in dotfiles repo |
+| `targets` | map | OS-specific target paths |
+| `sudo` | bool | Requires root/sudo |
 
 ### Filtering
 
-Entries can be filtered based on OS, distro, hostname, or user. Filters use regex matching.
+Applications can be filtered based on OS, distro, hostname, or user. Filters use regex matching.
 
 ```yaml
-entries:
+applications:
   # Only on Arch Linux
   - name: "pacman-config"
-    backup: "./pacman"
-    targets:
-      linux: "~/.config/pacman"
+    configs:
+      - name: "pacman-conf"
+        backup: "./pacman"
+        targets:
+          linux: "~/.config/pacman"
     filters:
       - include:
           distro: "arch"
 
   # On any system except work laptop
   - name: "personal-config"
-    backup: "./personal"
-    targets:
-      linux: "~/.config/personal"
+    configs:
+      - name: "personal"
+        backup: "./personal"
+        targets:
+          linux: "~/.config/personal"
     filters:
       - exclude:
           hostname: "work-laptop"
 
   # Multiple conditions (AND within a filter, OR between filters)
   - name: "dev-tools"
-    backup: "./dev"
-    targets:
-      linux: "~/.config/dev"
+    configs:
+      - name: "dev-config"
+        backup: "./dev"
+        targets:
+          linux: "~/.config/dev"
     filters:
       # Either: (linux AND arch) OR (linux AND user is dev)
       - include:

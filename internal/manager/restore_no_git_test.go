@@ -21,21 +21,31 @@ func TestRestore_IgnoresGitEntries(t *testing.T) {
 	gitTarget := filepath.Join(tmpDir, "git-target")
 
 	cfg := &config.Config{
-		Version:    2,
+		Version:    3,
 		BackupRoot: backupRoot,
-		Entries: []config.Entry{
+		Applications: []config.Application{
 			{
-				Name:   "config-entry",
-				Backup: "./config",
-				Targets: map[string]string{
-					"linux": configTarget,
+				Name: "config-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config-entry",
+						Backup: "./config",
+						Targets: map[string]string{
+							"linux": configTarget,
+						},
+					},
 				},
 			},
 			{
-				Name: "git-entry",
+				Name: "git-app",
+				Entries: []config.SubEntry{
+					{
+						Name: "git-entry",
 
-				Targets: map[string]string{
-					"linux": gitTarget,
+						Targets: map[string]string{
+							"linux": gitTarget,
+						},
+					},
 				},
 			},
 		},

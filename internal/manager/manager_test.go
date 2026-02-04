@@ -40,10 +40,20 @@ func TestNew(t *testing.T) {
 func TestGetPaths(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
-		Version: 2,
-		Entries: []config.Entry{
-			{Name: "user-path", Backup: "./user", Targets: map[string]string{"linux": "~/.config"}},
-			{Name: "root-path", Sudo: true, Backup: "./root", Targets: map[string]string{"linux": "/etc"}},
+		Version: 3,
+		Applications: []config.Application{
+			{
+				Name: "user-app",
+				Entries: []config.SubEntry{
+					{Name: "user-path", Backup: "./user", Targets: map[string]string{"linux": "~/.config"}},
+				},
+			},
+			{
+				Name: "root-app",
+				Entries: []config.SubEntry{
+					{Name: "root-path", Sudo: true, Backup: "./root", Targets: map[string]string{"linux": "/etc"}},
+				},
+			},
 		},
 	}
 
@@ -51,7 +61,8 @@ func TestGetPaths(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	paths := mgr.GetPaths()
+	ctx := &config.FilterContext{}
+	paths := mgr.Config.GetAllConfigSubEntries(ctx)
 
 	if len(paths) != 2 {
 		t.Fatalf("GetPaths() returned %d paths, want 2", len(paths))
@@ -430,18 +441,28 @@ func TestGetApplications(t *testing.T) {
 func TestGetPackageEntries(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
-		Version: 2,
-		Entries: []config.Entry{
+		Version: 3,
+		Applications: []config.Application{
 			{
-				Name:   "with-package",
-				Backup: "./backup",
+				Name: "with-package",
 				Package: &config.EntryPackage{
-					Managers: map[string]string{"pacman": "neovim"},
+					Managers: map[string]interface{}{"pacman": "neovim"},
+				},
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./backup",
+					},
 				},
 			},
 			{
-				Name:   "without-package",
-				Backup: "./backup2",
+				Name: "without-package",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./backup2",
+					},
+				},
 			},
 		},
 	}
@@ -449,15 +470,22 @@ func TestGetPackageEntries(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	pkgEntries := mgr.GetPackageEntries()
+	ctx := &config.FilterContext{}
+	apps := mgr.Config.GetFilteredApplications(ctx)
 
-	// Should only return entries with packages
-	if len(pkgEntries) != 1 {
-		t.Fatalf("GetPackageEntries() returned %d, want 1", len(pkgEntries))
+	// Should return all applications, filter for those with packages
+	appsWithPkg := 0
+	for _, app := range apps {
+		if app.Package != nil {
+			appsWithPkg++
+			if app.Name != "with-package" {
+				t.Errorf("Application name = %q, want %q", app.Name, "with-package")
+			}
+		}
 	}
 
-	if pkgEntries[0].Name != "with-package" {
-		t.Errorf("Entry name = %q, want %q", pkgEntries[0].Name, "with-package")
+	if appsWithPkg != 1 {
+		t.Fatalf("Found %d applications with packages, want 1", appsWithPkg)
 	}
 }
 

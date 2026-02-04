@@ -168,18 +168,16 @@ func ValidateEntries(entries []Entry) []error {
 	return errors
 }
 
-// ValidateConfig validates the entire config including all entries
+// ValidateConfig validates the entire config including all applications
 func ValidateConfig(cfg *Config) []error {
 	var errors []error
 
 	// Validate version
-	if cfg.Version != 2 {
-		errors = append(errors, fmt.Errorf("unsupported config version: %d (expected 2)", cfg.Version))
+	if cfg.Version != 3 {
+		errors = append(errors, fmt.Errorf("unsupported config version: %d (expected 3)", cfg.Version))
 	}
 
-	// Validate entries
-	entryErrors := ValidateEntries(cfg.Entries)
-	errors = append(errors, entryErrors...)
+	// TODO: Add validation for applications and sub-entries
 
 	return errors
 }

@@ -343,7 +343,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get filtered package entries
-	packageEntries := cfg.GetFilteredPackageEntries(filterCtx)
+	packageEntries := cfg.GetFilteredPackages(filterCtx)
 	if len(packageEntries) == 0 {
 		return fmt.Errorf("no matching packages configured in dot-manager.yaml")
 	}
@@ -419,7 +419,7 @@ func runListPackages(_ *cobra.Command, _ []string) error {
 	}
 
 	// Get filtered package entries
-	packageEntries := cfg.GetFilteredPackageEntries(filterCtx)
+	packageEntries := cfg.GetFilteredPackages(filterCtx)
 	if len(packageEntries) == 0 {
 		fmt.Println("No matching packages configured in dot-manager.yaml")
 		return nil

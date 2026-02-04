@@ -854,7 +854,7 @@ func TestFromEntry(t *testing.T) {
 				Name:        "vim",
 				Description: "Text editor",
 				Package: &config.EntryPackage{
-					Managers: map[string]string{"pacman": "vim", "apt": "vim"},
+					Managers: map[string]interface{}{"pacman": "vim", "apt": "vim"},
 				},
 			},
 			wantNil:    false,
@@ -902,7 +902,7 @@ func TestFromEntry(t *testing.T) {
 					{Include: map[string]string{"os": "linux"}},
 				},
 				Package: &config.EntryPackage{
-					Managers: map[string]string{"pacman": "filtered-pkg"},
+					Managers: map[string]interface{}{"pacman": "filtered-pkg"},
 				},
 			},
 			wantNil:  false,
@@ -914,7 +914,7 @@ func TestFromEntry(t *testing.T) {
 				Name:        "full-pkg",
 				Description: "Full package example",
 				Package: &config.EntryPackage{
-					Managers: map[string]string{"pacman": "full-pkg", "apt": "full-pkg"},
+					Managers: map[string]interface{}{"pacman": "full-pkg", "apt": "full-pkg"},
 					Custom:   map[string]string{"darwin": "brew install full-pkg"},
 					URL: map[string]config.URLInstallSpec{
 						"windows": {URL: "https://example.com/full-pkg.exe", Command: "{file} /install"},
@@ -975,13 +975,13 @@ func TestFromEntries(t *testing.T) {
 				{
 					Name: "vim",
 					Package: &config.EntryPackage{
-						Managers: map[string]string{"pacman": "vim"},
+						Managers: map[string]interface{}{"pacman": "vim"},
 					},
 				},
 				{
 					Name: "tmux",
 					Package: &config.EntryPackage{
-						Managers: map[string]string{"pacman": "tmux"},
+						Managers: map[string]interface{}{"pacman": "tmux"},
 					},
 				},
 			},
@@ -993,7 +993,7 @@ func TestFromEntries(t *testing.T) {
 				{
 					Name: "pkg1",
 					Package: &config.EntryPackage{
-						Managers: map[string]string{"pacman": "pkg1"},
+						Managers: map[string]interface{}{"pacman": "pkg1"},
 					},
 				},
 				{

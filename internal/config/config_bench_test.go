@@ -6,14 +6,19 @@ import (
 
 func BenchmarkGetFilteredConfigEntries(b *testing.B) {
 	cfg := &Config{
-		Entries: make([]Entry, 100),
+		Applications: make([]Application, 100),
 	}
 
 	// Populate with test data
-	for i := range cfg.Entries {
-		cfg.Entries[i] = Entry{
-			Name:   "test",
-			Backup: "./test",
+	for i := range cfg.Applications {
+		cfg.Applications[i] = Application{
+			Name: "test",
+			Entries: []SubEntry{
+				{
+					Name:   "test-config",
+					Backup: "./test",
+				},
+			},
 		}
 	}
 
@@ -27,6 +32,6 @@ func BenchmarkGetFilteredConfigEntries(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = cfg.GetFilteredConfigEntries(ctx)
+		_ = cfg.GetAllConfigSubEntries(ctx)
 	}
 }

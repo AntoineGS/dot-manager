@@ -30,46 +30,40 @@ func (m *Manager) Restore() error {
 		slog.Int("version", m.Config.Version),
 	)
 
-	// Check config version
-	if m.Config.Version == 3 {
-		return m.restoreV3()
-	}
+	apps := m.GetApplications()
 
-	// v2 format - existing logic
-	entries := m.GetEntries()
-	m.logger.Debug("entries to restore", slog.Int("count", len(entries)))
-
-	for _, entry := range entries {
-		// Check context before each entry
+	for _, app := range apps {
+		// Check context before each application
 		if err := m.checkContext(); err != nil {
 			return err
 		}
 
-		// Skip non-config entries (git entries are now handled as packages)
-		if !entry.IsConfig() {
-			m.logger.Debug("skipping entry (not a config entry)",
-				slog.String("entry", entry.Name),
-			)
-			continue
-		}
+		m.logf("Restoring application: %s", app.Name)
 
-		target := entry.GetTarget(m.Platform.OS)
-		if target == "" {
-			m.logger.Debug("skipping entry (no target)",
-				slog.String("entry", entry.Name),
-				slog.String("os", m.Platform.OS),
-			)
+		for _, subEntry := range app.Entries {
+			// Check context before each entry
+			if err := m.checkContext(); err != nil {
+				return err
+			}
 
-			continue
-		}
+			// Only process config entries
+			if !subEntry.IsConfig() {
+				m.logVerbosef("Skipping %s/%s: not a config entry", app.Name, subEntry.Name)
+				continue
+			}
 
-		// Expand ~ and env vars in target path for file operations
-		expandedTarget := m.expandTarget(target)
+			target := subEntry.GetTarget(m.Platform.OS)
+			if target == "" {
+				m.logVerbosef("Skipping %s/%s: no target for OS %s", app.Name, subEntry.Name, m.Platform.OS)
+				continue
+			}
 
-		if err := m.restoreEntry(entry, expandedTarget); err != nil {
-			m.logEntryRestore(entry, expandedTarget, err)
-		} else {
-			m.logEntryRestore(entry, expandedTarget, nil)
+			// Expand ~ and env vars in target path for file operations
+			expandedTarget := m.expandTarget(target)
+
+			if err := m.restoreSubEntry(app.Name, subEntry, expandedTarget); err != nil {
+				m.logf("Error restoring %s/%s: %v", app.Name, subEntry.Name, err)
+			}
 		}
 	}
 
