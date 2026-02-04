@@ -1,6 +1,9 @@
 package manager
 
 import (
+	"fmt"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -80,4 +83,74 @@ func generateConflictName(filename, date string) string {
 func generateConflictNameWithDate(filename string) string {
 	date := time.Now().Format("20060102")
 	return generateConflictName(filename, date)
+}
+
+// mergeFile merges a single file from target into backup.
+// If the file exists in backup, it's a conflict and the target file is renamed.
+// If the file doesn't exist in backup, it's merged directly.
+//
+// Parameters:
+//   - targetFile: Path to the file in the target location
+//   - backupDir: Directory where backup files are stored
+//   - relativePath: Relative path of the file (used for the backup location)
+//   - useSudo: Whether to use sudo for file operations (not yet implemented)
+//   - summary: MergeSummary to record the operation
+//
+// Returns error if the operation fails.
+func mergeFile(targetFile, backupDir, relativePath string, useSudo bool, summary *MergeSummary) error {
+	if useSudo {
+		return fmt.Errorf("sudo not yet supported")
+	}
+
+	backupFile := filepath.Join(backupDir, relativePath)
+
+	// Check if file exists in backup (conflict)
+	if pathExists(backupFile) {
+		// CONFLICT: Rename target file and move to backup
+		filename := filepath.Base(relativePath)
+		conflictName := generateConflictNameWithDate(filename)
+		conflictPath := filepath.Join(filepath.Dir(backupFile), conflictName)
+
+		slog.Warn("Conflict detected during merge",
+			"file", relativePath,
+			"renamed_to", conflictName)
+
+		// Try to rename first (faster if same device)
+		if err := os.Rename(targetFile, conflictPath); err != nil {
+			// If rename fails (cross-device), copy then remove
+			if copyErr := copyFile(targetFile, conflictPath); copyErr != nil {
+				return fmt.Errorf("copying conflict file: %w", copyErr)
+			}
+			if removeErr := os.Remove(targetFile); removeErr != nil {
+				return fmt.Errorf("removing original target file: %w", removeErr)
+			}
+		}
+
+		summary.AddConflict(relativePath, conflictName)
+		return nil
+	}
+
+	// NO CONFLICT: Move file to backup
+	// Create parent directory if needed
+	backupParent := filepath.Dir(backupFile)
+	if err := os.MkdirAll(backupParent, DirPerms); err != nil {
+		return fmt.Errorf("creating backup directory: %w", err)
+	}
+
+	// Try to rename first (faster if same device)
+	if err := os.Rename(targetFile, backupFile); err != nil {
+		// If rename fails (cross-device), copy then remove
+		if copyErr := copyFile(targetFile, backupFile); copyErr != nil {
+			return fmt.Errorf("copying file to backup: %w", copyErr)
+		}
+		if removeErr := os.Remove(targetFile); removeErr != nil {
+			return fmt.Errorf("removing original target file: %w", removeErr)
+		}
+	}
+
+	slog.Info("Merged file into backup",
+		"file", relativePath)
+
+	summary.AddMerged(relativePath)
+	return nil
 }
