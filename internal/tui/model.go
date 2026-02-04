@@ -181,14 +181,18 @@ type Model struct {
 	Manager                  *manager.Manager
 	subEntryForm             *SubEntryForm
 	applicationForm          *ApplicationForm
-	filterText               string
+	searchText               string
 	ConfigPath               string
 	Packages                 []PackageItem
 	pendingPackages          []PackageItem
 	results                  []ResultItem
 	Paths                    []PathItem
 	Applications             []ApplicationItem
-	filterInput              textinput.Model
+	searchInput              textinput.Model
+	tableRows                []TableRow
+	tableCursor              int
+	sortColumn               string // "name", "status", or "path"
+	sortAscending            bool
 	viewHeight               int
 	pathCursor               int
 	height                   int
@@ -203,7 +207,7 @@ type Model struct {
 	activeForm               FormType
 	DryRun                   bool
 	processing               bool
-	filtering                bool
+	searching                bool
 	confirmingDeleteSubEntry bool
 	confirmingDeleteApp      bool
 	showingDetail            bool
@@ -252,6 +256,7 @@ type ApplicationItem struct {
 	SubItems     []SubEntryItem
 	Selected     bool
 	Expanded     bool
+	IsFiltered   bool // True if this app doesn't match the current filter context
 }
 
 // SubEntryItem represents a sub-entry within an application (config or git)
@@ -356,23 +361,25 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		}
 	}
 
-	// Initialize filter input
-	filterInput := textinput.New()
-	filterInput.Placeholder = "type to filter..."
-	filterInput.CharLimit = 100
+	// Initialize search input
+	searchInput := textinput.New()
+	searchInput.Placeholder = "type to search..."
+	searchInput.CharLimit = 100
 
 	m := Model{
-		Screen:      ScreenMenu,
-		Config:      cfg,
-		Platform:    plat,
-		FilterCtx:   filterCtx,
-		Paths:       items,
-		Packages:    pkgItems,
-		DryRun:      dryRun,
-		viewHeight:  15,
-		width:       80,
-		height:      24,
-		filterInput: filterInput,
+		Screen:        ScreenMenu,
+		Config:        cfg,
+		Platform:      plat,
+		FilterCtx:     filterCtx,
+		Paths:         items,
+		Packages:      pkgItems,
+		DryRun:        dryRun,
+		viewHeight:    15,
+		width:         80,
+		height:        24,
+		searchInput:   searchInput,
+		sortColumn:    SortColumnName, // Default sort by name
+		sortAscending: true,           // Ascending by default
 	}
 
 	// Detect initial path states

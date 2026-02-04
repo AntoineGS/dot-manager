@@ -471,14 +471,14 @@ func TestGetApplicationAtCursorWithFiltering(t *testing.T) {
 	// Applications are sorted: bash(0), nvim(1), zsh(2)
 	// nvim has sub-items: alpha(0), beta(1), gamma(2)
 
-	// Apply filter that matches only "alpha" and "gamma" sub-entries
-	model.filterText = "amm" // Matches "alpha" and "gamma" (both contain 'a')
+	// Apply search that matches only "alpha" and "gamma" sub-entries
+	model.searchText = "amm" // Matches "alpha" and "gamma" (both contain 'a')
 
-	// Visual layout after filtering:
+	// Visual layout after searching:
 	// Row 0: bash
 	// Row 1: nvim (expanded)
-	// Row 2:   alpha (matches filter)
-	// Row 3:   gamma (matches filter)
+	// Row 2:   alpha (matches search)
+	// Row 3:   gamma (matches search)
 	// Row 4: zsh
 
 	// Now test that cursor on row 3 (gamma) correctly returns appIdx=1, subIdx=2

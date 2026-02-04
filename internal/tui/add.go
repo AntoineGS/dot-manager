@@ -90,16 +90,6 @@ func (m *Model) deleteApplicationOrSubEntry(appIdx, subIdx int) error {
 
 // Stub functions for other phases (to be implemented later)
 
-func (m Model) calcSubEntryDetailHeight(_ *SubEntryItem) int {
-	// Placeholder - to be implemented in Phase 5
-	return 5
-}
-
-func (m Model) calcApplicationDetailHeight(_ *ApplicationItem) int {
-	// Placeholder - to be implemented in Phase 5
-	return 5
-}
-
 func (m Model) renderApplicationInlineDetail(_ *ApplicationItem, _ int) string {
 	// Placeholder - to be implemented in Phase 5
 	return ""

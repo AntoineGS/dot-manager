@@ -113,6 +113,18 @@ var (
 				Padding(0, 1).
 				MarginLeft(1)
 
+	// StateBadgeFilteredStyle is the badge style for filtered state (same as linked - muted).
+	StateBadgeFilteredStyle = lipgloss.NewStyle().
+				Foreground(mutedColor).
+				Padding(0, 1).
+				MarginLeft(1)
+
+	// StateBadgeInstalledStyle is the badge style for installed state (muted, like linked).
+	StateBadgeInstalledStyle = lipgloss.NewStyle().
+					Foreground(mutedColor).
+					Padding(0, 1).
+					MarginLeft(1)
+
 	// ProgressStyle is the style for progress indicators.
 	ProgressStyle = lipgloss.NewStyle().
 			Foreground(secondaryColor)

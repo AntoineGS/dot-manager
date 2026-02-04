@@ -9,26 +9,144 @@ import (
 
 	"github.com/AntoineGS/dot-manager/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
-// Layout constants for list table view
-const (
-	// listTableOverhead is the number of lines used by title, header, separator, and footer
-	// Title block (3) + header+separator (2) + footer (4) = 9
-	listTableOverhead = 9
-	// minVisibleRows is the minimum number of table rows to show
-	minVisibleRows = 3
-	// minVisibleWithDetail is the minimum rows when detail panel is showing
-	minVisibleWithDetail = 1
-)
+// sortTableRows sorts the table rows based on the current sort column and direction
+func (m *Model) sortTableRows() {
+	if len(m.tableRows) == 0 {
+		return
+	}
+
+	// Group rows by application
+	type appGroup struct {
+		appRow     TableRow
+		subEntries []TableRow
+	}
+
+	groups := make(map[int]*appGroup)
+	var appIndices []int
+
+	for _, row := range m.tableRows {
+		if _, exists := groups[row.AppIndex]; !exists {
+			groups[row.AppIndex] = &appGroup{}
+			appIndices = append(appIndices, row.AppIndex)
+		}
+
+		if row.SubIndex == -1 {
+			groups[row.AppIndex].appRow = row
+		} else {
+			groups[row.AppIndex].subEntries = append(groups[row.AppIndex].subEntries, row)
+		}
+	}
+
+	// Sort applications by name or status (if applicable)
+	if m.sortColumn == SortColumnName || m.sortColumn == SortColumnStatus {
+		sort.SliceStable(appIndices, func(i, j int) bool {
+			rowI := groups[appIndices[i]].appRow
+			rowJ := groups[appIndices[j]].appRow
+
+			var less bool
+			if m.sortColumn == SortColumnName {
+				less = strings.ToLower(rowI.Data[0]) < strings.ToLower(rowJ.Data[0])
+			} else { // SortColumnStatus
+				less = strings.ToLower(rowI.Data[1]) < strings.ToLower(rowJ.Data[1])
+			}
+
+			if m.sortAscending {
+				return less
+			}
+			return !less
+		})
+	}
+
+	// Sort sub-entries within each app
+	for _, group := range groups {
+		if len(group.subEntries) > 0 {
+			sort.SliceStable(group.subEntries, func(i, j int) bool {
+				var less bool
+				switch m.sortColumn {
+				case SortColumnName:
+					less = strings.ToLower(group.subEntries[i].Data[0]) < strings.ToLower(group.subEntries[j].Data[0])
+				case SortColumnStatus:
+					less = strings.ToLower(group.subEntries[i].Data[1]) < strings.ToLower(group.subEntries[j].Data[1])
+				case SortColumnPath:
+					less = strings.ToLower(group.subEntries[i].Data[3]) < strings.ToLower(group.subEntries[j].Data[3])
+				default:
+					less = strings.ToLower(group.subEntries[i].Data[0]) < strings.ToLower(group.subEntries[j].Data[0])
+				}
+
+				if m.sortAscending {
+					return less
+				}
+				return !less
+			})
+		}
+	}
+
+	// Rebuild tableRows in sorted order
+	m.tableRows = make([]TableRow, 0, len(m.tableRows))
+	for _, appIdx := range appIndices {
+		group := groups[appIdx]
+		m.tableRows = append(m.tableRows, group.appRow)
+		m.tableRows = append(m.tableRows, group.subEntries...)
+	}
+
+	// Fix tree characters after sorting
+	m.fixTreeCharacters()
+}
+
+// fixTreeCharacters recalculates tree characters (├─ vs └─) after sorting
+func (m *Model) fixTreeCharacters() {
+	for i := range m.tableRows {
+		if m.tableRows[i].SubIndex == -1 {
+			// App row - skip
+			continue
+		}
+
+		// Find if this is the last sub-entry for its app
+		isLast := true
+		for j := i + 1; j < len(m.tableRows); j++ {
+			if m.tableRows[j].AppIndex != m.tableRows[i].AppIndex {
+				// Different app, we're done
+				break
+			}
+			if m.tableRows[j].SubIndex != -1 {
+				// Found another sub-entry for the same app
+				isLast = false
+				break
+			}
+		}
+
+		// Update tree character
+		if isLast {
+			m.tableRows[i].TreeChar = "└─"
+			m.tableRows[i].Data[0] = "  └─ " + strings.TrimPrefix(
+				strings.TrimPrefix(m.tableRows[i].Data[0], "  ├─ "),
+				"  └─ ",
+			)
+		} else {
+			m.tableRows[i].TreeChar = "├─"
+			m.tableRows[i].Data[0] = "  ├─ " + strings.TrimPrefix(
+				strings.TrimPrefix(m.tableRows[i].Data[0], "  ├─ "),
+				"  └─ ",
+			)
+		}
+	}
+}
 
 // initApplicationItems creates ApplicationItem list from v3 config
 func (m *Model) initApplicationItems() {
-	apps := m.Config.GetFilteredApplications(m.FilterCtx)
+	// Get ALL applications, not just filtered ones
+	apps := m.Config.Applications
 
 	m.Applications = make([]ApplicationItem, 0, len(apps))
 
 	for _, app := range apps {
+		// Check if this app matches the filter
+		isFiltered := !config.MatchesFilters(app.Filters, m.FilterCtx)
+
 		subItems := make([]SubEntryItem, 0, len(app.Entries))
 
 		for _, subEntry := range app.Entries {
@@ -60,6 +178,7 @@ func (m *Model) initApplicationItems() {
 			Selected:    true,
 			Expanded:    false,
 			SubItems:    subItems,
+			IsFiltered:  isFiltered,
 		}
 
 		// Add package info
@@ -83,6 +202,9 @@ func (m *Model) initApplicationItems() {
 
 	// Detect states for all sub-items
 	m.refreshApplicationStates()
+
+	// Initialize table model with the loaded applications
+	m.initTableModel()
 }
 
 // refreshApplicationStates updates the state of all sub-entry items
@@ -92,6 +214,134 @@ func (m *Model) refreshApplicationStates() {
 			m.Applications[i].SubItems[j].State = m.detectSubEntryState(&m.Applications[i].SubItems[j])
 		}
 	}
+}
+
+// initTableModel initializes the table data and cursor
+func (m *Model) initTableModel() {
+	// Flatten hierarchical data with current search
+	filtered := m.getSearchedApplications()
+	m.tableRows = flattenApplications(filtered, m.Platform.OS)
+
+	// Apply sorting
+	m.sortTableRows()
+
+	// Ensure cursor is within bounds
+	if m.tableCursor >= len(m.tableRows) {
+		if len(m.tableRows) > 0 {
+			m.tableCursor = len(m.tableRows) - 1
+		} else {
+			m.tableCursor = 0
+		}
+	}
+}
+
+// rebuildTable rebuilds the table with current data (after expand/collapse or search changes)
+func (m *Model) rebuildTable() {
+	// Save current cursor position
+	currentCursor := m.tableCursor
+
+	// Rebuild table with new data
+	m.initTableModel()
+
+	// Restore cursor if still valid
+	if currentCursor < len(m.tableRows) {
+		m.tableCursor = currentCursor
+	} else if len(m.tableRows) > 0 {
+		m.tableCursor = len(m.tableRows) - 1
+	}
+}
+
+// formatHeaderWithShortcut creates a header string with highlighted shortcut letter and sort indicator
+func (m *Model) formatHeaderWithShortcut(text string, shortcut rune, columnName string) string {
+	runes := []rune(text)
+	var result string
+
+	for i, r := range runes {
+		if r == shortcut {
+			before := string(runes[:i])
+			// Use primary color for the highlighted letter
+			highlighted := lipgloss.NewStyle().
+				Foreground(primaryColor).
+				Bold(true).
+				Render(string(shortcut))
+			after := string(runes[i+1:])
+			result = before + highlighted + after
+			break
+		}
+	}
+
+	if result == "" {
+		result = text
+	}
+
+	// Add sort indicator if this column is currently sorted
+	if m.sortColumn == columnName {
+		indicator := " ↑"
+		if !m.sortAscending {
+			indicator = " ↓"
+		}
+		result += lipgloss.NewStyle().
+			Foreground(primaryColor).
+			Bold(true).
+			Render(indicator)
+	}
+
+	return result
+}
+
+// renderTable renders the table using lipgloss with custom styling
+func (m *Model) renderTable() string {
+	if len(m.tableRows) == 0 {
+		return SubtitleStyle.Render("No entries found")
+	}
+
+	// Build headers with highlighted shortcuts and sort indicators
+	headers := []string{
+		m.formatHeaderWithShortcut("name", 'n', SortColumnName),
+		m.formatHeaderWithShortcut("status", 's', SortColumnStatus),
+		"info",
+		m.formatHeaderWithShortcut("path", 'p', SortColumnPath),
+	}
+
+	// Convert tableRows to string data for lipgloss table
+	rows := make([][]string, len(m.tableRows))
+	for i, tr := range m.tableRows {
+		rows[i] = []string{
+			tr.Data[0], // Name (with tree chars)
+			tr.Data[1], // Status
+			tr.Data[2], // Info
+			tr.Data[3], // Path
+		}
+	}
+
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(primaryColor)).
+		Headers(headers...).
+		Rows(rows...).
+		BorderHeader(true).
+		Width(m.width - 4).
+		StyleFunc(func(row, _ int) lipgloss.Style {
+			switch row {
+			case table.HeaderRow:
+				// Header styling
+				return lipgloss.NewStyle().
+					Bold(true).
+					Padding(0, 1)
+			case m.tableCursor:
+				// Selected row styling
+				return lipgloss.NewStyle().
+					Foreground(textColor).
+					Background(primaryColor).
+					Bold(true).
+					Padding(0, 1)
+			default:
+				// Regular cell styling
+				return lipgloss.NewStyle().Padding(0, 1)
+			}
+		})
+
+	return t.Render()
 }
 
 // detectSubEntryState determines the state of a sub-entry item
@@ -171,7 +421,7 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 // getApplicationAtCursor returns the application and sub-entry indices for the current cursor position
 func (m *Model) getApplicationAtCursor() (int, int) {
 	visualRow := 0
-	filtered := m.getFilteredApplications()
+	filtered := m.getSearchedApplications()
 
 	for _, fapp := range filtered {
 		if visualRow == m.appCursor {
@@ -211,72 +461,14 @@ func (m *Model) getApplicationAtCursor() (int, int) {
 	return -1, -1
 }
 
-// getVisibleRowCount returns total number of visible rows in the 2-level table (filtered)
-func (m *Model) getVisibleRowCount() int {
-	count := 0
-	filtered := m.getFilteredApplications()
-
-	for _, app := range filtered {
-		count++ // Application row
-		if app.Expanded {
-			count += len(app.SubItems) // Sub-entry rows (no separate separator)
-		}
+// getApplicationAtCursorFromTable returns the application and sub-entry indices from table cursor
+func (m *Model) getApplicationAtCursorFromTable() (int, int) {
+	if m.tableCursor < 0 || m.tableCursor >= len(m.tableRows) {
+		return -1, -1
 	}
 
-	return count
-}
-
-// padRight pads a string with spaces to the right to reach the specified width
-func padRight(s string, width int) string {
-	if len(s) >= width {
-		return s
-	}
-
-	return s + strings.Repeat(" ", width-len(s))
-}
-
-// getAggregateState returns the worst state among all sub-entries in an application
-func (m Model) getAggregateState(app ApplicationItem) PathState {
-	if len(app.SubItems) == 0 {
-		return StateMissing
-	}
-
-	hasLinked := false
-	hasReady := false
-	hasAdopt := false
-	hasMissing := false
-
-	for _, sub := range app.SubItems {
-		switch sub.State {
-		case StateLinked:
-			hasLinked = true
-		case StateReady:
-			hasReady = true
-		case StateAdopt:
-			hasAdopt = true
-		case StateMissing:
-			hasMissing = true
-		}
-	}
-
-	// Return worst state
-	if hasMissing {
-		return StateMissing
-	}
-
-	if hasAdopt {
-		return StateAdopt
-	}
-
-	if hasReady {
-		return StateReady
-	}
-
-	if hasLinked {
-		return StateLinked
-	}
-
-	return StateMissing
+	tr := m.tableRows[m.tableCursor]
+	return tr.AppIndex, tr.SubIndex
 }
 
 func (m Model) viewProgress() string {
@@ -296,34 +488,32 @@ func (m Model) viewProgress() string {
 
 //nolint:gocyclo // UI handler with many states
 func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Handle filter mode input
-	if m.Operation == OpList && m.filtering {
+	// Handle search mode input
+	if m.Operation == OpList && m.searching {
 		switch msg.String() {
 		case KeyEsc:
-			// Clear filter and exit filter mode
-			m.filtering = false
-			m.filterText = ""
-			m.filterInput.SetValue("")
-			m.filterInput.Blur()
-			// Reset cursor and scroll to beginning
-			m.appCursor = 0
-			m.scrollOffset = 0
+			// Clear search and exit search mode
+			m.searching = false
+			m.searchText = ""
+			m.searchInput.SetValue("")
+			m.searchInput.Blur()
+			// Rebuild table without search
+			m.rebuildTable()
 
 			return m, nil
 		case KeyEnter:
-			// Confirm filter and return to navigation mode
-			m.filtering = false
-			m.filterInput.Blur()
+			// Confirm search and return to navigation mode
+			m.searching = false
+			m.searchInput.Blur()
 
 			return m, nil
 		default:
 			// Pass key to text input
 			var cmd tea.Cmd
-			m.filterInput, cmd = m.filterInput.Update(msg)
-			m.filterText = m.filterInput.Value()
-			// Reset cursor when filter changes
-			m.appCursor = 0
-			m.scrollOffset = 0
+			m.searchInput, cmd = m.searchInput.Update(msg)
+			m.searchText = m.searchInput.Value()
+			// Rebuild table with new search
+			m.rebuildTable()
 
 			return m, cmd
 		}
@@ -334,24 +524,18 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "y", "Y", KeyEnter:
 			// Confirm delete
-			appIdx, subIdx := m.getApplicationAtCursor()
+			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if m.confirmingDeleteApp && appIdx >= 0 {
 				m.confirmingDeleteApp = false
 				if err := m.deleteApplication(appIdx); err == nil {
-					// Adjust cursor if needed
-					visibleCount := m.getVisibleRowCount()
-					if m.appCursor >= visibleCount && m.appCursor > 0 {
-						m.appCursor--
-					}
+					// Rebuild table after deletion
+					m.rebuildTable()
 				}
 			} else if m.confirmingDeleteSubEntry && appIdx >= 0 && subIdx >= 0 {
 				m.confirmingDeleteSubEntry = false
 				if err := m.deleteSubEntry(appIdx, subIdx); err == nil {
-					// Adjust cursor if needed
-					visibleCount := m.getVisibleRowCount()
-					if m.appCursor >= visibleCount && m.appCursor > 0 {
-						m.appCursor--
-					}
+					// Rebuild table after deletion
+					m.rebuildTable()
 				}
 			}
 
@@ -370,7 +554,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle detail popup separately
 	if m.Operation == OpList && m.showingDetail {
 		switch msg.String() {
-		case KeyEsc, KeyEnter, "h", KeyLeft:
+		case KeyEsc, KeyEnter:
 			// Close detail popup (ESC cancels/closes the popup)
 			m.showingDetail = false
 			return m, nil
@@ -385,13 +569,57 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle ESC to clear active search (when not in search mode but search text is present)
+	if m.Operation == OpList && msg.String() == KeyEsc && m.searchText != "" && !m.searching {
+		m.searchText = ""
+		m.searchInput.SetValue("")
+		m.rebuildTable()
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "/":
-		// Enter filter mode
+		// Enter search mode
 		if m.Operation == OpList && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
-			m.filtering = true
-			m.filterInput.Focus()
+			m.searching = true
+			m.searchInput.Focus()
 
+			return m, nil
+		}
+	case "n":
+		// Sort by name
+		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+			if m.sortColumn == SortColumnName {
+				m.sortAscending = !m.sortAscending
+			} else {
+				m.sortColumn = SortColumnName
+				m.sortAscending = true
+			}
+			m.rebuildTable()
+			return m, nil
+		}
+	case "s":
+		// Sort by status
+		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+			if m.sortColumn == SortColumnStatus {
+				m.sortAscending = !m.sortAscending
+			} else {
+				m.sortColumn = SortColumnStatus
+				m.sortAscending = true
+			}
+			m.rebuildTable()
+			return m, nil
+		}
+	case "p":
+		// Sort by path
+		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+			if m.sortColumn == SortColumnPath {
+				m.sortAscending = !m.sortAscending
+			} else {
+				m.sortColumn = SortColumnPath
+				m.sortAscending = true
+			}
+			m.rebuildTable()
 			return m, nil
 		}
 	case "q":
@@ -405,13 +633,11 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.Operation == OpList {
 			// Clear any previous restore results when navigating
 			m.results = nil
-			if m.appCursor > 0 {
-				m.appCursor--
-
-				if m.appCursor < m.scrollOffset {
-					m.scrollOffset = m.appCursor
-				}
+			// Move cursor up
+			if m.tableCursor > 0 {
+				m.tableCursor--
 			}
+			return m, nil
 		}
 
 		return m, nil
@@ -419,23 +645,11 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.Operation == OpList {
 			// Clear any previous restore results when navigating
 			m.results = nil
-			visibleCount := m.getVisibleRowCount()
-			if m.appCursor < visibleCount-1 {
-				m.appCursor++
-				// Calculate actual visible rows (accounting for overhead)
-				maxTableRows := m.viewHeight - listTableOverhead
-				if m.filtering || m.filterText != "" {
-					maxTableRows--
-				}
-
-				if maxTableRows < minVisibleRows {
-					maxTableRows = minVisibleRows
-				}
-
-				if m.appCursor >= m.scrollOffset+maxTableRows {
-					m.scrollOffset = m.appCursor - maxTableRows + 1
-				}
+			// Move cursor down
+			if m.tableCursor < len(m.tableRows)-1 {
+				m.tableCursor++
 			}
+			return m, nil
 		}
 
 		return m, nil
@@ -444,25 +658,13 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Clear any previous restore results when navigating
 			m.results = nil
 			// Collapse node if expanded
-			appIdx, subIdx := m.getApplicationAtCursor()
+			appIdx, _ := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 && m.Applications[appIdx].Expanded {
 				m.Applications[appIdx].Expanded = false
-				// If we were on a sub-entry, move cursor to parent app
-				if subIdx >= 0 {
-					// Calculate the app row position
-					visualRow := 0
-					for i := 0; i < appIdx; i++ {
-						visualRow++
-						if m.Applications[i].Expanded {
-							visualRow += len(m.Applications[i].SubItems)
-						}
-					}
-					m.appCursor = visualRow
-				}
-			} else {
-				// Not on expanded app, navigate back to menu
-				m.Screen = ScreenMenu
+				// Rebuild table to reflect collapsed state
+				m.rebuildTable()
 			}
+			// If not expanded, 'h' does nothing (use 'q' to go back to menu)
 
 			return m, nil
 		}
@@ -476,10 +678,12 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.showingDetail {
 				m.showingDetail = false
 			} else {
-				appIdx, _ := m.getApplicationAtCursor()
-				if appIdx >= 0 {
-					// Only expand, don't collapse
+				appIdx, subIdx := m.getApplicationAtCursorFromTable()
+				if appIdx >= 0 && subIdx < 0 {
+					// Only expand application rows, not sub-entries
 					m.Applications[appIdx].Expanded = true
+					// Rebuild table to show expanded children
+					m.rebuildTable()
 				}
 			}
 
@@ -490,7 +694,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "e":
 		// Edit selected Application or SubEntry (only in List view)
 		if m.Operation == OpList {
-			appIdx, subIdx := m.getApplicationAtCursor()
+			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 {
 				if subIdx >= 0 {
 					// Edit SubEntry
@@ -512,7 +716,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "a":
 		// Add new SubEntry to current Application (only in List view)
 		if m.Operation == OpList {
-			appIdx, _ := m.getApplicationAtCursor()
+			appIdx, _ := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 {
 				m.initSubEntryFormNew(appIdx)
 				return m, nil
@@ -521,7 +725,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d", "delete", "backspace":
 		// Ask for delete confirmation (only in List view)
 		if m.Operation == OpList {
-			appIdx, subIdx := m.getApplicationAtCursor()
+			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 {
 				if subIdx >= 0 {
 					m.confirmingDeleteSubEntry = true
@@ -535,7 +739,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		// Install package at Application level (only in List view)
 		if m.Operation == OpList {
-			appIdx, _ := m.getApplicationAtCursor()
+			appIdx, _ := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 {
 				app := m.Applications[appIdx]
 				if app.PkgInstalled != nil && !*app.PkgInstalled {
@@ -556,7 +760,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		// Restore selected SubEntry (only in List view for SubEntry rows)
 		if m.Operation == OpList {
-			appIdx, subIdx := m.getApplicationAtCursor()
+			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 && subIdx >= 0 {
 				subItem := &m.Applications[appIdx].SubItems[subIdx]
 				// Ensure Manager is in real mode (not dry-run) for Manage screen restores
@@ -569,6 +773,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				// Update the state after restore
 				if success {
 					m.Applications[appIdx].SubItems[subIdx].State = m.detectSubEntryState(subItem)
+					// Rebuild table to reflect updated state
+					m.rebuildTable()
 				}
 				// Show result briefly in results
 				m.results = []ResultItem{{
@@ -696,14 +902,14 @@ func (m Model) viewListTable() string {
 	b.WriteString(TitleStyle.Render("󰋗  Manage"))
 	b.WriteString("\n")
 
-	// Filter input (show when filtering or when filter is active)
-	if m.filtering || m.filterText != "" {
+	// Search input (show when searching or when search is active)
+	if m.searching || m.searchText != "" {
 		b.WriteString("  / ")
 
-		if m.filtering {
-			b.WriteString(m.filterInput.View())
+		if m.searching {
+			b.WriteString(m.searchInput.View())
 		} else {
-			b.WriteString(FilterInputStyle.Render(m.filterText))
+			b.WriteString(FilterInputStyle.Render(m.searchText))
 		}
 
 		b.WriteString("\n")
@@ -711,322 +917,30 @@ func (m Model) viewListTable() string {
 
 	b.WriteString("\n")
 
-	// Calculate visible rows and detail height
-	totalVisibleRows := m.getVisibleRowCount()
+	// Initialize table if not already initialized
+	if len(m.tableRows) == 0 {
+		m.initTableModel()
+	}
 
-	// Calculate detail height if showing
-	detailHeight := 0
+	// Render table
+	b.WriteString(m.renderTable())
+	b.WriteString("\n")
 
-	appIdx, subIdx := m.getApplicationAtCursor()
+	// Show inline detail panel below table if needed
+	appIdx, subIdx := m.getApplicationAtCursorFromTable()
 	if m.showingDetail && appIdx >= 0 {
 		if subIdx >= 0 {
 			// Detail for SubEntry
-			detailHeight = m.calcSubEntryDetailHeight(&m.Applications[appIdx].SubItems[subIdx])
+			b.WriteString(m.renderSubEntryInlineDetail(&m.Applications[appIdx].SubItems[subIdx], m.width))
 		} else {
 			// Detail for Application
-			detailHeight = m.calcApplicationDetailHeight(&m.Applications[appIdx])
-		}
-	}
-
-	// Calculate how many table rows can fit
-	maxTableRows := m.viewHeight - listTableOverhead
-	// Account for filter bar
-	if m.filtering || m.filterText != "" {
-		maxTableRows--
-	}
-
-	if maxTableRows < minVisibleRows {
-		maxTableRows = minVisibleRows
-	}
-
-	// Calculate how many rows we can show
-	maxVisible := maxTableRows
-	if m.showingDetail {
-		maxVisible = maxTableRows - detailHeight
-		if maxVisible < minVisibleWithDetail {
-			maxVisible = minVisibleWithDetail
-		}
-	}
-
-	if maxVisible > totalVisibleRows {
-		maxVisible = totalVisibleRows
-	}
-
-	// Keep the same scroll offset - don't change start when toggling detail
-	start := m.scrollOffset
-	if start >= totalVisibleRows {
-		start = 0
-	}
-
-	// Ensure cursor is visible within the reduced window when detail is showing
-	if m.showingDetail {
-		cursorPosInWindow := m.appCursor - start
-		if cursorPosInWindow >= maxVisible {
-			// Cursor would be hidden, adjust start to show cursor at bottom of reduced window
-			start = m.appCursor - maxVisible + 1
-		}
-
-		if cursorPosInWindow < 0 {
-			start = m.appCursor
-		}
-	}
-
-	end := start + maxVisible
-	if end > totalVisibleRows {
-		end = totalVisibleRows
-	}
-
-	// Calculate column widths for alignment
-	filtered := m.getFilteredApplications()
-	maxAppNameWidth := 0
-	maxSubNameWidth := 0
-	maxTypeWidth := 0
-	maxSourceWidth := 0
-	maxStatusWidth := 0
-	maxCountWidth := 0
-
-	for _, app := range filtered {
-		// Account for expansion indicator "▶ " or "▼ " (4 bytes each)
-		appNameWithIndicator := len(app.Application.Name) + 4
-		if appNameWithIndicator > maxAppNameWidth {
-			maxAppNameWidth = appNameWithIndicator
-		}
-
-		// Calculate entry count width for this app
-		entryText := "entries"
-		if len(app.SubItems) == 1 {
-			entryText = "entry"
-		}
-		entryCount := fmt.Sprintf("%d %s", len(app.SubItems), entryText)
-		if len(entryCount) > maxCountWidth {
-			maxCountWidth = len(entryCount)
-		}
-
-		if app.Expanded {
-			for _, subItem := range app.SubItems {
-				if len(subItem.SubEntry.Name) > maxSubNameWidth {
-					maxSubNameWidth = len(subItem.SubEntry.Name)
-				}
-
-				// Type info width
-				typeInfo := ""
-				if subItem.SubEntry.IsFolder() {
-					typeInfo = TypeFolder
-				} else {
-					fileCount := len(subItem.SubEntry.Files)
-					if fileCount == 1 {
-						typeInfo = "1 file"
-					} else {
-						typeInfo = fmt.Sprintf("%d files", fileCount)
-					}
-				}
-
-				if len(typeInfo) > maxTypeWidth {
-					maxTypeWidth = len(typeInfo)
-				}
-
-				// Source path width
-				// Show backup path as-is (e.g., "./nvim") without resolving
-				sourcePath := truncateStr(subItem.SubEntry.Backup)
-
-				if len(sourcePath) > maxSourceWidth {
-					maxSourceWidth = len(sourcePath)
-				}
-
-				// Status badge width
-				statusText := subItem.State.String()
-				if len(statusText) > maxStatusWidth {
-					maxStatusWidth = len(statusText)
-				}
+			filtered := m.getSearchedApplications()
+			if appIdx < len(filtered) {
+				b.WriteString(m.renderApplicationInlineDetail(&filtered[appIdx], m.width))
 			}
 		}
+		b.WriteString("\n")
 	}
-
-	// Calculate unified name width for status column alignment
-	// Sub-entries have " ├─ " (1 space + 6 bytes + 1 space = 8 bytes) before their name
-	unifiedNameWidth := maxAppNameWidth
-	if maxSubNameWidth+8 > unifiedNameWidth {
-		unifiedNameWidth = maxSubNameWidth + 8
-	}
-
-	// Calculate unified width for entry count / type column
-	unifiedCountTypeWidth := maxCountWidth
-	if maxTypeWidth > unifiedCountTypeWidth {
-		unifiedCountTypeWidth = maxTypeWidth
-	}
-
-	// Render hierarchical tree structure
-	visualRow := 0
-	for _, app := range filtered {
-		// Render Application row
-		if visualRow >= start && visualRow < end {
-			isSelected := visualRow == m.appCursor
-			cursor := RenderCursor(isSelected)
-
-			// Aggregate state for app (show worst state among sub-entries)
-			aggregateState := m.getAggregateState(app)
-
-			// Entry count
-			entryText := "entries"
-			if len(app.SubItems) == 1 {
-				entryText = "entry"
-			}
-			entryCount := fmt.Sprintf("%d %s", len(app.SubItems), entryText)
-
-			// Package indicator
-			var pkgIndicator string
-
-			if app.PkgInstalled != nil {
-				if *app.PkgInstalled {
-					pkgIndicator = "✓"
-				} else {
-					pkgIndicator = "✗"
-				}
-			} else {
-				pkgIndicator = " "
-			}
-
-			// Expansion indicator
-			var expandIndicator string
-			if app.Expanded {
-				expandIndicator = "▼ "
-			} else {
-				expandIndicator = "▶ "
-			}
-
-			// Pad to column widths (use unified width for status alignment)
-			paddedName := padRight(expandIndicator+app.Application.Name, unifiedNameWidth)
-			paddedCount := padRight(entryCount, unifiedCountTypeWidth)
-
-			// Build the complete line with or without selection styling
-			var line string
-
-			if isSelected {
-				// Apply selection style to entire row (use plain text for state, no badge styling)
-				// Match badge visual width: 1 (margin) + 1 (padding) + text + 1 (padding) = 10 total
-				statePlainText := " " + padRight(" "+aggregateState.String()+" ", 9)
-				line = fmt.Sprintf("%s%s  %s  %s  %s ",
-					cursor,
-					paddedName,
-					statePlainText,
-					paddedCount,
-					pkgIndicator)
-				line = SelectedListItemStyle.Render(line)
-			} else {
-				// Apply individual column styles (use styled badge)
-				stateBadge := renderStateBadge(aggregateState)
-				line = fmt.Sprintf("%s%s  %s  %s  %s",
-					cursor,
-					paddedName,
-					stateBadge,
-					MutedTextStyle.Render(paddedCount),
-					pkgIndicator)
-			}
-
-			b.WriteString(line)
-			b.WriteString("\n")
-
-			// Show inline detail panel below selected application row
-			if isSelected && m.showingDetail && subIdx < 0 {
-				b.WriteString(m.renderApplicationInlineDetail(&app, m.width))
-			}
-		}
-
-		visualRow++
-
-		// Render sub-entry rows if expanded
-		if app.Expanded {
-			for subItemIdx, subItem := range app.SubItems {
-				if visualRow >= start && visualRow < end {
-					isSelected := visualRow == m.appCursor
-
-					// Tree connector: ├─ for non-last items, └─ for last item
-					treePrefix := "├─"
-					if subItemIdx == len(app.SubItems)-1 {
-						treePrefix = "└─"
-					}
-
-					// Calculate plain status text with padding (match app-level format at line 866)
-					statusPlainText := " " + padRight(" "+subItem.State.String()+" ", 9)
-
-					// Cursor or spacing
-					cursor := RenderCursor(isSelected)
-
-					// Type info
-					typeInfo := ""
-					if subItem.SubEntry.IsFolder() {
-						typeInfo = TypeFolder
-					} else {
-						fileCount := len(subItem.SubEntry.Files)
-						if fileCount == 1 {
-							typeInfo = "1 file"
-						} else {
-							typeInfo = fmt.Sprintf("%d files", fileCount)
-						}
-					}
-
-					// Target path
-					targetPath := truncateStr(subItem.Target)
-
-					// Pad to column widths (use unified width - 8 to account for tree prefix and spaces)
-					paddedName := padRight(subItem.SubEntry.Name, unifiedNameWidth-8)
-					paddedType := padRight(typeInfo, unifiedCountTypeWidth)
-
-					// Build the complete line with or without selection styling
-					var line string
-					if isSelected {
-						// Apply selection style to entire row
-						line = fmt.Sprintf("%s %s %s  %s  %s  %s ",
-							cursor,
-							treePrefix,
-							paddedName,
-							statusPlainText,
-							paddedType,
-							targetPath)
-						line = SelectedListItemStyle.Render(line)
-					} else {
-						// Status badge using existing renderStateBadge function
-						statusBadge := renderStateBadge(subItem.State)
-
-						// Apply individual column styles for visual distinction
-						line = fmt.Sprintf("%s %s %s  %s  %s  %s",
-							cursor,
-							treePrefix,
-							paddedName,
-							statusBadge,
-							MutedTextStyle.Render(paddedType),
-							PathTargetStyle.Render(targetPath))
-					}
-
-					b.WriteString(line)
-					b.WriteString("\n")
-
-					// Show inline detail panel below selected sub-entry row
-					if isSelected && m.showingDetail && subIdx >= 0 {
-						b.WriteString(m.renderSubEntryInlineDetail(&subItem, m.width))
-					}
-				}
-
-				visualRow++
-			}
-		}
-	}
-
-	// Scroll indicators (always show line, even if empty, for consistent height)
-	scrollInfo := ""
-	if start > 0 || end < totalVisibleRows {
-		scrollInfo = fmt.Sprintf("Showing %d-%d of %d", start+1, end, totalVisibleRows)
-		if start > 0 {
-			scrollInfo = "↑ " + scrollInfo
-		}
-
-		if end < totalVisibleRows {
-			scrollInfo += " ↓"
-		}
-	}
-
-	b.WriteString(SubtitleStyle.Render(scrollInfo))
-	b.WriteString("\n")
 
 	// Show restore result if present
 	if len(m.results) > 0 {
@@ -1059,7 +973,7 @@ func (m Model) viewListTable() string {
 			b.WriteString(WarningStyle.Render(fmt.Sprintf("Delete '%s'? ", name)))
 			b.WriteString(RenderHelpWithWidth(m.width, "y/enter", "yes", "n/esc", "no"))
 		}
-	case m.filtering:
+	case m.searching:
 		b.WriteString(RenderHelpWithWidth(m.width,
 			"enter", "confirm",
 			"esc", "clear",
@@ -1072,7 +986,7 @@ func (m Model) viewListTable() string {
 	default:
 		// Build help text based on cursor position
 		helpItems := []string{
-			"/", "filter",
+			"/", "search",
 			"A", "add app",
 			"a", "add entry",
 			"e", "edit",
@@ -1092,28 +1006,28 @@ func (m Model) viewListTable() string {
 	return BaseStyle.Render(b.String())
 }
 
-// getFilteredApplications returns filtered applications for hierarchical view
-func (m Model) getFilteredApplications() []ApplicationItem {
-	if m.filterText == "" {
+// getSearchedApplications returns searched applications for hierarchical view
+func (m Model) getSearchedApplications() []ApplicationItem {
+	if m.searchText == "" {
 		return m.Applications
 	}
 
-	filterLower := strings.ToLower(m.filterText)
-	var filtered []ApplicationItem
+	searchLower := strings.ToLower(m.searchText)
+	var searched []ApplicationItem
 
 	for _, app := range m.Applications {
-		appMatches := strings.Contains(strings.ToLower(app.Application.Name), filterLower) ||
-			strings.Contains(strings.ToLower(app.Application.Description), filterLower)
+		appMatches := strings.Contains(strings.ToLower(app.Application.Name), searchLower) ||
+			strings.Contains(strings.ToLower(app.Application.Description), searchLower)
 
-		// Filter SubItems
+		// Search SubItems
 		var matchingSubItems []SubEntryItem
 
 		for _, sub := range app.SubItems {
-			subMatches := strings.Contains(strings.ToLower(sub.SubEntry.Name), filterLower) ||
-				strings.Contains(strings.ToLower(sub.Target), filterLower)
+			subMatches := strings.Contains(strings.ToLower(sub.SubEntry.Name), searchLower) ||
+				strings.Contains(strings.ToLower(sub.Target), searchLower)
 
 			// Check backup field
-			subMatches = subMatches || strings.Contains(strings.ToLower(sub.SubEntry.Backup), filterLower)
+			subMatches = subMatches || strings.Contains(strings.ToLower(sub.SubEntry.Backup), searchLower)
 
 			if appMatches || subMatches {
 				matchingSubItems = append(matchingSubItems, sub)
@@ -1123,24 +1037,11 @@ func (m Model) getFilteredApplications() []ApplicationItem {
 		if len(matchingSubItems) > 0 {
 			appCopy := app
 			appCopy.SubItems = matchingSubItems
-			filtered = append(filtered, appCopy)
+			searched = append(searched, appCopy)
 		}
 	}
 
-	return filtered
-}
-
-func truncateStr(s string) string {
-	const maxLen = 30
-	if len(s) <= maxLen {
-		return s
-	}
-
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-
-	return s[:maxLen-3] + "..."
+	return searched
 }
 
 // findConfigApplicationIndex finds the index of an application in m.Config.Applications by name

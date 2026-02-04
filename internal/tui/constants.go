@@ -28,3 +28,17 @@ const (
 	TypeFolder = "folder"
 	TypeNone   = "none"
 )
+
+// Application status constants for level 1 rows
+const (
+	StatusInstalled = "Installed"
+	StatusMissing   = "Missing"
+	StatusFiltered  = "Filtered"
+)
+
+// Sort column constants
+const (
+	SortColumnName   = "name"
+	SortColumnStatus = "status"
+	SortColumnPath   = "path"
+)
