@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -118,4 +120,97 @@ func TestMergeSummary_HasOperations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenerateConflictName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		filename string
+		date     string
+		want     string
+	}{
+		{
+			name:     "simple extension",
+			filename: "config.json",
+			date:     "20260204",
+			want:     "config_target_20260204.json",
+		},
+		{
+			name:     "double extension",
+			filename: "settings.conf.yaml",
+			date:     "20260204",
+			want:     "settings.conf_target_20260204.yaml",
+		},
+		{
+			name:     "no extension",
+			filename: "README",
+			date:     "20260204",
+			want:     "README_target_20260204",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generateConflictName(tt.filename, tt.date)
+			if got != tt.want {
+				t.Errorf("generateConflictName(%q, %q) = %q, want %q",
+					tt.filename, tt.date, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenerateConflictNameWithDate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		filename string
+	}{
+		{
+			name:     "simple extension",
+			filename: "config.json",
+		},
+		{
+			name:     "double extension",
+			filename: "settings.conf.yaml",
+		},
+		{
+			name:     "no extension",
+			filename: "README",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generateConflictNameWithDate(tt.filename)
+
+			// Verify it contains "_target_" and has the proper structure
+			if !contains(got, "_target_") {
+				t.Errorf("generateConflictNameWithDate(%q) = %q, should contain '_target_'",
+					tt.filename, got)
+			}
+
+			// Verify it starts with the base name
+			ext := filepath.Ext(tt.filename)
+			nameWithoutExt := strings.TrimSuffix(tt.filename, ext)
+			if !strings.HasPrefix(got, nameWithoutExt) {
+				t.Errorf("generateConflictNameWithDate(%q) = %q, should start with %q",
+					tt.filename, got, nameWithoutExt)
+			}
+
+			// Verify it ends with the extension (if any)
+			if ext != "" && !strings.HasSuffix(got, ext) {
+				t.Errorf("generateConflictNameWithDate(%q) = %q, should end with %q",
+					tt.filename, got, ext)
+			}
+		})
+	}
+}
+
+// Helper function for string containment check
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
