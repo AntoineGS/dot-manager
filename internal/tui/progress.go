@@ -269,9 +269,9 @@ func (m *Model) formatHeaderWithShortcut(text string, shortcut rune, columnName 
 	for i, r := range runes {
 		if r == shortcut {
 			before := string(runes[:i])
-			// Use primary color for the highlighted letter
+			// Use accent color for the highlighted letter
 			highlighted := lipgloss.NewStyle().
-				Foreground(primaryColor).
+				Foreground(accentColor).
 				Bold(true).
 				Render(string(shortcut))
 			after := string(runes[i+1:])
@@ -291,7 +291,7 @@ func (m *Model) formatHeaderWithShortcut(text string, shortcut rune, columnName 
 			indicator = " ↓"
 		}
 		result += lipgloss.NewStyle().
-			Foreground(primaryColor).
+			Foreground(accentColor).
 			Bold(true).
 			Render(indicator)
 	}

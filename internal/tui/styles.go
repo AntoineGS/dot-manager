@@ -6,7 +6,7 @@ import (
 
 var (
 	// Colors
-	primaryColor   = lipgloss.Color("#8B7AC7") // Medium Purple
+	primaryColor   = lipgloss.Color("#7C3AED") // Purple
 	secondaryColor = lipgloss.Color("#10B981") // Green
 	accentColor    = lipgloss.Color("#F59E0B") // Amber
 	errorColor     = lipgloss.Color("#EF4444") // Red
@@ -162,9 +162,9 @@ var (
 			Foreground(mutedColor).
 			MarginTop(1)
 
-	// HelpKeyStyle is the style for help key bindings with bold purple text.
+	// HelpKeyStyle is the style for help key bindings with bold amber text.
 	HelpKeyStyle = lipgloss.NewStyle().
-			Foreground(primaryColor).
+			Foreground(accentColor).
 			Bold(true)
 
 	// StatusBarStyle is the style for the status bar.
