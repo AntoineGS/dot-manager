@@ -794,6 +794,16 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d", "delete", "backspace":
 		// Ask for delete confirmation (only in List view)
 		if m.Operation == OpList {
+			// Check if multi-select mode is active
+			if m.multiSelectActive {
+				// Show summary screen for batch delete
+				// No specific delete operation type exists, so we use OpList with a different summary
+				m.summaryOperation = OpList // Will be interpreted as delete in summary screen
+				m.Screen = ScreenSummary
+				return m, nil
+			}
+
+			// Single-item delete (original behavior)
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 {
 				if subIdx >= 0 {
@@ -808,6 +818,15 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		// Install package at Application level (only in List view)
 		if m.Operation == OpList {
+			// Check if multi-select mode is active
+			if m.multiSelectActive {
+				// Show summary screen for batch install
+				m.summaryOperation = OpInstallPackages
+				m.Screen = ScreenSummary
+				return m, nil
+			}
+
+			// Single-item install (original behavior)
 			appIdx, _ := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 {
 				app := m.Applications[appIdx]
@@ -829,6 +848,15 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		// Restore selected SubEntry (only in List view for SubEntry rows)
 		if m.Operation == OpList {
+			// Check if multi-select mode is active
+			if m.multiSelectActive {
+				// Show summary screen for batch restore
+				m.summaryOperation = OpRestore
+				m.Screen = ScreenSummary
+				return m, nil
+			}
+
+			// Single-item restore (original behavior)
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 && subIdx >= 0 {
 				subItem := &m.Applications[appIdx].SubItems[subIdx]
