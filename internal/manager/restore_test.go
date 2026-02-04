@@ -1732,3 +1732,84 @@ func TestRestoreFolder_ConflictsRenamed(t *testing.T) {
 		t.Error("conflict file (config_target_*.json) should be created")
 	}
 }
+
+func TestRestoreFiles_OnlyMergesListedFiles(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+
+	// Create backup with listed file
+	backupDir := filepath.Join(tmpDir, "backup")
+	if err := os.MkdirAll(backupDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDir, "config.txt"), []byte("backup config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create target directory with listed file and unlisted file
+	targetDir := filepath.Join(tmpDir, "target")
+	if err := os.MkdirAll(targetDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+	// Listed file - should be merged
+	if err := os.WriteFile(filepath.Join(targetDir, "config.txt"), []byte("target config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Unlisted file - should NOT be touched
+	if err := os.WriteFile(filepath.Join(targetDir, "other.txt"), []byte("other content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{BackupRoot: tmpDir}
+	plat := &platform.Platform{OS: platform.OSLinux}
+	mgr := New(cfg, plat)
+
+	entry := config.Entry{
+		Name:  "test",
+		Files: []string{"config.txt"}, // Only config.txt is listed
+	}
+
+	err := mgr.RestoreFiles(entry, backupDir, targetDir)
+	if err != nil {
+		t.Fatalf("RestoreFiles() error = %v", err)
+	}
+
+	// Listed file should be a symlink
+	listedFile := filepath.Join(targetDir, "config.txt")
+	if !isSymlink(listedFile) {
+		t.Error("config.txt should be a symlink")
+	}
+
+	// Unlisted file should still exist as regular file (not touched)
+	unlistedFile := filepath.Join(targetDir, "other.txt")
+	if isSymlink(unlistedFile) {
+		t.Error("other.txt should not be a symlink")
+	}
+	if !pathExists(unlistedFile) {
+		t.Error("other.txt should still exist")
+	}
+	content, _ := os.ReadFile(unlistedFile) //nolint:gosec // test file
+	if string(content) != "other content" {
+		t.Errorf("other.txt content = %q, want %q", string(content), "other content")
+	}
+
+	// Listed file content in backup should have merged target's version
+	// The target version should be renamed as conflict file
+	entries, _ := os.ReadDir(backupDir)
+	conflictFound := false
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "config_target_") && strings.HasSuffix(entry.Name(), ".txt") {
+			conflictFound = true
+			conflictFile := filepath.Join(backupDir, entry.Name())
+			conflictContent, _ := os.ReadFile(conflictFile) //nolint:gosec // test file
+			if string(conflictContent) != "target config" {
+				t.Errorf("conflict file should have target content, got %q", string(conflictContent))
+			}
+			break
+		}
+	}
+
+	if !conflictFound {
+		t.Error("conflict file (config_target_*.txt) should be created for the merged file")
+	}
+}

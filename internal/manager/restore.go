@@ -313,6 +313,41 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 			}
 		}
 
+		// Handle merge case: both source and target file exist
+		if pathExists(srcFile) && pathExists(dstFile) && !isSymlink(dstFile) {
+			if m.NoMerge {
+				return NewPathError("restore", dstFile, fmt.Errorf(
+					"target file exists. Use merge mode to combine with backup"))
+			}
+
+			// Merge target file into backup
+			m.logger.Info("merging existing file into backup",
+				slog.String("target", dstFile),
+				slog.String("backup", srcFile))
+
+			if !m.DryRun {
+				summary := NewMergeSummary(entry.Name)
+				if err := mergeFile(dstFile, source, file, entry.Sudo, summary); err != nil {
+					return NewPathError("restore", dstFile, fmt.Errorf("merging file: %w", err))
+				}
+
+				// Log merge summary
+				if summary.HasOperations() {
+					for _, conflict := range summary.ConflictFiles {
+						m.logger.Warn("conflict resolved by renaming",
+							slog.String("file", conflict.OriginalName),
+							slog.String("renamed_to", conflict.RenamedTo))
+					}
+
+					for _, failed := range summary.FailedFiles {
+						m.logger.Error("merge failed for file",
+							slog.String("file", failed.FileName),
+							slog.String("error", failed.Error))
+					}
+				}
+			}
+		}
+
 		// Check if we need to adopt: target exists but backup doesn't
 		if !pathExists(srcFile) && pathExists(dstFile) {
 			m.logger.Info("adopting file",
@@ -346,7 +381,7 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 			continue
 		}
 
-		// Remove existing file (if still there after adopt check)
+		// Remove existing file (if still there after adopt/merge check)
 		if pathExists(dstFile) && !isSymlink(dstFile) {
 			m.logger.Info("removing file", slog.String("path", dstFile))
 
@@ -643,6 +678,41 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 			if !m.DryRun {
 				if err := os.Remove(dstFile); err != nil {
 					return NewPathError("restore", dstFile, fmt.Errorf("removing incorrect symlink: %w", err))
+				}
+			}
+		}
+
+		// Handle merge case: both source and target file exist
+		if pathExists(srcFile) && pathExists(dstFile) && !isSymlink(dstFile) {
+			if m.NoMerge {
+				return NewPathError("restore", dstFile, fmt.Errorf(
+					"target file exists. Use merge mode to combine with backup"))
+			}
+
+			// Merge target file into backup
+			m.logger.Info("merging existing file into backup",
+				slog.String("target", dstFile),
+				slog.String("backup", srcFile))
+
+			if !m.DryRun {
+				summary := NewMergeSummary(subEntry.Name)
+				if err := mergeFile(dstFile, source, file, subEntry.Sudo, summary); err != nil {
+					return NewPathError("restore", dstFile, fmt.Errorf("merging file: %w", err))
+				}
+
+				// Log merge summary
+				if summary.HasOperations() {
+					for _, conflict := range summary.ConflictFiles {
+						m.logger.Warn("conflict resolved by renaming",
+							slog.String("file", conflict.OriginalName),
+							slog.String("renamed_to", conflict.RenamedTo))
+					}
+
+					for _, failed := range summary.FailedFiles {
+						m.logger.Error("merge failed for file",
+							slog.String("file", failed.FileName),
+							slog.String("error", failed.Error))
+					}
 				}
 			}
 		}
