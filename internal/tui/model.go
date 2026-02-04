@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -728,4 +729,94 @@ func (m *Model) refreshPathStates() {
 func pathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// Selection helper methods
+
+// toggleAppSelection toggles the selection state of an entire application and all its sub-entries.
+// When selecting an app, all its sub-entries are selected. When deselecting, all are deselected.
+func (m *Model) toggleAppSelection(appIdx int) {
+	if appIdx < 0 || appIdx >= len(m.Applications) {
+		return
+	}
+
+	// Toggle the app selection state
+	newState := !m.selectedApps[appIdx]
+	m.selectedApps[appIdx] = newState
+
+	// Toggle all sub-entries to match
+	for subIdx := range m.Applications[appIdx].SubItems {
+		key := m.makeSubEntryKey(appIdx, subIdx)
+		m.selectedSubEntries[key] = newState
+	}
+
+	// Clean up maps if deselecting
+	if !newState {
+		delete(m.selectedApps, appIdx)
+		for subIdx := range m.Applications[appIdx].SubItems {
+			key := m.makeSubEntryKey(appIdx, subIdx)
+			delete(m.selectedSubEntries, key)
+		}
+	}
+
+	m.updateMultiSelectActive()
+}
+
+// toggleSubEntrySelection toggles the selection state of a single sub-entry within an application.
+func (m *Model) toggleSubEntrySelection(appIdx, subIdx int) {
+	if appIdx < 0 || appIdx >= len(m.Applications) {
+		return
+	}
+	if subIdx < 0 || subIdx >= len(m.Applications[appIdx].SubItems) {
+		return
+	}
+
+	key := m.makeSubEntryKey(appIdx, subIdx)
+
+	// Toggle the sub-entry selection state
+	newState := !m.selectedSubEntries[key]
+	m.selectedSubEntries[key] = newState
+
+	// Clean up map if deselecting
+	if !newState {
+		delete(m.selectedSubEntries, key)
+	}
+
+	m.updateMultiSelectActive()
+}
+
+// clearSelections clears all selection state, resetting to no selections.
+func (m *Model) clearSelections() {
+	m.selectedApps = make(map[int]bool)
+	m.selectedSubEntries = make(map[string]bool)
+	m.multiSelectActive = false
+}
+
+// makeSubEntryKey creates a unique key for a sub-entry using the format "appIdx:subIdx".
+func (m *Model) makeSubEntryKey(appIdx, subIdx int) string {
+	return fmt.Sprintf("%d:%d", appIdx, subIdx)
+}
+
+// updateMultiSelectActive updates the multiSelectActive flag based on current selections.
+// It sets the flag to true if any selections exist, false otherwise.
+func (m *Model) updateMultiSelectActive() {
+	m.multiSelectActive = len(m.selectedApps) > 0 || len(m.selectedSubEntries) > 0
+}
+
+// isAppSelected returns true if the application at appIdx is selected.
+func (m *Model) isAppSelected(appIdx int) bool {
+	return m.selectedApps[appIdx]
+}
+
+// isSubEntrySelected returns true if the sub-entry is selected.
+// A sub-entry is considered selected if it's explicitly selected OR if its parent app is selected.
+func (m *Model) isSubEntrySelected(appIdx, subIdx int) bool {
+	// Check if parent app is selected (implicit selection)
+	if m.selectedApps[appIdx] {
+		return true
+	}
+
+	// Check if sub-entry is explicitly selected
+	key := m.makeSubEntryKey(appIdx, subIdx)
+	return m.selectedSubEntries[key]
 }
