@@ -131,11 +131,18 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 		}
 	}
 
-	// Load package managers
+	// Load package managers (only string-based managers, skip git)
 	packageManagers := make(map[string]string)
 	if app.Package != nil && len(app.Package.Managers) > 0 {
 		for k, v := range app.Package.Managers {
-			packageManagers[k] = v
+			// Skip git packages as they require special handling
+			if k == "git" {
+				continue
+			}
+			// Only include string values
+			if str, ok := v.(string); ok {
+				packageManagers[k] = str
+			}
 		}
 	}
 

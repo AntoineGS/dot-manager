@@ -305,47 +305,6 @@ func createSymlink(source, target string, useSudo bool) error {
 }
 
 // restoreGitEntry clones or updates a git repository
-func (m *Manager) restoreV3() error { //nolint:dupl // similar structure to backupV3, but semantically different
-	apps := m.GetApplications()
-
-	for _, app := range apps {
-		// Check context before each application
-		if err := m.checkContext(); err != nil {
-			return err
-		}
-
-		m.logf("Restoring application: %s", app.Name)
-
-		for _, subEntry := range app.Entries {
-			// Check context before each entry
-			if err := m.checkContext(); err != nil {
-				return err
-			}
-
-			// Only process config entries (git entries are now handled as packages)
-			if !subEntry.IsConfig() {
-				m.logVerbosef("Skipping %s/%s: not a config entry", app.Name, subEntry.Name)
-				continue
-			}
-
-			target := subEntry.GetTarget(m.Platform.OS)
-			if target == "" {
-				m.logVerbosef("Skipping %s/%s: no target for OS %s", app.Name, subEntry.Name, m.Platform.OS)
-				continue
-			}
-
-			// Expand ~ and env vars in target path for file operations
-			expandedTarget := m.expandTarget(target)
-
-			if err := m.restoreSubEntry(app.Name, subEntry, expandedTarget); err != nil {
-				m.logf("Error restoring %s/%s: %v", app.Name, subEntry.Name, err)
-			}
-		}
-	}
-
-	return nil
-}
-
 func (m *Manager) restoreSubEntry(appName string, subEntry config.SubEntry, target string) error {
 	backupPath := m.resolvePath(subEntry.Backup)
 

@@ -388,7 +388,10 @@ func isPackageInstalledFromPackage(pkg *config.EntryPackage, method, entryName s
 	// Get the package name for the detected manager
 	pkgName := ""
 	if name, ok := pkg.Managers[method]; ok {
-		pkgName = name
+		// Type assert to string (skip git packages which are GitPackage type)
+		if str, ok := name.(string); ok {
+			pkgName = str
+		}
 	} else {
 		// For custom/url methods, use the entry name
 		pkgName = entryName

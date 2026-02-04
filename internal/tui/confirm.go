@@ -250,8 +250,33 @@ func (m Model) buildInstallCommand(pkg PackageItem) *exec.Cmd {
 		return nil
 	}
 
+	// Handle git package manager specially
+	if pkg.Method == "git" {
+		if gitPkg, ok := pkg.Entry.Package.GetGitPackage(); ok {
+			target := gitPkg.Targets[m.Platform.OS]
+			if target == "" {
+				return nil
+			}
+
+			// Build git clone command with optional branch and sudo support
+			args := []string{"clone"}
+			if gitPkg.Branch != "" {
+				args = append(args, "-b", gitPkg.Branch)
+			}
+			args = append(args, gitPkg.URL, target)
+
+			if gitPkg.Sudo {
+				// Prepend sudo to git command
+				args = append([]string{"git"}, args...)
+				return exec.CommandContext(context.Background(), "sudo", args...) //nolint:gosec // intentional command
+			}
+
+			return exec.CommandContext(context.Background(), "git", args...) //nolint:gosec // intentional command
+		}
+	}
+
 	// Try package managers first
-	if pkgName, ok := pkg.Entry.Package.Managers[pkg.Method]; ok {
+	if pkgName, ok := pkg.Entry.Package.GetManagerString(pkg.Method); ok {
 		switch pkg.Method {
 		case "pacman":
 			return exec.CommandContext(context.Background(), "sudo", "pacman", "-S", "--noconfirm", pkgName) //nolint:gosec // intentional command

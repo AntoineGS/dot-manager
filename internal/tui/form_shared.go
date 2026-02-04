@@ -268,8 +268,14 @@ func buildPackageSpec(managers map[string]string) *config.EntryPackage {
 		return nil
 	}
 
+	// Convert map[string]string to map[string]interface{}
+	managersInterface := make(map[string]interface{}, len(managers))
+	for k, v := range managers {
+		managersInterface[k] = v
+	}
+
 	return &config.EntryPackage{
-		Managers: managers,
+		Managers: managersInterface,
 	}
 }
 

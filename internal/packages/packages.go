@@ -246,7 +246,7 @@ func (m *Manager) Install(pkg Package) InstallResult {
 	// Check if this is a git package
 	if gitValue, ok := pkg.Managers[Git]; ok {
 		if gitCfg, ok := gitValue.(GitConfig); ok {
-			result.Method = "git"
+			result.Method = string(Git)
 			success, msg := m.installGitPackage(gitCfg)
 			result.Success = success
 			result.Message = msg
@@ -660,6 +660,18 @@ func FromEntry(e config.Entry) *Package {
 
 	managers := make(map[PackageManager]interface{})
 	for k, v := range e.Package.Managers {
+		// Convert config.GitPackage to packages.GitConfig
+		if k == "git" {
+			if gitPkg, ok := v.(config.GitPackage); ok {
+				managers[Git] = GitConfig{
+					URL:     gitPkg.URL,
+					Branch:  gitPkg.Branch,
+					Targets: gitPkg.Targets,
+					Sudo:    gitPkg.Sudo,
+				}
+				continue
+			}
+		}
 		managers[PackageManager(k)] = v
 	}
 

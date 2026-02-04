@@ -1,5 +1,11 @@
 package config
 
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
 const (
 	// SubEntryTypeConfig represents a config type sub-entry
 	SubEntryTypeConfig = "config"
@@ -20,9 +26,102 @@ type Entry struct {
 
 // EntryPackage contains package installation configuration
 type EntryPackage struct {
-	Managers map[string]string         `yaml:"managers,omitempty"` // manager -> package name
+	Managers map[string]interface{}    `yaml:"managers,omitempty"` // manager -> package name or GitPackage
 	Custom   map[string]string         `yaml:"custom,omitempty"`   // os -> command
 	URL      map[string]URLInstallSpec `yaml:"url,omitempty"`      // os -> url install
+}
+
+// GitPackage represents a git repository package configuration
+type GitPackage struct {
+	URL     string            `yaml:"url"`
+	Branch  string            `yaml:"branch,omitempty"`
+	Targets map[string]string `yaml:"targets"`
+	Sudo    bool              `yaml:"sudo,omitempty"`
+}
+
+// UnmarshalYAML implements custom YAML unmarshaling for EntryPackage
+// to properly handle git manager objects while keeping other managers as strings
+func (ep *EntryPackage) UnmarshalYAML(node *yaml.Node) error {
+	// Create a temporary struct with the same fields but using interface{} for Managers
+	type rawPackage struct {
+		Managers map[string]interface{}    `yaml:"managers,omitempty"`
+		Custom   map[string]string         `yaml:"custom,omitempty"`
+		URL      map[string]URLInstallSpec `yaml:"url,omitempty"`
+	}
+
+	var raw rawPackage
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+
+	// Process managers to convert git entries to GitPackage
+	if raw.Managers != nil {
+		ep.Managers = make(map[string]interface{}, len(raw.Managers))
+		for key, value := range raw.Managers {
+			if key == "git" {
+				// Convert the map to GitPackage
+				gitMap, ok := value.(map[string]interface{})
+				if !ok {
+					return fmt.Errorf("git manager must be an object, got %T", value)
+				}
+
+				// Marshal back to YAML and unmarshal into GitPackage for proper type conversion
+				gitBytes, err := yaml.Marshal(gitMap)
+				if err != nil {
+					return fmt.Errorf("marshaling git config: %w", err)
+				}
+
+				var gitPkg GitPackage
+				if err := yaml.Unmarshal(gitBytes, &gitPkg); err != nil {
+					return fmt.Errorf("unmarshaling git config: %w", err)
+				}
+
+				ep.Managers[key] = gitPkg
+			} else {
+				// Keep as-is (should be string)
+				ep.Managers[key] = value
+			}
+		}
+	}
+
+	ep.Custom = raw.Custom
+	ep.URL = raw.URL
+
+	return nil
+}
+
+// GetManagerString returns the manager value as a string, or empty string if not found or not a string
+func (ep *EntryPackage) GetManagerString(manager string) (string, bool) {
+	if ep.Managers == nil {
+		return "", false
+	}
+
+	value, ok := ep.Managers[manager]
+	if !ok {
+		return "", false
+	}
+
+	str, ok := value.(string)
+	return str, ok
+}
+
+// GetGitPackage returns the git manager configuration, or nil if not found or not a GitPackage
+func (ep *EntryPackage) GetGitPackage() (*GitPackage, bool) {
+	if ep.Managers == nil {
+		return nil, false
+	}
+
+	value, ok := ep.Managers["git"]
+	if !ok {
+		return nil, false
+	}
+
+	gitPkg, ok := value.(GitPackage)
+	if !ok {
+		return nil, false
+	}
+
+	return &gitPkg, true
 }
 
 // IsConfig returns true if this is a config type entry (has backup field)

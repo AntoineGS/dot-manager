@@ -14,55 +14,70 @@ func TestList_FiltersByOS(t *testing.T) {
 	t.Parallel()
 	m := setupTestManager(t)
 
-	m.Config.Entries = []config.Entry{
+	m.Config.Applications = []config.Application{
 		{
-			Name:   "linux-only",
-			Backup: "./linux",
-			Targets: map[string]string{
-				"linux": "~/.config/linux",
-			},
+			Name: "linux-only",
 			Filters: []config.Filter{
 				{Include: map[string]string{"os": "linux"}},
 			},
+			Entries: []config.SubEntry{
+				{
+					Name:   "linux-only",
+					Backup: "./linux",
+					Targets: map[string]string{
+						"linux": "~/.config/linux",
+					},
+				},
+			},
 		},
 		{
-			Name:   "windows-only",
-			Backup: "./windows",
-			Targets: map[string]string{
-				"windows": "~/AppData/windows",
-			},
+			Name: "windows-only",
 			Filters: []config.Filter{
 				{Include: map[string]string{"os": "windows"}},
 			},
+			Entries: []config.SubEntry{
+				{
+					Name:   "windows-only",
+					Backup: "./windows",
+					Targets: map[string]string{
+						"windows": "~/AppData/windows",
+					},
+				},
+			},
 		},
 		{
-			Name:   "no-filter",
-			Backup: "./both",
-			Targets: map[string]string{
-				"linux": "~/.config/both",
+			Name: "no-filter",
+			Entries: []config.SubEntry{
+				{
+					Name:   "no-filter",
+					Backup: "./both",
+					Targets: map[string]string{
+						"linux": "~/.config/both",
+					},
+				},
 			},
 		},
 	}
 
 	m.Platform.OS = "linux"
-	entries := m.GetEntries()
+	apps := m.GetApplications()
 
 	// Should get linux-only and no-filter
-	if len(entries) != 2 {
-		t.Errorf("got %d entries, want 2", len(entries))
+	if len(apps) != 2 {
+		t.Errorf("got %d applications, want 2", len(apps))
 	}
 
 	names := make(map[string]bool)
-	for _, e := range entries {
-		names[e.Name] = true
+	for _, app := range apps {
+		names[app.Name] = true
 	}
 
 	if !names["linux-only"] {
-		t.Error("missing linux-only entry")
+		t.Error("missing linux-only application")
 	}
 
 	if !names["no-filter"] {
-		t.Error("missing no-filter entry")
+		t.Error("missing no-filter application")
 	}
 
 	if names["windows-only"] {
@@ -73,12 +88,12 @@ func TestList_FiltersByOS(t *testing.T) {
 func TestList_EmptyConfig(t *testing.T) {
 	t.Parallel()
 	m := setupTestManager(t)
-	m.Config.Entries = []config.Entry{}
+	m.Config.Applications = []config.Application{}
 
-	entries := m.GetEntries()
+	apps := m.GetApplications()
 
-	if len(entries) != 0 {
-		t.Errorf("got %d entries, want 0", len(entries))
+	if len(apps) != 0 {
+		t.Errorf("got %d applications, want 0", len(apps))
 	}
 }
 
@@ -86,21 +101,31 @@ func TestList_V2Format(t *testing.T) {
 	t.Parallel()
 	m := setupTestManager(t)
 
-	m.Config.Version = 2
-	m.Config.Entries = []config.Entry{
+	m.Config.Version = 3
+	m.Config.Applications = []config.Application{
 		{
-			Name:   "test-config",
-			Backup: "./test",
-			Files:  []string{},
-			Targets: map[string]string{
-				"linux": "~/.config/test",
+			Name: "test-config",
+			Entries: []config.SubEntry{
+				{
+					Name:   "test-config",
+					Backup: "./test",
+					Files:  []string{},
+					Targets: map[string]string{
+						"linux": "~/.config/test",
+					},
+				},
 			},
 		},
 		{
-			Name: "git-entry",
+			Name: "git-app",
+			Entries: []config.SubEntry{
+				{
+					Name: "git-entry",
 
-			Targets: map[string]string{
-				"linux": "~/.local/share/test",
+					Targets: map[string]string{
+						"linux": "~/.local/share/test",
+					},
+				},
 			},
 		},
 	}
@@ -131,7 +156,7 @@ func TestList_V3Format(t *testing.T) {
 				},
 			},
 			Package: &config.EntryPackage{
-				Managers: map[string]string{
+				Managers: map[string]interface{}{
 					"pacman": "test-package",
 				},
 			},
