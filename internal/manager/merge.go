@@ -1,5 +1,11 @@
 package manager
 
+import (
+	"path/filepath"
+	"strings"
+	"time"
+)
+
 // MergeSummary tracks merge operations for a single application.
 // This type is not thread-safe and should not be used concurrently.
 type MergeSummary struct {
@@ -55,4 +61,23 @@ func (s *MergeSummary) AddFailed(fileName, errMsg string) {
 // HasOperations returns true if any merge operations occurred
 func (s *MergeSummary) HasOperations() bool {
 	return len(s.MergedFiles) > 0 || len(s.ConflictFiles) > 0 || len(s.FailedFiles) > 0
+}
+
+// generateConflictName creates a renamed filename for conflicts
+// Example: config.json with date 20260204 -> config_target_20260204.json
+func generateConflictName(filename, date string) string {
+	ext := filepath.Ext(filename)
+	nameWithoutExt := strings.TrimSuffix(filename, ext)
+
+	if ext == "" {
+		return nameWithoutExt + "_target_" + date
+	}
+
+	return nameWithoutExt + "_target_" + date + ext
+}
+
+// generateConflictNameWithDate generates a conflict name using today's date
+func generateConflictNameWithDate(filename string) string {
+	date := time.Now().Format("20060102")
+	return generateConflictName(filename, date)
 }
