@@ -158,8 +158,8 @@ func (m *Model) initApplicationItems() {
 			subItems = append(subItems, subItem)
 		}
 
-		// Skip apps with no applicable entries
-		if len(subItems) == 0 {
+		// Skip apps with no applicable entries AND no packages
+		if len(subItems) == 0 && !app.HasPackage() {
 			continue
 		}
 
@@ -299,14 +299,14 @@ func (m *Model) formatHeaderWithShortcut(text string, shortcut rune, columnName 
 	return result
 }
 
-// renderTable renders the table using lipgloss with custom styling
-func (m *Model) renderTable() string {
+// renderTable renders the table using lipgloss with custom styling.
+// availableHeight is the number of lines available for the entire table (including borders/headers).
+func (m *Model) renderTable(availableHeight int) string {
 	if len(m.tableRows) == 0 {
 		return SubtitleStyle.Render("No entries found")
 	}
 
 	// Determine if we have enough width to show backup column
-	// Width threshold: 140 chars allows for all columns including backup
 	showBackupColumn := m.width >= 140
 
 	// Build headers with highlighted shortcuts and sort indicators
@@ -328,26 +328,59 @@ func (m *Model) renderTable() string {
 		}
 	}
 
-	// Convert tableRows to string data for lipgloss table
-	rows := make([][]string, len(m.tableRows))
-	for i, tr := range m.tableRows {
-		if showBackupColumn {
-			rows[i] = []string{
-				tr.Data[0],    // Name (with tree chars)
-				tr.Data[1],    // Status
-				tr.Data[2],    // Info
-				tr.BackupPath, // Backup path
-				tr.Data[3],    // Path (target)
-			}
-		} else {
-			rows[i] = []string{
-				tr.Data[0], // Name (with tree chars)
-				tr.Data[1], // Status
-				tr.Data[2], // Info
-				tr.Data[3], // Path
+	// Calculate viewport from provided height
+	// Table structure uses 4 lines (top border, header, separator, bottom border)
+	maxVisibleRows := availableHeight - 4
+	if maxVisibleRows < 3 {
+		maxVisibleRows = 3 // Absolute minimum
+	}
+
+	totalRows := len(m.tableRows)
+
+	// Preserve scroll position when possible (e.g., when expanding/collapsing nodes)
+	// Only adjust if cursor moves out of the current view
+	scrollOffset := m.scrollOffset
+
+	// Check if cursor is still in view with current scroll offset
+	cursorInView := m.tableCursor >= scrollOffset && m.tableCursor < scrollOffset+maxVisibleRows
+
+	if !cursorInView || scrollOffset < 0 || scrollOffset > totalRows {
+		// Cursor out of view or invalid offset - recalculate to center cursor
+		halfView := maxVisibleRows / 2
+		scrollOffset = m.tableCursor - halfView
+		if scrollOffset < 0 {
+			scrollOffset = 0
+		}
+		if scrollOffset+maxVisibleRows > totalRows {
+			scrollOffset = totalRows - maxVisibleRows
+			if scrollOffset < 0 {
+				scrollOffset = 0
 			}
 		}
 	}
+
+	// Save scroll offset for next render
+	m.scrollOffset = scrollOffset
+
+	// Calculate visible range
+	visibleStart := scrollOffset
+	visibleEnd := scrollOffset + maxVisibleRows
+	if visibleEnd > totalRows {
+		visibleEnd = totalRows
+	}
+
+	// Determine if we need scroll indicators
+	hasMoreAbove := scrollOffset > 0
+	hasMoreBelow := visibleEnd < totalRows
+
+	// Build visible rows with scroll indicators embedded
+	rows := m.buildVisibleRowsWithIndicators(
+		visibleStart,
+		visibleEnd,
+		hasMoreAbove,
+		hasMoreBelow,
+		showBackupColumn,
+	)
 
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
@@ -357,59 +390,181 @@ func (m *Model) renderTable() string {
 		BorderHeader(true).
 		Width(m.width - 4).
 		StyleFunc(func(row, col int) lipgloss.Style {
-			switch row {
-			case table.HeaderRow:
-				// Header styling
+			// Header row styling
+			if row == table.HeaderRow {
 				return lipgloss.NewStyle().
 					Bold(true).
 					Padding(0, 1)
-			case m.tableCursor:
-				// Cursor row styling (always takes priority)
+			}
+
+			// Determine if this is an indicator row
+			isIndicatorRow := (hasMoreAbove && row == 0) || (hasMoreBelow && row == len(rows)-1)
+
+			// Indicator rows get muted styling
+			if isIndicatorRow {
+				return lipgloss.NewStyle().
+					Foreground(lipgloss.Color("240")). // Dim gray
+					Italic(true).
+					Padding(0, 1)
+			}
+
+			// Calculate actual table row index accounting for indicators
+			// When hasMoreAbove: row 0 = indicator, row 1 = tableRows[scrollOffset+1], etc.
+			// So we need to map: row N (N >= 1) -> tableRows[scrollOffset + N]
+			actualRow := row + scrollOffset
+
+			// Bounds check
+			if actualRow < 0 || actualRow >= len(m.tableRows) {
+				return lipgloss.NewStyle().Padding(0, 1)
+			}
+
+			// Cursor row styling (takes priority)
+			if actualRow == m.tableCursor {
 				return lipgloss.NewStyle().
 					Foreground(textColor).
 					Background(primaryColor).
 					Bold(true).
 					Padding(0, 1)
-			default:
-				// Check if this row is selected (multi-select)
-				if row >= 0 && row < len(m.tableRows) {
-					tr := m.tableRows[row]
-					appIdx := tr.AppIndex
-					subIdx := tr.SubIndex
-
-					isSelected := false
-					if subIdx < 0 {
-						// Application row
-						isSelected = m.isAppSelected(appIdx)
-					} else {
-						// Sub-entry row
-						isSelected = m.isSubEntrySelected(appIdx, subIdx)
-					}
-
-					if isSelected {
-						// Selected row styling (lighter purple)
-						return SelectedRowStyle
-					}
-
-					// Regular cell styling - check if needs attention
-					baseStyle := lipgloss.NewStyle().Padding(0, 1)
-
-					// Column 1 is status, column 2 is info (regardless of backup column)
-					if col == 1 && tr.StatusAttention {
-						return baseStyle.Foreground(errorColor)
-					}
-					if col == 2 && tr.InfoAttention {
-						return baseStyle.Foreground(errorColor)
-					}
-
-					return baseStyle
-				}
-
-				return lipgloss.NewStyle().Padding(0, 1)
 			}
+
+			// Multi-select styling
+			tr := m.tableRows[actualRow]
+			appIdx := tr.AppIndex
+			subIdx := tr.SubIndex
+
+			isSelected := false
+			if subIdx < 0 {
+				isSelected = m.isAppSelected(appIdx)
+			} else {
+				isSelected = m.isSubEntrySelected(appIdx, subIdx)
+			}
+
+			if isSelected {
+				return SelectedRowStyle
+			}
+
+			// Regular cell styling with attention colors
+			baseStyle := lipgloss.NewStyle().Padding(0, 1)
+
+			if col == 1 && tr.StatusAttention {
+				return baseStyle.Foreground(errorColor)
+			}
+			if col == 2 && tr.InfoAttention {
+				return baseStyle.Foreground(errorColor)
+			}
+
+			return baseStyle
 		})
 
 	return t.Render()
+}
+
+// buildVisibleRowsWithIndicators builds the visible table rows with scroll
+// indicators embedded as the first/last rows when scrolling
+func (m *Model) buildVisibleRowsWithIndicators(
+	visibleStart, visibleEnd int,
+	hasMoreAbove, hasMoreBelow bool,
+	showBackupColumn bool,
+) [][]string {
+	// Build rows array - we'll show all rows in range plus swap in indicators where needed
+	rows := make([][]string, 0, visibleEnd-visibleStart)
+
+	// Determine actual data indices to show
+	// If we have indicators, we skip showing the first/last data rows since indicators replace them
+	dataStartIdx := visibleStart
+	dataEndIdx := visibleEnd
+
+	switch {
+	case hasMoreAbove && hasMoreBelow:
+		// Both indicators: skip first and last data row
+		dataStartIdx++
+		dataEndIdx--
+	case hasMoreAbove:
+		// Top indicator only: skip first data row
+		dataStartIdx++
+	case hasMoreBelow:
+		// Bottom indicator only: skip last data row
+		dataEndIdx--
+	}
+
+	// Add top scroll indicator if needed (replaces first row)
+	if hasMoreAbove {
+		// Since indicator replaces a data row, we hide everything from 0 to dataStartIdx-1
+		hiddenAbove := dataStartIdx
+		indicator := fmt.Sprintf("↑ %d more above", hiddenAbove)
+
+		// Style indicator without margin (SubtitleStyle has MarginBottom(1) which creates empty row)
+		styledIndicator := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true).
+			Render(indicator)
+
+		if showBackupColumn {
+			rows = append(rows, []string{
+				styledIndicator,
+				"", "", "", "",
+			})
+		} else {
+			rows = append(rows, []string{
+				styledIndicator,
+				"", "", "",
+			})
+		}
+	}
+
+	// Add data rows
+	for i := dataStartIdx; i < dataEndIdx; i++ {
+		// Safety check
+		if i < 0 || i >= len(m.tableRows) {
+			continue
+		}
+
+		tr := m.tableRows[i]
+
+		if showBackupColumn {
+			rows = append(rows, []string{
+				tr.Data[0],    // Name
+				tr.Data[1],    // Status
+				tr.Data[2],    // Info
+				tr.BackupPath, // Backup
+				tr.Data[3],    // Path
+			})
+		} else {
+			rows = append(rows, []string{
+				tr.Data[0], // Name
+				tr.Data[1], // Status
+				tr.Data[2], // Info
+				tr.Data[3], // Path
+			})
+		}
+	}
+
+	// Add bottom scroll indicator if needed (replaces last row)
+	if hasMoreBelow {
+		// Since indicator replaces a data row, we hide everything from dataEndIdx onwards
+		hiddenBelow := len(m.tableRows) - dataEndIdx
+		indicator := fmt.Sprintf("↓ %d more below", hiddenBelow)
+
+		// Style indicator without margin (SubtitleStyle has MarginBottom(1) which creates empty row)
+		styledIndicator := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Italic(true).
+			Render(indicator)
+
+		if showBackupColumn {
+			rows = append(rows, []string{
+				styledIndicator,
+				"", "", "", "",
+			})
+		} else {
+			rows = append(rows, []string{
+				styledIndicator,
+				"", "", "",
+			})
+		}
+	}
+
+	return rows
 }
 
 // detectSubEntryState determines the state of a sub-entry item
@@ -1086,98 +1241,14 @@ func (m Model) viewResults() string {
 	return BaseStyle.Render(b.String())
 }
 
-//nolint:gocyclo // UI rendering with many states
-func (m Model) viewListTable() string {
-	var b strings.Builder
-
-	// Title
-	b.WriteString(TitleStyle.Render("󰋗  Manage"))
-	b.WriteString("\n")
-
-	// Search input (show when searching or when search is active)
-	if m.searching || m.searchText != "" {
-		b.WriteString("  / ")
-
-		if m.searching {
-			b.WriteString(m.searchInput.View())
-		} else {
-			b.WriteString(FilterInputStyle.Render(m.searchText))
-		}
-
-		b.WriteString("\n")
-	}
-
-	// Multi-select banner (show when selections exist)
-	if m.multiSelectActive {
-		appCount, subCount := m.getSelectionCounts()
-		bannerText := fmt.Sprintf("  %d app(s), %d item(s) selected", appCount, subCount)
-		b.WriteString(MultiSelectBannerStyle.Render(bannerText))
-		b.WriteString("\n")
-	}
-
-	// Filter banner (when filter is enabled)
-	if m.filterEnabled {
-		visibleCount := 0
-		totalCount := len(m.Applications)
-
-		// Count visible apps
-		for _, app := range m.Applications {
-			if !app.IsFiltered {
-				visibleCount++
-			}
-		}
-
-		filterBanner := fmt.Sprintf("Filter: ON (showing %d of %d apps)", visibleCount, totalCount)
-		b.WriteString(SelectedRowStyle.Render(filterBanner))
-		b.WriteString("\n")
-	}
-
-	b.WriteString("\n")
-
-	// Initialize table if not already initialized
-	if len(m.tableRows) == 0 {
-		m.initTableModel()
-	}
-
-	// Render table
-	b.WriteString(m.renderTable())
-	b.WriteString("\n")
-
-	// Show inline detail panel below table if needed
+// renderHelpForCurrentState returns the help text for the current screen state.
+// This allows us to measure the help text height before rendering.
+func (m Model) renderHelpForCurrentState() string {
 	appIdx, subIdx := m.getApplicationAtCursorFromTable()
-	if m.showingDetail && appIdx >= 0 {
-		if subIdx >= 0 {
-			// Detail for SubEntry
-			b.WriteString(m.renderSubEntryInlineDetail(&m.Applications[appIdx].SubItems[subIdx], m.width))
-		} else {
-			// Detail for Application
-			filtered := m.getSearchedApplications()
-			if appIdx < len(filtered) {
-				b.WriteString(m.renderApplicationInlineDetail(&filtered[appIdx], m.width))
-			}
-		}
-		b.WriteString("\n")
-	}
-
-	// Show restore result if present
-	if len(m.results) > 0 {
-		b.WriteString("\n")
-		result := m.results[len(m.results)-1] // Show most recent result
-		var resultText string
-		if result.Success {
-			resultText = SuccessStyle.Render(fmt.Sprintf("✓ %s: %s", result.Name, result.Message))
-		} else {
-			resultText = ErrorStyle.Render(fmt.Sprintf("✗ %s: %s", result.Name, result.Message))
-		}
-		b.WriteString(resultText)
-	}
-
-	// Help or confirmation prompt
-	b.WriteString("\n")
 
 	switch {
 	case m.confirmingDeleteApp || m.confirmingDeleteSubEntry:
-		// Show delete confirmation prompt
+		// Delete confirmation prompt
 		var name string
 		switch {
 		case m.confirmingDeleteApp && appIdx >= 0:
@@ -1187,9 +1258,11 @@ func (m Model) viewListTable() string {
 		}
 
 		if name != "" {
-			b.WriteString(WarningStyle.Render(fmt.Sprintf("Delete '%s'? ", name)))
-			b.WriteString(RenderHelpWithWidth(m.width, "y/enter", "yes", "n/esc", "no"))
+			return WarningStyle.Render(fmt.Sprintf("Delete '%s'? ", name)) +
+				RenderHelpWithWidth(m.width, "y/enter", "yes", "n/esc", "no")
 		}
+		return HelpStyle.Render("y/enter: yes | n/esc: no")
+
 	case m.confirmingFilterToggle:
 		// Filter toggle confirmation dialog
 		itemText := "item(s)"
@@ -1198,17 +1271,20 @@ func (m Model) viewListTable() string {
 		}
 		prompt := fmt.Sprintf("Enabling filter will hide %d selected %s. Continue? (y/n)",
 			m.filterToggleHiddenCount, itemText)
-		b.WriteString(WarningStyle.Render(prompt))
+		return WarningStyle.Render(prompt)
+
 	case m.searching:
-		b.WriteString(RenderHelpWithWidth(m.width,
+		return RenderHelpWithWidth(m.width,
 			"enter", "confirm",
 			"esc", "clear",
-		))
+		)
+
 	case m.showingDetail:
-		b.WriteString(RenderHelpWithWidth(m.width,
+		return RenderHelpWithWidth(m.width,
 			"h/←/esc", "close",
 			"q", "menu",
-		))
+		)
+
 	default:
 		// Build help text based on cursor position and multi-select mode
 		var helpItems []string
@@ -1243,8 +1319,128 @@ func (m Model) viewListTable() string {
 			helpItems = append(helpItems, "q", "menu")
 		}
 
-		b.WriteString(RenderHelpWithWidth(m.width, helpItems...))
+		return RenderHelpWithWidth(m.width, helpItems...)
 	}
+}
+
+//nolint:gocyclo // UI rendering with many states
+func (m Model) viewListTable() string {
+	var b strings.Builder
+	linesUsed := 0
+
+	// Title
+	b.WriteString(TitleStyle.Render("󰋗  Manage"))
+	b.WriteString("\n")
+	linesUsed += 2
+
+	// Search input
+	if m.searching || m.searchText != "" {
+		b.WriteString("  / ")
+		if m.searching {
+			b.WriteString(m.searchInput.View())
+		} else {
+			b.WriteString(FilterInputStyle.Render(m.searchText))
+		}
+		b.WriteString("\n")
+		linesUsed++
+	}
+
+	// Multi-select banner
+	if m.multiSelectActive {
+		appCount, subCount := m.getSelectionCounts()
+		bannerText := fmt.Sprintf("  %d app(s), %d item(s) selected", appCount, subCount)
+		b.WriteString(MultiSelectBannerStyle.Render(bannerText))
+		b.WriteString("\n")
+		linesUsed++
+	}
+
+	// Filter banner
+	if m.filterEnabled {
+		visibleCount := 0
+		totalCount := len(m.Applications)
+
+		for _, app := range m.Applications {
+			if !app.IsFiltered {
+				visibleCount++
+			}
+		}
+
+		filterBanner := fmt.Sprintf("Filter: ON (showing %d of %d apps)", visibleCount, totalCount)
+		b.WriteString(SelectedRowStyle.Render(filterBanner))
+		b.WriteString("\n")
+		linesUsed++
+	}
+
+	b.WriteString("\n")
+	linesUsed++
+
+	// Initialize table if needed
+	if len(m.tableRows) == 0 {
+		m.initTableModel()
+	}
+
+	// Count lines after table
+	linesAfterTable := 1 // Blank line after table
+
+	// Detail panel
+	appIdx, subIdx := m.getApplicationAtCursorFromTable()
+	var detailContent string
+	if m.showingDetail && appIdx >= 0 {
+		if subIdx >= 0 {
+			detailContent = m.renderSubEntryInlineDetail(&m.Applications[appIdx].SubItems[subIdx], m.width)
+		} else {
+			filtered := m.getSearchedApplications()
+			if appIdx < len(filtered) {
+				detailContent = m.renderApplicationInlineDetail(&filtered[appIdx], m.width)
+			}
+		}
+		if detailContent != "" {
+			linesAfterTable += strings.Count(detailContent, "\n") + 1
+		}
+	}
+
+	// Result message
+	if len(m.results) > 0 {
+		linesAfterTable += 2 // Blank line + result
+	}
+
+	// Help footer - measure it
+	helpText := m.renderHelpForCurrentState()
+	helpLines := strings.Count(helpText, "\n") + 1
+	linesAfterTable += 1 + helpLines // Blank line + help
+
+	// Calculate available height for table
+	availableForTable := m.height - linesUsed - linesAfterTable
+	if availableForTable < 10 {
+		availableForTable = 10 // Minimum table height
+	}
+
+	// Render table with exact available height
+	b.WriteString(m.renderTable(availableForTable))
+	b.WriteString("\n")
+
+	// Detail panel
+	if detailContent != "" {
+		b.WriteString(detailContent)
+		b.WriteString("\n")
+	}
+
+	// Result message
+	if len(m.results) > 0 {
+		b.WriteString("\n")
+		result := m.results[len(m.results)-1]
+		var resultText string
+		if result.Success {
+			resultText = SuccessStyle.Render(fmt.Sprintf("✓ %s: %s", result.Name, result.Message))
+		} else {
+			resultText = ErrorStyle.Render(fmt.Sprintf("✗ %s: %s", result.Name, result.Message))
+		}
+		b.WriteString(resultText)
+	}
+
+	// Help footer
+	b.WriteString("\n")
+	b.WriteString(helpText)
 
 	return BaseStyle.Render(b.String())
 }

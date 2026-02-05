@@ -32,9 +32,12 @@ func flattenApplications(apps []ApplicationItem, osType string, filterEnabled bo
 		}
 
 		// Level 0: Application row
-		expandChar := "▶ "
-		if app.Expanded {
-			expandChar = "▼ "
+		expandChar := "  " // Default padding for apps with no sub-items
+		if len(app.SubItems) > 0 {
+			expandChar = "▶ "
+			if app.Expanded {
+				expandChar = "▼ "
+			}
 		}
 
 		// Determine status text

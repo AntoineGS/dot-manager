@@ -100,6 +100,32 @@ func TestFlattenApplications(t *testing.T) {
 			t.Errorf("Last sub-entry should have %s tree char, got %s", treeCharEnd, rows[3].TreeChar)
 		}
 	})
+
+	t.Run("app with no sub-items has no expansion arrow", func(t *testing.T) {
+		apps := []ApplicationItem{
+			{
+				Application: config.Application{Name: "empty-app"},
+				SubItems:    []SubEntryItem{},
+				Expanded:    false,
+			},
+		}
+
+		rows := flattenApplications(apps, "linux", false)
+
+		if len(rows) != 1 {
+			t.Errorf("Expected 1 row, got %d", len(rows))
+		}
+
+		// App name should have two spaces for alignment (no expansion arrow)
+		if rows[0].Data[0] != "  empty-app" {
+			t.Errorf("Expected '  empty-app', got %q", rows[0].Data[0])
+		}
+
+		// TreeChar should be two spaces (for alignment)
+		if rows[0].TreeChar != "  " {
+			t.Errorf("Expected two-space TreeChar, got %q", rows[0].TreeChar)
+		}
+	})
 }
 
 func TestGetApplicationStatus(t *testing.T) {
