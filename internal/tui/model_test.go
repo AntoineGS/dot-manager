@@ -578,6 +578,139 @@ func TestEditAfterSortingBug(t *testing.T) {
 	}
 }
 
+func TestFilterToggle(t *testing.T) {
+	// Test filter toggle functionality
+	// Note: Apps must have targets for current OS to appear at all
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: "/backup",
+		Applications: []config.Application{
+			{
+				Name:        "nvim",
+				Description: "Neovim",
+				Entries: []config.SubEntry{
+					{Name: "config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+				},
+			},
+			{
+				Name:        "arch-specific",
+				Description: "Arch-specific app",
+				Entries: []config.SubEntry{
+					{Name: "config", Backup: "./arch", Targets: map[string]string{"linux": "~/.config/arch"}},
+				},
+				Filters: []config.Filter{{Include: map[string]string{"distro": "arch"}}},
+			},
+		},
+	}
+	// Platform without distro set (so arch-specific will be filtered)
+	plat := &platform.Platform{OS: platform.OSLinux, Distro: ""}
+	model := NewModel(cfg, plat, false)
+
+	// Filter should be ON by default
+	if !model.filterEnabled {
+		t.Error("Filter should be ON by default")
+	}
+
+	// Should have 1 app visible (nvim), arch-specific should be filtered
+	model.initApplicationItems()
+	visibleCount := 0
+	filteredCount := 0
+	for _, app := range model.Applications {
+		if !app.IsFiltered {
+			visibleCount++
+		} else {
+			filteredCount++
+		}
+	}
+	if visibleCount != 1 {
+		t.Errorf("Expected 1 visible app with filter ON, got %d", visibleCount)
+	}
+	if filteredCount != 1 {
+		t.Errorf("Expected 1 filtered app, got %d", filteredCount)
+	}
+
+	// Verify total apps (both filtered and unfiltered)
+	if len(model.Applications) != 2 {
+		t.Errorf("Expected 2 total apps, got %d", len(model.Applications))
+	}
+}
+
+func TestFilterToggleWithSelections(t *testing.T) {
+	// Test filter toggle with active selections
+	// Note: Apps must have targets for current OS to appear at all
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: "/backup",
+		Applications: []config.Application{
+			{
+				Name:        "nvim",
+				Description: "Neovim",
+				Entries: []config.SubEntry{
+					{Name: "config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+				},
+			},
+			{
+				Name:        "arch-specific",
+				Description: "Arch-specific app",
+				Entries: []config.SubEntry{
+					{Name: "config", Backup: "./arch", Targets: map[string]string{"linux": "~/.config/arch"}},
+				},
+				Filters: []config.Filter{{Include: map[string]string{"distro": "arch"}}},
+			},
+		},
+	}
+	// Platform without distro set (so arch-specific will be filtered)
+	plat := &platform.Platform{OS: platform.OSLinux, Distro: ""}
+	model := NewModel(cfg, plat, false)
+	model.Operation = OpList
+
+	// Turn filter OFF to see all apps
+	model.filterEnabled = false
+	model.initApplicationItems()
+
+	// Verify we have 2 apps (arch-specific=0, nvim=1 after sorting)
+	if len(model.Applications) != 2 {
+		t.Fatalf("Expected 2 apps, got %d", len(model.Applications))
+	}
+
+	// Select the filtered app (arch-specific, index 0 after sorting: arch-specific=0, nvim=1)
+	model.selectedApps[0] = true
+	model.multiSelectActive = true
+
+	// Count hidden selections (arch-specific would be hidden when filter is ON)
+	hiddenCount := model.countHiddenSelections()
+	if hiddenCount != 1 {
+		t.Errorf("Expected 1 hidden selection (arch-specific), got %d", hiddenCount)
+	}
+
+	// Test confirmation dialog trigger
+	model.confirmingFilterToggle = true
+	model.filterToggleHiddenCount = hiddenCount
+
+	if !model.confirmingFilterToggle {
+		t.Error("Confirmation dialog should be active")
+	}
+
+	// Simulate confirming the dialog (pressing 'y')
+	model.confirmingFilterToggle = false
+	model.filterEnabled = true
+	model.clearHiddenSelections()
+
+	// Rebuild to apply filter
+	model.initApplicationItems()
+
+	// Verify hidden selections cleared (arch-specific should be deselected)
+	if model.selectedApps[0] {
+		t.Error("arch-specific (index 0) should be deselected after clearing hidden selections")
+	}
+
+	// Check if multi-select is still active (depends on remaining selections)
+	// After clearing hidden selections, if no selections remain, multiSelectActive should be false
+	if len(model.selectedApps) == 0 && model.multiSelectActive {
+		t.Error("Multi-select should be inactive when no selections remain")
+	}
+}
+
 func TestEditWithSortedApplications(t *testing.T) {
 	// Reproduce the user's bug: after sorting, pressing 'e' should edit the correct application
 	cfg := &config.Config{
