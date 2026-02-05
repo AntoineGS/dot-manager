@@ -65,14 +65,132 @@ func createTestModel() *Model {
 	return &m
 }
 
-// Placeholder setup functions (to be implemented in Tasks 4-6)
+// setupMultiSelect creates a view with multi-selection active.
+// Tests: selection indicators, banner text, multi-select help.
+func setupMultiSelect(m *Model) {
+	m.width = 100
+	m.height = 30
 
-func setupMultiSelect(_ *Model) {
-	// TODO: Implement in Task 4
+	m.Config.Applications = []config.Application{
+		{
+			Name:        "bash",
+			Description: "Bash shell",
+			Entries: []config.SubEntry{
+				{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+			},
+		},
+		{
+			Name:        "git",
+			Description: "Git version control",
+			Entries: []config.SubEntry{
+				{Name: "gitconfig", Backup: "./git", Targets: map[string]string{"linux": "~/.gitconfig"}},
+			},
+		},
+		{
+			Name:        nvimAppName,
+			Description: "Neovim text editor",
+			Entries: []config.SubEntry{
+				{Name: "init", Backup: "./nvim/init", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
+				{Name: "plugins", Backup: "./nvim/plugins", Targets: map[string]string{"linux": "~/.config/nvim/lua/plugins"}},
+			},
+		},
+		{
+			Name:        "zsh",
+			Description: "Z shell",
+			Entries: []config.SubEntry{
+				{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+			},
+		},
+	}
+
+	m.initApplicationItems()
+
+	// Select bash (app index 0) and nvim (app index 2)
+	m.selectedApps[0] = true
+	m.selectedApps[2] = true
+
+	// Select a sub-entry from nvim
+	m.selectedSubEntries["nvim/init"] = true
+
+	m.multiSelectActive = true
+	m.Screen = ScreenResults
+	m.Operation = OpList
+	m.appCursor = 0
 }
 
-func setupSearchActive(_ *Model) {
-	// TODO: Implement in Task 5
+// setupSearchActive creates a view with active search filtering.
+// Tests: search filtering, matching behavior.
+func setupSearchActive(m *Model) {
+	m.width = 100
+	m.height = 30
+
+	m.Config.Applications = []config.Application{
+		{
+			Name:        "alacritty",
+			Description: "GPU-accelerated terminal",
+			Entries: []config.SubEntry{
+				{Name: "alacritty.yml", Backup: "./alacritty", Targets: map[string]string{"linux": "~/.config/alacritty/alacritty.yml"}},
+			},
+		},
+		{
+			Name:        "bash",
+			Description: "Bash shell",
+			Entries: []config.SubEntry{
+				{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+			},
+		},
+		{
+			Name:        "git",
+			Description: "Git version control",
+			Entries: []config.SubEntry{
+				{Name: "gitconfig", Backup: "./git", Targets: map[string]string{"linux": "~/.gitconfig"}},
+			},
+		},
+		{
+			Name:        nvimAppName,
+			Description: "Neovim text editor",
+			Entries: []config.SubEntry{
+				{Name: "init", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+			},
+		},
+		{
+			Name:        "tmux",
+			Description: "Terminal multiplexer",
+			Entries: []config.SubEntry{
+				{Name: "tmux.conf", Backup: "./tmux", Targets: map[string]string{"linux": "~/.tmux.conf"}},
+			},
+		},
+		{
+			Name:        "vim",
+			Description: "Vi improved",
+			Entries: []config.SubEntry{
+				{Name: "vimrc", Backup: "./vim", Targets: map[string]string{"linux": "~/.vimrc"}},
+			},
+		},
+		{
+			Name:        "vscode",
+			Description: "Visual Studio Code",
+			Entries: []config.SubEntry{
+				{Name: "settings", Backup: "./vscode", Targets: map[string]string{"linux": "~/.config/Code/User/settings.json"}},
+			},
+		},
+		{
+			Name:        "zsh",
+			Description: "Z shell",
+			Entries: []config.SubEntry{
+				{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+			},
+		},
+	}
+
+	m.initApplicationItems()
+
+	// Search for "vim" - should match nvim, vim, vscode
+	m.searchText = "vim"
+
+	m.Screen = ScreenResults
+	m.Operation = OpList
+	m.appCursor = 0
 }
 
 func setupScrollMiddle(_ *Model) {
