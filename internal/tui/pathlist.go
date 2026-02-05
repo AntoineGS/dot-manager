@@ -159,7 +159,7 @@ func (m Model) viewPathSelect() string {
 
 	// Help
 	b.WriteString("\n")
-	b.WriteString(RenderHelp(
+	b.WriteString(RenderHelpWithWidth(m.width,
 		"space", "toggle",
 		"a/n/i", "all/none/invert",
 		"enter", "confirm",

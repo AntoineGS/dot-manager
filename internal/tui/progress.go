@@ -453,6 +453,11 @@ func (m *Model) renderTable(availableHeight int) string {
 				return baseStyle.Foreground(errorColor)
 			}
 
+			// Mute "0 entries" text in info column (col 2)
+			if col == 2 && tr.Data[2] == "0 entries" {
+				return baseStyle.Foreground(mutedColor)
+			}
+
 			return baseStyle
 		})
 
@@ -1233,7 +1238,7 @@ func (m Model) viewResults() string {
 
 	// Help
 	b.WriteString("\n")
-	b.WriteString(RenderHelp(
+	b.WriteString(RenderHelpWithWidth(m.width,
 		"r", "new operation",
 		"q/enter", "quit",
 	))
@@ -1282,7 +1287,7 @@ func (m Model) renderHelpForCurrentState() string {
 	case m.showingDetail:
 		return RenderHelpWithWidth(m.width,
 			"h/←/esc", "close",
-			"q", "menu",
+			"q", "quit",
 		)
 
 	default:
@@ -1294,10 +1299,10 @@ func (m Model) renderHelpForCurrentState() string {
 			helpItems = []string{
 				"tab", "toggle",
 				"esc", "clear",
-				"r", "batch restore",
-				"i", "batch install",
-				"d", "batch delete",
-				"q", "menu",
+				"r", "restore",
+				"i", "install",
+				"d", "delete",
+				"q", "quit",
 			}
 		} else {
 			// Normal mode help text
@@ -1316,7 +1321,7 @@ func (m Model) renderHelpForCurrentState() string {
 				helpItems = append(helpItems, "i", "install")
 			}
 
-			helpItems = append(helpItems, "q", "menu")
+			helpItems = append(helpItems, "q", "quit")
 		}
 
 		return RenderHelpWithWidth(m.width, helpItems...)
