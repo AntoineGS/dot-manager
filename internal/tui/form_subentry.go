@@ -1541,19 +1541,23 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case " ", KeyTab:
-		// Toggle selection of current file
+		// Toggle selection of current file/directory
+		// The selectedFiles map tracks absolute paths of files marked for addition
+		// When user presses space/tab, we add or remove the current file from this map
 		currentPath := filepath.Join(
 			m.subEntryForm.filePicker.CurrentDirectory,
 			m.subEntryForm.filePicker.Path,
 		)
 
 		if currentPath == "" || m.subEntryForm.filePicker.Path == "" {
-			// No valid selection, pass through to file picker
+			// No valid selection (e.g., on ".." or empty path)
+			// Pass the key through to the file picker for normal navigation
 			m.subEntryForm.filePicker, cmd = m.subEntryForm.filePicker.Update(msg)
 			return m, cmd
 		}
 
-		// Toggle selection
+		// Toggle selection: if already selected, remove it; otherwise add it
+		// This allows users to build up a multi-selection before confirming
 		if m.subEntryForm.selectedFiles[currentPath] {
 			delete(m.subEntryForm.selectedFiles, currentPath)
 		} else {
@@ -1563,7 +1567,14 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case KeyEnter:
-		// Get the target directory for conversion
+		// Confirm file selections and add them to the files list
+		// This is the final step of the file picker workflow: take all selected
+		// absolute paths, convert them to relative paths (relative to target directory),
+		// and add them to the config entry's files list
+
+		// Get the target directory for the current OS
+		// This is where the config will be symlinked to, and serves as the base
+		// for converting absolute file paths to relative paths
 		var targetPath string
 		switch m.Platform.OS {
 		case OSLinux:
@@ -1574,7 +1585,8 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			targetPath = m.subEntryForm.linuxTargetInput.Value()
 		}
 
-		// Expand target path to absolute
+		// Expand target path to absolute (resolve ~ and env vars)
+		// This is required for accurate relative path calculation
 		expandedTarget, err := expandTargetPath(targetPath)
 		if err != nil {
 			m.subEntryForm.err = fmt.Sprintf("failed to expand target path: %v", err)
@@ -1583,18 +1595,21 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// If there are multiple selections, process them all
+		// Process all selected files (if any)
 		if len(m.subEntryForm.selectedFiles) > 0 {
-			// Collect all selected paths
+			// Collect all selected paths from the map
+			// selectedFiles uses absolute paths as keys for accurate tracking
 			selectedPaths := make([]string, 0, len(m.subEntryForm.selectedFiles))
 			for path := range m.subEntryForm.selectedFiles {
 				selectedPaths = append(selectedPaths, path)
 			}
 
-			// Convert all paths to relative
+			// Convert all absolute paths to relative paths
+			// Files must be relative to the target directory to work in the config
 			relativePaths, errs := convertToRelativePaths(selectedPaths, expandedTarget)
 
 			// Add all successfully converted paths to files list
+			// Skip any that failed conversion (e.g., outside target directory)
 			addedCount := 0
 			for i, relativePath := range relativePaths {
 				if errs[i] == nil && relativePath != "" {
@@ -1603,23 +1618,23 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-			// Clear selections
+			// Clear selections for next use
 			m.subEntryForm.selectedFiles = make(map[string]bool)
 
-			// Move cursor to "Add File" button
+			// Move cursor to "Add File" button for convenience
 			m.subEntryForm.filesCursor = len(m.subEntryForm.files)
 
-			// Set success message
+			// Set success message to show user feedback
 			if addedCount > 0 {
 				m.subEntryForm.successMessage = fmt.Sprintf("Added %d file(s)", addedCount)
 			}
 
-			// Reset mode
+			// Exit picker mode and return to files list
 			m.subEntryForm.addFileMode = ModeNone
 			return m, nil
 		}
 
-		// No selections - just cancel
+		// No selections - just cancel and return to files list
 		m.subEntryForm.addFileMode = ModeNone
 		return m, nil
 	}
@@ -1631,13 +1646,22 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // viewFilePicker renders the file picker interface
-// renderStyledFilePicker renders the file picker with selection styling
+// renderStyledFilePicker renders the file picker with selection styling.
+//
+// This function parses the raw file picker view and applies visual styling to indicate:
+// - Cursor position (darker purple): The currently focused file/directory
+// - Selected files (lighter purple): Files selected for addition via space/tab
+// - Unselected files (no styling): Regular files
+//
+// The parsing logic extracts file names from each line of the picker output and builds
+// full paths by joining with currentDir. These paths are checked against selectedFiles
+// map to determine if styling should be applied.
 func (m Model) renderStyledFilePicker() string {
 	if m.subEntryForm == nil {
 		return ""
 	}
 
-	// Get the raw picker view
+	// Get the raw picker view from the underlying file picker component
 	rawView := m.subEntryForm.filePicker.View()
 	lines := strings.Split(rawView, "\n")
 
@@ -1645,7 +1669,7 @@ func (m Model) renderStyledFilePicker() string {
 	currentDir := m.subEntryForm.filePicker.CurrentDirectory
 
 	for _, line := range lines {
-		// Skip empty lines
+		// Skip empty lines (preserve spacing)
 		if strings.TrimSpace(line) == "" {
 			styledLines = append(styledLines, line)
 			continue
@@ -1653,39 +1677,43 @@ func (m Model) renderStyledFilePicker() string {
 
 		// Extract the file name from the line
 		// File picker lines typically look like: "  filename" or "> filename"
+		// The ">" prefix indicates the cursor position
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			styledLines = append(styledLines, line)
 			continue
 		}
 
-		// Check if this line is the cursor position
+		// Check if this line is the cursor position (starts with ">")
 		isCursor := strings.HasPrefix(trimmed, ">")
 		if isCursor {
-			// Remove cursor prefix to get filename
+			// Remove cursor prefix to get actual filename
 			trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, ">"))
 		}
 
-		// Build full path for this file
+		// Build full path for this file by joining current directory with filename
+		// This is used to look up selection state in selectedFiles map
 		var fullPath string
 		if trimmed == ".." {
-			// Parent directory - don't style
+			// Parent directory marker - don't apply selection styling
 			styledLines = append(styledLines, line)
 			continue
 		}
 		fullPath = filepath.Join(currentDir, trimmed)
 
-		// Check if this file is selected
+		// Check if this file is in the selectedFiles map (user pressed space/tab on it)
 		isSelected := m.subEntryForm.selectedFiles[fullPath]
 
 		// Apply styling based on cursor and selection state
-		// Priority: cursor (darker purple) > selected (lighter purple)
+		// Priority: cursor styling (darker purple) > selected styling (lighter purple) > no styling
 		switch {
 		case isCursor:
 			// Cursor position uses SelectedMenuItemStyle (darker purple #7C3AED)
+			// This is the "active" file that would be selected if user presses space
 			styledLines = append(styledLines, SelectedMenuItemStyle.Render(line))
 		case isSelected:
 			// Selected files use SelectedRowStyle (lighter purple #9F7AEA)
+			// These are files that have been marked for addition
 			styledLines = append(styledLines, SelectedRowStyle.Render(line))
 		default:
 			// Unselected files remain unstyled
