@@ -107,34 +107,40 @@ func TestFindNearestExistingParent(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
-		path string
-		want string
+		name    string
+		path    string
+		want    string
+		wantErr bool
 	}{
 		{
-			name: "existing directory",
-			path: existingDir,
-			want: existingDir,
+			name:    "existing directory",
+			path:    existingDir,
+			want:    existingDir,
+			wantErr: false,
 		},
 		{
-			name: "non-existing child",
-			path: filepath.Join(existingDir, "nonexistent"),
-			want: existingDir,
+			name:    "non-existing child",
+			path:    filepath.Join(existingDir, "nonexistent"),
+			want:    existingDir,
+			wantErr: false,
 		},
 		{
-			name: "deeply nested non-existing",
-			path: filepath.Join(existingDir, "a", "b", "c", "d"),
-			want: existingDir,
+			name:    "deeply nested non-existing",
+			path:    filepath.Join(existingDir, "a", "b", "c", "d"),
+			want:    existingDir,
+			wantErr: false,
 		},
 		{
-			name: "non-existing under tmpDir",
-			path: filepath.Join(tmpDir, "nonexistent", "deep", "path"),
-			want: tmpDir,
+			name:    "non-existing under tmpDir",
+			path:    filepath.Join(tmpDir, "nonexistent", "deep", "path"),
+			want:    tmpDir,
+			wantErr: false,
 		},
 		{
-			name: "root directory",
-			path: string(filepath.Separator),
-			want: string(filepath.Separator),
+			name:    "root directory",
+			path:    string(filepath.Separator),
+			want:    string(filepath.Separator),
+			wantErr: false,
 		},
 	}
 
@@ -142,7 +148,12 @@ func TestFindNearestExistingParent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := findNearestExistingParent(tt.path)
+			got, err := findNearestExistingParent(tt.path)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("findNearestExistingParent() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
 
 			if got != tt.want {
 				t.Errorf("findNearestExistingParent() = %v, want %v", got, tt.want)

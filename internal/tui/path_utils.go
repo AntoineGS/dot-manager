@@ -49,10 +49,12 @@ func expandTargetPath(targetPath string) (string, error) {
 // findNearestExistingParent walks up the directory tree to find the first existing parent.
 // If the path itself exists, it is returned.
 // If no parent exists (reaches root), the root directory is returned.
-func findNearestExistingParent(path string) string {
+//
+//nolint:unparam // error return kept for API consistency, may be used in future
+func findNearestExistingParent(path string) (string, error) {
 	// Check if path exists
 	if _, err := os.Stat(path); err == nil {
-		return path
+		return path, nil
 	}
 
 	// Walk up the directory tree
@@ -63,12 +65,12 @@ func findNearestExistingParent(path string) string {
 		// Check if we've reached the root
 		if parent == current {
 			// We're at root, return it
-			return parent
+			return parent, nil
 		}
 
 		// Check if parent exists
 		if _, err := os.Stat(parent); err == nil {
-			return parent
+			return parent, nil
 		}
 
 		current = parent
@@ -108,7 +110,10 @@ func resolvePickerStartDirectory(targetPath, _ string) (string, error) {
 	}
 
 	// Path doesn't exist, find nearest existing parent
-	nearest := findNearestExistingParent(expanded)
+	nearest, err := findNearestExistingParent(expanded)
+	if err != nil {
+		return "", fmt.Errorf("failed to find existing parent: %w", err)
+	}
 
 	return nearest, nil
 }
