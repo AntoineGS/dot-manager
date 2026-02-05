@@ -1610,6 +1610,71 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // viewFilePicker renders the file picker interface
+// renderStyledFilePicker renders the file picker with selection styling
+func (m Model) renderStyledFilePicker() string {
+	if m.subEntryForm == nil {
+		return ""
+	}
+
+	// Get the raw picker view
+	rawView := m.subEntryForm.filePicker.View()
+	lines := strings.Split(rawView, "\n")
+
+	var styledLines []string
+	currentDir := m.subEntryForm.filePicker.CurrentDirectory
+
+	for _, line := range lines {
+		// Skip empty lines
+		if strings.TrimSpace(line) == "" {
+			styledLines = append(styledLines, line)
+			continue
+		}
+
+		// Extract the file name from the line
+		// File picker lines typically look like: "  filename" or "> filename"
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			styledLines = append(styledLines, line)
+			continue
+		}
+
+		// Check if this line is the cursor position
+		isCursor := strings.HasPrefix(trimmed, ">")
+		if isCursor {
+			// Remove cursor prefix to get filename
+			trimmed = strings.TrimSpace(strings.TrimPrefix(trimmed, ">"))
+		}
+
+		// Build full path for this file
+		var fullPath string
+		if trimmed == ".." {
+			// Parent directory - don't style
+			styledLines = append(styledLines, line)
+			continue
+		}
+		fullPath = filepath.Join(currentDir, trimmed)
+
+		// Check if this file is selected
+		isSelected := m.subEntryForm.selectedFiles[fullPath]
+
+		// Apply styling based on cursor and selection state
+		// Priority: cursor (darker purple) > selected (lighter purple)
+		switch {
+		case isCursor:
+			// Cursor position uses SelectedMenuItemStyle (darker purple #7C3AED)
+			styledLines = append(styledLines, SelectedMenuItemStyle.Render(line))
+		case isSelected:
+			// Selected files use SelectedRowStyle (lighter purple #9F7AEA)
+			styledLines = append(styledLines, SelectedRowStyle.Render(line))
+		default:
+			// Unselected files remain unstyled
+			styledLines = append(styledLines, line)
+		}
+	}
+
+	return strings.Join(styledLines, "\n")
+}
+
 func (m Model) viewFilePicker() string {
 	if m.subEntryForm == nil {
 		return ""
@@ -1617,18 +1682,31 @@ func (m Model) viewFilePicker() string {
 
 	var b strings.Builder
 
-	// Title
-	b.WriteString(TitleStyle.Render("  Browse Files"))
+	// Header with current directory
+	currentDir := m.subEntryForm.filePicker.CurrentDirectory
+	if currentDir == "" {
+		currentDir = "/"
+	}
+	b.WriteString(TitleStyle.Render("  Select Files"))
+	b.WriteString("\n")
+	b.WriteString(SubtitleStyle.Render(currentDir))
 	b.WriteString("\n\n")
 
-	// Show the file picker
-	b.WriteString(m.subEntryForm.filePicker.View())
+	// Show the file picker with styled selected rows
+	pickerView := m.renderStyledFilePicker()
+	b.WriteString(pickerView)
+	b.WriteString("\n\n")
+
+	// Selection count
+	selectionCount := len(m.subEntryForm.selectedFiles)
+	countText := fmt.Sprintf("%d file(s) selected", selectionCount)
+	b.WriteString(MutedTextStyle.Render(countText))
 	b.WriteString("\n\n")
 
 	// Help
 	b.WriteString(RenderHelpWithWidth(m.width,
-		"↑/k ↓/j", "navigate",
-		"enter", "select",
+		"space/tab", "toggle",
+		"enter", "confirm",
 		"esc", "cancel",
 	))
 
