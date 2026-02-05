@@ -282,6 +282,11 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle mode selection menu
+	if m.subEntryForm.addFileMode == ModeChoosing {
+		return m.updateFileAddModeChoice(msg)
+	}
+
 	// Handle editing a text field
 	if m.subEntryForm.editingField {
 		return m.updateSubEntryFieldInput(msg)
@@ -585,11 +590,10 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case KeyEnter, " ":
-		// If on "Add File" button, start adding
+		// If on "Add File" button, start mode selection
 		if m.subEntryForm.filesCursor == len(m.subEntryForm.files) {
-			m.subEntryForm.addingFile = true
-			m.subEntryForm.newFileInput.SetValue("")
-			m.subEntryForm.newFileInput.Focus()
+			m.subEntryForm.addFileMode = ModeChoosing
+			m.subEntryForm.modeMenuCursor = 0
 
 			return m, nil
 		}
@@ -692,6 +696,11 @@ func (m Model) updateSubEntryFileInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) viewSubEntryForm() string {
 	if m.subEntryForm == nil {
 		return ""
+	}
+
+	// Show mode selection menu if in ModeChoosing
+	if m.subEntryForm.addFileMode == ModeChoosing {
+		return m.viewFileAddModeMenu()
 	}
 
 	var b strings.Builder
@@ -1358,4 +1367,91 @@ func (f *SubEntryForm) Validate() error {
 	}
 
 	return nil
+}
+
+// updateFileAddModeChoice handles key events for the Browse/Type mode selection menu
+func (m Model) updateFileAddModeChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.subEntryForm == nil {
+		return m, nil
+	}
+
+	switch msg.String() {
+	case KeyCtrlC:
+		return m, tea.Quit
+
+	case KeyEsc:
+		// Cancel mode selection and return to files list
+		m.subEntryForm.addFileMode = ModeNone
+		m.subEntryForm.modeMenuCursor = 0
+		return m, nil
+
+	case "up", "k":
+		// Move up with wrapping (0=Browse, 1=Type)
+		m.subEntryForm.modeMenuCursor--
+		if m.subEntryForm.modeMenuCursor < 0 {
+			m.subEntryForm.modeMenuCursor = 1
+		}
+		return m, nil
+
+	case KeyDown, "j":
+		// Move down with wrapping
+		m.subEntryForm.modeMenuCursor++
+		if m.subEntryForm.modeMenuCursor > 1 {
+			m.subEntryForm.modeMenuCursor = 0
+		}
+		return m, nil
+
+	case KeyEnter:
+		// Select the current option
+		if m.subEntryForm.modeMenuCursor == 0 {
+			// Browse Files - transition to ModePicker
+			m.subEntryForm.addFileMode = ModePicker
+		} else {
+			// Type Path - transition to ModeTextInput
+			m.subEntryForm.addFileMode = ModeTextInput
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// viewFileAddModeMenu renders the Browse/Type choice menu
+func (m Model) viewFileAddModeMenu() string {
+	if m.subEntryForm == nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Title
+	b.WriteString(TitleStyle.Render("  Choose how to add file:"))
+	b.WriteString("\n\n")
+
+	// Browse option
+	browseText := "Browse Files (pick from filesystem)"
+	if m.subEntryForm.modeMenuCursor == 0 {
+		b.WriteString(fmt.Sprintf("  %s\n", SelectedMenuItemStyle.Render("→ "+browseText)))
+	} else {
+		b.WriteString(fmt.Sprintf("    %s\n", browseText))
+	}
+
+	// Type option
+	typeText := "Type Path (enter manually)"
+	if m.subEntryForm.modeMenuCursor == 1 {
+		b.WriteString(fmt.Sprintf("  %s\n", SelectedMenuItemStyle.Render("→ "+typeText)))
+	} else {
+		b.WriteString(fmt.Sprintf("    %s\n", typeText))
+	}
+
+	b.WriteString("\n")
+
+	// Help
+	b.WriteString(RenderHelpWithWidth(m.width,
+		"↑/k ↓/j", "navigate",
+		"enter", "select",
+		"esc", "cancel",
+	))
+
+	return BaseStyle.Render(b.String())
 }

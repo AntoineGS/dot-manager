@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // TestAddFileMode_Constants verifies the AddFileMode enum constants exist
@@ -240,4 +242,209 @@ func TestSubEntryForm_ModeMenuCursor(t *testing.T) {
 	if form.modeMenuCursor != 1 {
 		t.Errorf("modeMenuCursor = %d, want 1 after wrapping backward", form.modeMenuCursor)
 	}
+}
+
+// TestUpdateFileAddModeChoice_Navigation tests menu navigation for Browse/Type choice
+func TestUpdateFileAddModeChoice_Navigation(t *testing.T) {
+	cfg := &config.Config{
+		Applications: []config.Application{
+			{
+				Name:        "test-app",
+				Description: "Test application",
+			},
+		},
+	}
+	plat := &platform.Platform{OS: "linux"}
+	m := NewModel(cfg, plat, false)
+	m.initSubEntryFormNew(0)
+	m.subEntryForm.addFileMode = ModeChoosing
+	m.subEntryForm.modeMenuCursor = 0
+
+	tests := []struct {
+		name           string
+		key            string
+		expectedCursor int
+	}{
+		{"Down arrow moves to Type", KeyDown, 1},
+		{"Up arrow from Browse wraps to Type", "up", 1},
+		{"j key moves to Type", "j", 1},
+		{"k key from Browse wraps to Type", "k", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m.subEntryForm.modeMenuCursor = 0
+			updatedModel, _ := m.updateFileAddModeChoice(createKeyMsg(tt.key))
+			model := updatedModel.(Model)
+
+			if model.subEntryForm.modeMenuCursor != tt.expectedCursor {
+				t.Errorf("cursor = %d, want %d", model.subEntryForm.modeMenuCursor, tt.expectedCursor)
+			}
+
+			// Should still be in ModeChoosing
+			if model.subEntryForm.addFileMode != ModeChoosing {
+				t.Errorf("addFileMode = %d, want %d (ModeChoosing)", model.subEntryForm.addFileMode, ModeChoosing)
+			}
+		})
+	}
+}
+
+// TestUpdateFileAddModeChoice_WrapAround tests cursor wrapping behavior
+func TestUpdateFileAddModeChoice_WrapAround(t *testing.T) {
+	cfg := &config.Config{
+		Applications: []config.Application{
+			{
+				Name:        "test-app",
+				Description: "Test application",
+			},
+		},
+	}
+	plat := &platform.Platform{OS: "linux"}
+	m := NewModel(cfg, plat, false)
+	m.initSubEntryFormNew(0)
+	m.subEntryForm.addFileMode = ModeChoosing
+
+	// Test down wrapping: Type -> Browse
+	m.subEntryForm.modeMenuCursor = 1
+	updatedModel, _ := m.updateFileAddModeChoice(createKeyMsg(KeyDown))
+	model := updatedModel.(Model)
+
+	if model.subEntryForm.modeMenuCursor != 0 {
+		t.Errorf("cursor = %d, want 0 after wrapping down", model.subEntryForm.modeMenuCursor)
+	}
+
+	// Test up wrapping: Browse -> Type
+	m.subEntryForm.modeMenuCursor = 0
+	updatedModel, _ = m.updateFileAddModeChoice(createKeyMsg("up"))
+	model = updatedModel.(Model)
+
+	if model.subEntryForm.modeMenuCursor != 1 {
+		t.Errorf("cursor = %d, want 1 after wrapping up", model.subEntryForm.modeMenuCursor)
+	}
+}
+
+// TestUpdateFileAddModeChoice_SelectBrowse tests selecting Browse option
+func TestUpdateFileAddModeChoice_SelectBrowse(t *testing.T) {
+	cfg := &config.Config{
+		Applications: []config.Application{
+			{
+				Name:        "test-app",
+				Description: "Test application",
+			},
+		},
+	}
+	plat := &platform.Platform{OS: "linux"}
+	m := NewModel(cfg, plat, false)
+	m.initSubEntryFormNew(0)
+	m.subEntryForm.addFileMode = ModeChoosing
+	m.subEntryForm.modeMenuCursor = 0
+
+	// Press enter to select Browse
+	updatedModel, _ := m.updateFileAddModeChoice(createKeyMsg(KeyEnter))
+	model := updatedModel.(Model)
+
+	// Should transition to ModePicker
+	if model.subEntryForm.addFileMode != ModePicker {
+		t.Errorf("addFileMode = %d, want %d (ModePicker)", model.subEntryForm.addFileMode, ModePicker)
+	}
+}
+
+// TestUpdateFileAddModeChoice_SelectType tests selecting Type option
+func TestUpdateFileAddModeChoice_SelectType(t *testing.T) {
+	cfg := &config.Config{
+		Applications: []config.Application{
+			{
+				Name:        "test-app",
+				Description: "Test application",
+			},
+		},
+	}
+	plat := &platform.Platform{OS: "linux"}
+	m := NewModel(cfg, plat, false)
+	m.initSubEntryFormNew(0)
+	m.subEntryForm.addFileMode = ModeChoosing
+	m.subEntryForm.modeMenuCursor = 1
+
+	// Press enter to select Type
+	updatedModel, _ := m.updateFileAddModeChoice(createKeyMsg(KeyEnter))
+	model := updatedModel.(Model)
+
+	// Should transition to ModeTextInput
+	if model.subEntryForm.addFileMode != ModeTextInput {
+		t.Errorf("addFileMode = %d, want %d (ModeTextInput)", model.subEntryForm.addFileMode, ModeTextInput)
+	}
+}
+
+// TestUpdateFileAddModeChoice_Cancel tests ESC key canceling mode choice
+func TestUpdateFileAddModeChoice_Cancel(t *testing.T) {
+	cfg := &config.Config{
+		Applications: []config.Application{
+			{
+				Name:        "test-app",
+				Description: "Test application",
+			},
+		},
+	}
+	plat := &platform.Platform{OS: "linux"}
+	m := NewModel(cfg, plat, false)
+	m.initSubEntryFormNew(0)
+	m.subEntryForm.addFileMode = ModeChoosing
+	m.subEntryForm.modeMenuCursor = 1
+
+	// Press ESC to cancel
+	updatedModel, _ := m.updateFileAddModeChoice(createKeyMsg(KeyEsc))
+	model := updatedModel.(Model)
+
+	// Should return to ModeNone
+	if model.subEntryForm.addFileMode != ModeNone {
+		t.Errorf("addFileMode = %d, want %d (ModeNone)", model.subEntryForm.addFileMode, ModeNone)
+	}
+
+	// Cursor should be reset
+	if model.subEntryForm.modeMenuCursor != 0 {
+		t.Errorf("modeMenuCursor = %d, want 0 after cancel", model.subEntryForm.modeMenuCursor)
+	}
+}
+
+// TestViewFileAddModeMenu_Content tests that the menu renders correctly
+func TestViewFileAddModeMenu_Content(t *testing.T) {
+	cfg := &config.Config{
+		Applications: []config.Application{
+			{
+				Name:        "test-app",
+				Description: "Test application",
+			},
+		},
+	}
+	plat := &platform.Platform{OS: "linux"}
+	m := NewModel(cfg, plat, false)
+	m.initSubEntryFormNew(0)
+	m.subEntryForm.addFileMode = ModeChoosing
+	m.subEntryForm.modeMenuCursor = 0
+
+	// Render the menu
+	view := m.viewFileAddModeMenu()
+
+	// Check for expected content
+	expectedStrings := []string{
+		"Choose how to add file:",
+		"Browse Files",
+		"Type Path",
+	}
+
+	for _, expected := range expectedStrings {
+		if !containsString(view, expected) {
+			t.Errorf("view missing expected string: %s", expected)
+		}
+	}
+}
+
+// Helper function for tests
+func createKeyMsg(key string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key), Alt: false}
+}
+
+// Helper function to check if string contains substring
+func containsString(s, substr string) bool {
+	return strings.Contains(s, substr)
 }
