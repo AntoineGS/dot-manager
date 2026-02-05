@@ -1335,11 +1335,6 @@ func (m Model) viewListTable() string {
 	var b strings.Builder
 	linesUsed := 0
 
-	// Title
-	b.WriteString(TitleStyle.Render("󰋗  Manage"))
-	b.WriteString("\n")
-	linesUsed += 2
-
 	// Search input
 	if m.searching || m.searchText != "" {
 		b.WriteString("  / ")
@@ -1377,9 +1372,6 @@ func (m Model) viewListTable() string {
 		b.WriteString("\n")
 		linesUsed++
 	}
-
-	b.WriteString("\n")
-	linesUsed++
 
 	// Initialize table if needed
 	if len(m.tableRows) == 0 {
