@@ -216,6 +216,9 @@ type Model struct {
 	confirmingDeleteApp      bool
 	showingDetail            bool
 
+	// Filter state
+	filterEnabled bool // true to hide filtered apps, false to show all
+
 	// Selection state for multi-select mode
 	selectedApps       map[int]bool    // appIndex -> selected
 	selectedSubEntries map[string]bool // appIndex:subIndex -> selected
@@ -402,6 +405,7 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		searchInput:        searchInput,
 		sortColumn:         SortColumnName, // Default sort by name
 		sortAscending:      true,           // Ascending by default
+		filterEnabled:      true,           // Filter ON by default
 		selectedApps:       make(map[int]bool),
 		selectedSubEntries: make(map[string]bool),
 		multiSelectActive:  false,
