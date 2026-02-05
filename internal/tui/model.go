@@ -10,6 +10,7 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/manager"
 	"github.com/AntoineGS/dot-manager/internal/packages"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -139,11 +140,13 @@ type SubEntryForm struct {
 	originalValue      string
 	suggestions        []string
 	files              []string
+	selectedFiles      map[string]bool
 	nameInput          textinput.Model
 	linuxTargetInput   textinput.Model
 	windowsTargetInput textinput.Model
 	backupInput        textinput.Model
 	newFileInput       textinput.Model
+	filePicker         filepicker.Model
 	editingFileIndex   int
 	targetAppIdx       int
 	editSubIdx         int
@@ -151,6 +154,8 @@ type SubEntryForm struct {
 	focusIndex         int
 	filesCursor        int
 	suggestionCursor   int
+	modeMenuCursor     int
+	addFileMode        AddFileMode
 	isFolder           bool
 	showSuggestions    bool
 	editingField       bool

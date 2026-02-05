@@ -24,6 +24,20 @@ const (
 	subFieldIsSudo   // Sudo toggle
 )
 
+// AddFileMode represents the current mode for adding files to the files list
+type AddFileMode int
+
+const (
+	// ModeNone indicates no file adding operation is active
+	ModeNone AddFileMode = iota
+	// ModeChoosing indicates user is choosing between browse/type options
+	ModeChoosing
+	// ModePicker indicates file picker is active for browsing
+	ModePicker
+	// ModeTextInput indicates manual text input mode is active
+	ModeTextInput
+)
+
 // initSubEntryFormNew initializes the form for adding a new sub-entry to an existing application
 func (m *Model) initSubEntryFormNew(appIdx int) {
 	nameInput := textinput.New()
@@ -75,6 +89,9 @@ func (m *Model) initSubEntryFormNew(appIdx int) {
 		editAppIdx:         -1,
 		editSubIdx:         -1,
 		err:                "",
+		addFileMode:        ModeNone,
+		modeMenuCursor:     0,
+		selectedFiles:      make(map[string]bool),
 	}
 
 	m.activeForm = FormSubEntry
@@ -186,6 +203,9 @@ func (m *Model) initSubEntryFormEdit(appIdx, subIdx int) {
 		editAppIdx:         configAppIdx,
 		editSubIdx:         configSubIdx,
 		err:                "",
+		addFileMode:        ModeNone,
+		modeMenuCursor:     0,
+		selectedFiles:      make(map[string]bool),
 	}
 
 	m.activeForm = FormSubEntry
