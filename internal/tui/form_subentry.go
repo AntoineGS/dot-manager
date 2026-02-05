@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
+	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -285,6 +286,11 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle mode selection menu
 	if m.subEntryForm.addFileMode == ModeChoosing {
 		return m.updateFileAddModeChoice(msg)
+	}
+
+	// Handle file picker
+	if m.subEntryForm.addFileMode == ModePicker {
+		return m.updateSubEntryFilePicker(msg)
 	}
 
 	// Handle editing a text field
@@ -701,6 +707,11 @@ func (m Model) viewSubEntryForm() string {
 	// Show mode selection menu if in ModeChoosing
 	if m.subEntryForm.addFileMode == ModeChoosing {
 		return m.viewFileAddModeMenu()
+	}
+
+	// Show file picker if in ModePicker
+	if m.subEntryForm.addFileMode == ModePicker {
+		return m.viewFilePicker()
 	}
 
 	var b strings.Builder
@@ -1405,6 +1416,12 @@ func (m Model) updateFileAddModeChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Select the current option
 		if m.subEntryForm.modeMenuCursor == 0 {
 			// Browse Files - transition to ModePicker
+			// Initialize file picker
+			if err := m.initFilePicker(); err != nil {
+				m.subEntryForm.err = fmt.Sprintf("failed to initialize file picker: %v", err)
+				m.subEntryForm.addFileMode = ModeNone
+				return m, nil
+			}
 			m.subEntryForm.addFileMode = ModePicker
 		} else {
 			// Type Path - transition to ModeTextInput
@@ -1445,6 +1462,138 @@ func (m Model) viewFileAddModeMenu() string {
 	}
 
 	b.WriteString("\n")
+
+	// Help
+	b.WriteString(RenderHelpWithWidth(m.width,
+		"↑/k ↓/j", "navigate",
+		"enter", "select",
+		"esc", "cancel",
+	))
+
+	return BaseStyle.Render(b.String())
+}
+
+// initFilePicker initializes the file picker with the appropriate start directory
+func (m *Model) initFilePicker() error {
+	if m.subEntryForm == nil {
+		return fmt.Errorf("subEntryForm is nil")
+	}
+
+	// Get the target path for the current OS
+	var targetPath string
+	switch m.Platform.OS {
+	case "linux":
+		targetPath = m.subEntryForm.linuxTargetInput.Value()
+	case "windows":
+		targetPath = m.subEntryForm.windowsTargetInput.Value()
+	default:
+		targetPath = m.subEntryForm.linuxTargetInput.Value()
+	}
+
+	// Resolve the start directory using phase 2 utility
+	startDir, err := resolvePickerStartDirectory(targetPath, m.Platform.OS)
+	if err != nil {
+		return fmt.Errorf("failed to resolve start directory: %w", err)
+	}
+
+	// Initialize the file picker
+	picker := filepicker.New()
+	picker.CurrentDirectory = startDir
+	picker.DirAllowed = true
+	picker.FileAllowed = true
+	picker.ShowHidden = false
+
+	m.subEntryForm.filePicker = picker
+
+	return nil
+}
+
+// updateSubEntryFilePicker handles key events when the file picker is active
+func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.subEntryForm == nil {
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case KeyCtrlC:
+		return m, tea.Quit
+
+	case KeyEsc:
+		// Cancel file picker and return to files list
+		m.subEntryForm.addFileMode = ModeNone
+		return m, nil
+
+	case KeyEnter:
+		// Get selected file from picker
+		selectedPath := m.subEntryForm.filePicker.Path
+		if selectedPath == "" {
+			// No selection, just cancel
+			m.subEntryForm.addFileMode = ModeNone
+			return m, nil
+		}
+
+		// Get the target directory for conversion
+		var targetPath string
+		switch m.Platform.OS {
+		case "linux":
+			targetPath = m.subEntryForm.linuxTargetInput.Value()
+		case "windows":
+			targetPath = m.subEntryForm.windowsTargetInput.Value()
+		default:
+			targetPath = m.subEntryForm.linuxTargetInput.Value()
+		}
+
+		// Expand target path to absolute
+		expandedTarget, err := expandTargetPath(targetPath)
+		if err != nil {
+			m.subEntryForm.err = fmt.Sprintf("failed to expand target path: %v", err)
+			m.subEntryForm.addFileMode = ModeNone
+			return m, nil
+		}
+
+		// Convert selected path to relative using phase 2 utility
+		relativePaths, errs := convertToRelativePaths([]string{selectedPath}, expandedTarget)
+		if errs[0] != nil {
+			m.subEntryForm.err = fmt.Sprintf("failed to convert to relative path: %v", errs[0])
+			m.subEntryForm.addFileMode = ModeNone
+			return m, nil
+		}
+
+		// Add the relative path to files list
+		relativePath := relativePaths[0]
+		if relativePath != "" {
+			m.subEntryForm.files = append(m.subEntryForm.files, relativePath)
+			m.subEntryForm.filesCursor = len(m.subEntryForm.files) // Move cursor to "Add File" button
+		}
+
+		// Reset mode
+		m.subEntryForm.addFileMode = ModeNone
+		return m, nil
+	}
+
+	// Update the file picker with the key message
+	m.subEntryForm.filePicker, cmd = m.subEntryForm.filePicker.Update(msg)
+
+	return m, cmd
+}
+
+// viewFilePicker renders the file picker interface
+func (m Model) viewFilePicker() string {
+	if m.subEntryForm == nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Title
+	b.WriteString(TitleStyle.Render("  Browse Files"))
+	b.WriteString("\n\n")
+
+	// Show the file picker
+	b.WriteString(m.subEntryForm.filePicker.View())
+	b.WriteString("\n\n")
 
 	// Help
 	b.WriteString(RenderHelpWithWidth(m.width,
