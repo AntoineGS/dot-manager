@@ -535,8 +535,22 @@ func (m *Model) getApplicationAtCursorFromTable() (int, int) {
 		return -1, -1
 	}
 
-	tr := m.tableRows[m.tableCursor]
-	return tr.AppIndex, tr.SubIndex
+	tableRow := m.tableRows[m.tableCursor]
+
+	// Look up the real index in m.Applications by name
+	realAppIdx := -1
+	for i, app := range m.Applications {
+		if app.Application.Name == tableRow.AppName {
+			realAppIdx = i
+			break
+		}
+	}
+
+	if realAppIdx == -1 {
+		return -1, -1
+	}
+
+	return realAppIdx, tableRow.SubIndex
 }
 
 func (m Model) viewProgress() string {

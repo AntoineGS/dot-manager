@@ -12,7 +12,8 @@ type TableRow struct {
 	Level           int       // 0 = application, 1 = sub-entry
 	TreeChar        string    // "▶ ", "▼ ", "├─", "└─"
 	IsExpanded      bool
-	AppIndex        int
+	AppIndex        int       // Index in filtered array (for display)
+	AppName         string    // Application name for lookup in m.Applications
 	SubIndex        int       // -1 for application rows
 	State           PathState // For badge rendering
 	StatusAttention bool      // Status column needs attention
@@ -57,6 +58,7 @@ func flattenApplications(apps []ApplicationItem, osType string, filterEnabled bo
 			TreeChar:        expandChar,
 			IsExpanded:      app.Expanded,
 			AppIndex:        appIdx,
+			AppName:         app.Application.Name,
 			SubIndex:        -1,
 			StatusAttention: needsAttention(statusText),
 			InfoAttention:   appInfoNeedsAttention(app),
@@ -86,6 +88,7 @@ func flattenApplications(apps []ApplicationItem, osType string, filterEnabled bo
 					Level:           1,
 					TreeChar:        treeChar,
 					AppIndex:        appIdx,
+					AppName:         app.Application.Name,
 					SubIndex:        subIdx,
 					State:           subItem.State,
 					StatusAttention: needsAttention(subItem.State.String()),

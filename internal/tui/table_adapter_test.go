@@ -321,3 +321,43 @@ func TestFlattenApplications_WithFilterEnabled(t *testing.T) {
 		}
 	})
 }
+
+func TestFlattenApplications_AppNameMapping(t *testing.T) {
+	apps := []ApplicationItem{
+		{
+			Application: config.Application{Name: "app-alpha"},
+			SubItems: []SubEntryItem{
+				{SubEntry: config.SubEntry{Name: "config1"}},
+			},
+			Expanded: true,
+		},
+		{
+			Application: config.Application{Name: "app-beta"},
+			SubItems: []SubEntryItem{
+				{SubEntry: config.SubEntry{Name: "config2"}},
+			},
+			Expanded: true,
+		},
+	}
+
+	rows := flattenApplications(apps, "linux", false)
+
+	// Verify we have 4 rows (2 apps + 2 sub-entries)
+	if len(rows) != 4 {
+		t.Errorf("Expected 4 rows, got %d", len(rows))
+	}
+
+	// Verify all rows have correct AppName
+	if rows[0].AppName != "app-alpha" {
+		t.Errorf("Expected AppName 'app-alpha', got %s", rows[0].AppName)
+	}
+	if rows[1].AppName != "app-alpha" {
+		t.Errorf("Expected AppName 'app-alpha' for sub-entry, got %s", rows[1].AppName)
+	}
+	if rows[2].AppName != "app-beta" {
+		t.Errorf("Expected AppName 'app-beta', got %s", rows[2].AppName)
+	}
+	if rows[3].AppName != "app-beta" {
+		t.Errorf("Expected AppName 'app-beta' for sub-entry, got %s", rows[3].AppName)
+	}
+}
