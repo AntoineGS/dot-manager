@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
@@ -193,16 +194,118 @@ func setupSearchActive(m *Model) {
 	m.appCursor = 0
 }
 
-func setupScrollMiddle(_ *Model) {
-	// TODO: Implement in Task 6
+// setupScrollMiddle creates a long list with cursor in the middle.
+// Tests: viewport windowing, scroll indicators, cursor positioning.
+func setupScrollMiddle(m *Model) {
+	m.width = 100
+	m.height = 30
+
+	// Create 25 apps to force scrolling
+	apps := make([]config.Application, 25)
+	for i := 0; i < 25; i++ {
+		apps[i] = config.Application{
+			Name:        fmt.Sprintf("app-%02d", i+1),
+			Description: fmt.Sprintf("Application %d", i+1),
+			Entries: []config.SubEntry{
+				{
+					Name:    "config",
+					Backup:  fmt.Sprintf("./app-%02d", i+1),
+					Targets: map[string]string{"linux": fmt.Sprintf("~/.config/app-%02d", i+1)},
+				},
+			},
+		}
+	}
+	m.Config.Applications = apps
+
+	m.initApplicationItems()
+	m.Screen = ScreenResults
+	m.Operation = OpList
+
+	// Position cursor at row 15 (middle)
+	m.appCursor = 15
 }
 
-func setupScrollBottom(_ *Model) {
-	// TODO: Implement in Task 6
+// setupScrollBottom creates a long list with cursor at the bottom.
+// Tests: bottom boundary, "end of list" rendering.
+func setupScrollBottom(m *Model) {
+	m.width = 100
+	m.height = 30
+
+	// Create 20 apps
+	apps := make([]config.Application, 20)
+	for i := 0; i < 20; i++ {
+		apps[i] = config.Application{
+			Name:        fmt.Sprintf("app-%02d", i+1),
+			Description: fmt.Sprintf("Application %d", i+1),
+			Entries: []config.SubEntry{
+				{
+					Name:    "config",
+					Backup:  fmt.Sprintf("./app-%02d", i+1),
+					Targets: map[string]string{"linux": fmt.Sprintf("~/.config/app-%02d", i+1)},
+				},
+			},
+		}
+	}
+	m.Config.Applications = apps
+
+	m.initApplicationItems()
+	m.Screen = ScreenResults
+	m.Operation = OpList
+
+	// Position cursor at last app
+	m.appCursor = 19
 }
 
-func setupScrollWithExpanded(_ *Model) {
-	// TODO: Implement in Task 6
+// setupScrollWithExpanded creates a scrollable list with an expanded app.
+// Tests: expanded app scrolling, sub-entry visibility in viewport.
+func setupScrollWithExpanded(m *Model) {
+	m.width = 100
+	m.height = 30
+
+	// Create 15 apps
+	apps := make([]config.Application, 15)
+	for i := 0; i < 15; i++ {
+		if i == 7 {
+			// App at index 7 has multiple sub-entries
+			apps[i] = config.Application{
+				Name:        "app-08",
+				Description: "Application 8 with many entries",
+				Entries: []config.SubEntry{
+					{Name: "entry-1", Backup: "./app-08/entry-1", Targets: map[string]string{"linux": "~/.config/app-08/entry-1"}},
+					{Name: "entry-2", Backup: "./app-08/entry-2", Targets: map[string]string{"linux": "~/.config/app-08/entry-2"}},
+					{Name: "entry-3", Backup: "./app-08/entry-3", Targets: map[string]string{"linux": "~/.config/app-08/entry-3"}},
+					{Name: "entry-4", Backup: "./app-08/entry-4", Targets: map[string]string{"linux": "~/.config/app-08/entry-4"}},
+					{Name: "entry-5", Backup: "./app-08/entry-5", Targets: map[string]string{"linux": "~/.config/app-08/entry-5"}},
+				},
+			}
+		} else {
+			apps[i] = config.Application{
+				Name:        fmt.Sprintf("app-%02d", i+1),
+				Description: fmt.Sprintf("Application %d", i+1),
+				Entries: []config.SubEntry{
+					{
+						Name:    "config",
+						Backup:  fmt.Sprintf("./app-%02d", i+1),
+						Targets: map[string]string{"linux": fmt.Sprintf("~/.config/app-%02d", i+1)},
+					},
+				},
+			}
+		}
+	}
+	m.Config.Applications = apps
+
+	m.initApplicationItems()
+
+	// Expand app-08 (index 7)
+	m.Applications[7].Expanded = true
+
+	m.Screen = ScreenResults
+	m.Operation = OpList
+
+	// Position cursor on 3rd sub-entry of app-08
+	// Visual layout: app-08 is at row 7, sub-entries start at row 8
+	// So 3rd sub-entry is at row 10 (7 + 1 for app + 2 for first 2 sub-entries)
+	m.appCursor = 10
 }
 
 // setupBasicList creates a basic list view with 5 collapsed applications.
