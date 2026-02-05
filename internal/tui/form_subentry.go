@@ -1482,9 +1482,9 @@ func (m *Model) initFilePicker() error {
 	// Get the target path for the current OS
 	var targetPath string
 	switch m.Platform.OS {
-	case "linux":
+	case OSLinux:
 		targetPath = m.subEntryForm.linuxTargetInput.Value()
-	case "windows":
+	case OSWindows:
 		targetPath = m.subEntryForm.windowsTargetInput.Value()
 	default:
 		targetPath = m.subEntryForm.linuxTargetInput.Value()
@@ -1521,25 +1521,40 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case KeyEsc:
-		// Cancel file picker and return to files list
+		// Cancel file picker, clear selections, and return to files list
 		m.subEntryForm.addFileMode = ModeNone
+		m.subEntryForm.selectedFiles = make(map[string]bool)
+		return m, nil
+
+	case " ", KeyTab:
+		// Toggle selection of current file
+		currentPath := filepath.Join(
+			m.subEntryForm.filePicker.CurrentDirectory,
+			m.subEntryForm.filePicker.Path,
+		)
+
+		if currentPath == "" || m.subEntryForm.filePicker.Path == "" {
+			// No valid selection, pass through to file picker
+			m.subEntryForm.filePicker, cmd = m.subEntryForm.filePicker.Update(msg)
+			return m, cmd
+		}
+
+		// Toggle selection
+		if m.subEntryForm.selectedFiles[currentPath] {
+			delete(m.subEntryForm.selectedFiles, currentPath)
+		} else {
+			m.subEntryForm.selectedFiles[currentPath] = true
+		}
+
 		return m, nil
 
 	case KeyEnter:
-		// Get selected file from picker
-		selectedPath := m.subEntryForm.filePicker.Path
-		if selectedPath == "" {
-			// No selection, just cancel
-			m.subEntryForm.addFileMode = ModeNone
-			return m, nil
-		}
-
 		// Get the target directory for conversion
 		var targetPath string
 		switch m.Platform.OS {
-		case "linux":
+		case OSLinux:
 			targetPath = m.subEntryForm.linuxTargetInput.Value()
-		case "windows":
+		case OSWindows:
 			targetPath = m.subEntryForm.windowsTargetInput.Value()
 		default:
 			targetPath = m.subEntryForm.linuxTargetInput.Value()
@@ -1550,25 +1565,40 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if err != nil {
 			m.subEntryForm.err = fmt.Sprintf("failed to expand target path: %v", err)
 			m.subEntryForm.addFileMode = ModeNone
+			m.subEntryForm.selectedFiles = make(map[string]bool)
 			return m, nil
 		}
 
-		// Convert selected path to relative using phase 2 utility
-		relativePaths, errs := convertToRelativePaths([]string{selectedPath}, expandedTarget)
-		if errs[0] != nil {
-			m.subEntryForm.err = fmt.Sprintf("failed to convert to relative path: %v", errs[0])
+		// If there are multiple selections, process them all
+		if len(m.subEntryForm.selectedFiles) > 0 {
+			// Collect all selected paths
+			selectedPaths := make([]string, 0, len(m.subEntryForm.selectedFiles))
+			for path := range m.subEntryForm.selectedFiles {
+				selectedPaths = append(selectedPaths, path)
+			}
+
+			// Convert all paths to relative
+			relativePaths, errs := convertToRelativePaths(selectedPaths, expandedTarget)
+
+			// Add all successfully converted paths to files list
+			for i, relativePath := range relativePaths {
+				if errs[i] == nil && relativePath != "" {
+					m.subEntryForm.files = append(m.subEntryForm.files, relativePath)
+				}
+			}
+
+			// Clear selections
+			m.subEntryForm.selectedFiles = make(map[string]bool)
+
+			// Move cursor to "Add File" button
+			m.subEntryForm.filesCursor = len(m.subEntryForm.files)
+
+			// Reset mode
 			m.subEntryForm.addFileMode = ModeNone
 			return m, nil
 		}
 
-		// Add the relative path to files list
-		relativePath := relativePaths[0]
-		if relativePath != "" {
-			m.subEntryForm.files = append(m.subEntryForm.files, relativePath)
-			m.subEntryForm.filesCursor = len(m.subEntryForm.files) // Move cursor to "Add File" button
-		}
-
-		// Reset mode
+		// No selections - just cancel
 		m.subEntryForm.addFileMode = ModeNone
 		return m, nil
 	}

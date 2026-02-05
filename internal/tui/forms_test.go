@@ -231,7 +231,7 @@ func TestBuildFiltersFromConditions(t *testing.T) {
 
 	t.Run("single_include_condition", func(t *testing.T) {
 		conditions := []FilterCondition{
-			{FilterIndex: 0, IsExclude: false, Key: "os", Value: "linux"},
+			{FilterIndex: 0, IsExclude: false, Key: "os", Value: OSLinux},
 		}
 		result := buildFiltersFromConditions(conditions)
 
@@ -243,8 +243,8 @@ func TestBuildFiltersFromConditions(t *testing.T) {
 			t.Errorf("len(Include) = %d, want 1", len(result[0].Include))
 		}
 
-		if result[0].Include["os"] != "linux" {
-			t.Errorf("Include[os] = %q, want %q", result[0].Include["os"], "linux")
+		if result[0].Include["os"] != OSLinux {
+			t.Errorf("Include[os] = %q, want %q", result[0].Include["os"], OSLinux)
 		}
 	})
 
@@ -269,7 +269,7 @@ func TestBuildFiltersFromConditions(t *testing.T) {
 
 	t.Run("multiple_conditions_same_filter", func(t *testing.T) {
 		conditions := []FilterCondition{
-			{FilterIndex: 0, IsExclude: false, Key: "os", Value: "linux"},
+			{FilterIndex: 0, IsExclude: false, Key: "os", Value: OSLinux},
 			{FilterIndex: 0, IsExclude: true, Key: "distro", Value: "ubuntu"},
 		}
 		result := buildFiltersFromConditions(conditions)
@@ -289,7 +289,7 @@ func TestBuildFiltersFromConditions(t *testing.T) {
 
 	t.Run("multiple_filter_groups", func(t *testing.T) {
 		conditions := []FilterCondition{
-			{FilterIndex: 0, IsExclude: false, Key: "os", Value: "linux"},
+			{FilterIndex: 0, IsExclude: false, Key: "os", Value: OSLinux},
 			{FilterIndex: 1, IsExclude: false, Key: "distro", Value: "arch"},
 		}
 		result := buildFiltersFromConditions(conditions)
@@ -298,8 +298,8 @@ func TestBuildFiltersFromConditions(t *testing.T) {
 			t.Fatalf("len(result) = %d, want 2", len(result))
 		}
 
-		if result[0].Include["os"] != "linux" {
-			t.Errorf("result[0].Include[os] = %q, want %q", result[0].Include["os"], "linux")
+		if result[0].Include["os"] != OSLinux {
+			t.Errorf("result[0].Include[os] = %q, want %q", result[0].Include["os"], OSLinux)
 		}
 
 		if result[1].Include["distro"] != "arch" {

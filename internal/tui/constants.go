@@ -50,3 +50,9 @@ const (
 	// Similar to vim's 'scrolloff' setting - provides smooth scrolling with buffer zone
 	ScrollOffsetMargin = 3
 )
+
+// OS constants
+const (
+	OSLinux   = "linux"
+	OSWindows = "windows"
+)
