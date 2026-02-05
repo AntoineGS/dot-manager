@@ -716,3 +716,34 @@ func TestPathItemTargetTildeExpansion(t *testing.T) {
 		t.Errorf("PathItem.Target should end with '.config/nvim'. Got: %q", pathItem.Target)
 	}
 }
+
+func TestNewModel_FilterEnabledByDefault(t *testing.T) {
+	cfg := &config.Config{
+		Version: 3,
+		Applications: []config.Application{
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{
+						Name:   "config",
+						Backup: "./test",
+						Targets: map[string]string{
+							"linux": "~/.config/test",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plat := &platform.Platform{
+		OS:     "linux",
+		Distro: "arch",
+	}
+
+	m := NewModel(cfg, plat, false)
+
+	if !m.filterEnabled {
+		t.Error("Expected filterEnabled to be true by default")
+	}
+}
