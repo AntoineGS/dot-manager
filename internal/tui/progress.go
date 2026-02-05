@@ -1310,7 +1310,6 @@ func (m Model) renderHelpForCurrentState() string {
 			// Normal mode help text
 			helpItems = []string{
 				"/", "search",
-				"f", "filter",
 				"A", "add app",
 				"a", "add entry",
 				"e", "edit",
@@ -1347,16 +1346,14 @@ func (m Model) viewListTable() string {
 		linesUsed++
 	}
 
-	// Multi-select banner
-	if m.multiSelectActive {
-		appCount, subCount := m.getSelectionCounts()
-		bannerText := fmt.Sprintf("  %d app(s), %d item(s) selected", appCount, subCount)
-		b.WriteString(MultiSelectBannerStyle.Render(bannerText))
-		b.WriteString("\n")
-		linesUsed++
-	}
+	// Filter banner (always shown)
+	// Highlight the 'f' in "filter" similar to table headers
+	highlightedF := lipgloss.NewStyle().
+		Foreground(accentColor).
+		Bold(true).
+		Render("f")
 
-	// Filter banner
+	var filterBanner string
 	if m.filterEnabled {
 		visibleCount := 0
 		totalCount := len(m.Applications)
@@ -1367,11 +1364,15 @@ func (m Model) viewListTable() string {
 			}
 		}
 
-		filterBanner := fmt.Sprintf("Filter: ON (showing %d of %d apps)", visibleCount, totalCount)
-		b.WriteString(SelectedRowStyle.Render(filterBanner))
-		b.WriteString("\n")
-		linesUsed++
+		countInfo := MutedTextStyle.Render(fmt.Sprintf(" (showing %d of %d apps)", visibleCount, totalCount))
+		filterBanner = "  " + highlightedF + "ilter: on" + countInfo
+	} else {
+		filterBanner = "  " + highlightedF + "ilter: off"
 	}
+
+	b.WriteString(filterBanner)
+	b.WriteString("\n")
+	linesUsed++
 
 	// Initialize table if needed
 	if len(m.tableRows) == 0 {
@@ -1379,7 +1380,10 @@ func (m Model) viewListTable() string {
 	}
 
 	// Count lines after table
-	linesAfterTable := 1 // Blank line after table
+	linesAfterTable := 1 // Blank line or multi-select banner after table
+
+	// Add line for multi-select banner if active
+	// (The banner replaces the blank line, so no additional line needed)
 
 	// Detail panel
 	appIdx, subIdx := m.getApplicationAtCursorFromTable()
@@ -1417,6 +1421,13 @@ func (m Model) viewListTable() string {
 	// Render table with exact available height
 	b.WriteString(m.renderTable(availableForTable))
 	b.WriteString("\n")
+
+	// Multi-select banner (replaces one of two blank lines to keep help position consistent)
+	if m.multiSelectActive {
+		appCount, subCount := m.getSelectionCounts()
+		bannerText := fmt.Sprintf("  %d app(s), %d item(s) selected", appCount, subCount)
+		b.WriteString(MultiSelectBannerStyle.Render(bannerText))
+	}
 
 	// Detail panel
 	if detailContent != "" {
