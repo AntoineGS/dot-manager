@@ -193,9 +193,7 @@ var (
 	MultiSelectBannerStyle = lipgloss.NewStyle().
 				Foreground(mutedColor).
 				Bold(true).
-				Padding(0, 2).
-				MarginTop(1).
-				MarginBottom(1)
+				Padding(0, 2)
 
 	// SelectedRowStyle is the style for rows that are selected in multi-select mode.
 	// Uses a lighter purple background to differentiate from cursor highlight.
