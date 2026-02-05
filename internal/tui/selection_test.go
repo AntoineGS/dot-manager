@@ -450,3 +450,109 @@ func TestGetSelectionCounts(t *testing.T) {
 		t.Errorf("Expected 1 independent sub-entry (from zsh), got %d", subCount)
 	}
 }
+
+func TestCountHiddenSelections(t *testing.T) {
+	m := Model{
+		Applications: []ApplicationItem{
+			{
+				Application: config.Application{Name: "app1"},
+				IsFiltered:  false,
+				SubItems: []SubEntryItem{
+					{SubEntry: config.SubEntry{Name: "sub1"}},
+				},
+			},
+			{
+				Application: config.Application{Name: "app2"},
+				IsFiltered:  true, // This app is filtered
+				SubItems: []SubEntryItem{
+					{SubEntry: config.SubEntry{Name: "sub2"}},
+				},
+			},
+			{
+				Application: config.Application{Name: "app3"},
+				IsFiltered:  true, // This app is filtered
+				SubItems: []SubEntryItem{
+					{SubEntry: config.SubEntry{Name: "sub3"}},
+				},
+			},
+		},
+		selectedApps:       make(map[int]bool),
+		selectedSubEntries: make(map[string]bool),
+	}
+
+	t.Run("counts selected filtered apps", func(t *testing.T) {
+		m.selectedApps[1] = true // Select filtered app2
+		m.selectedApps[2] = true // Select filtered app3
+
+		count := m.countHiddenSelections()
+		if count != 2 {
+			t.Errorf("Expected 2 hidden selections, got %d", count)
+		}
+	})
+
+	t.Run("counts selected sub-entries under filtered apps", func(t *testing.T) {
+		m.selectedApps = make(map[int]bool)
+		m.selectedSubEntries["1:0"] = true // Sub-entry under filtered app2
+
+		count := m.countHiddenSelections()
+		if count != 1 {
+			t.Errorf("Expected 1 hidden selection, got %d", count)
+		}
+	})
+
+	t.Run("ignores selections under visible apps", func(t *testing.T) {
+		m.selectedApps = make(map[int]bool)
+		m.selectedSubEntries = make(map[string]bool)
+		m.selectedApps[0] = true // Select visible app1
+
+		count := m.countHiddenSelections()
+		if count != 0 {
+			t.Errorf("Expected 0 hidden selections, got %d", count)
+		}
+	})
+}
+
+func TestClearHiddenSelections(t *testing.T) {
+	m := Model{
+		Applications: []ApplicationItem{
+			{
+				Application: config.Application{Name: "app1"},
+				IsFiltered:  false,
+			},
+			{
+				Application: config.Application{Name: "app2"},
+				IsFiltered:  true,
+			},
+		},
+		selectedApps:       map[int]bool{0: true, 1: true},
+		selectedSubEntries: map[string]bool{"0:0": true, "1:0": true},
+		multiSelectActive:  true,
+	}
+
+	m.clearHiddenSelections()
+
+	// Should keep app1 selection
+	if !m.selectedApps[0] {
+		t.Error("Expected app1 (visible) to remain selected")
+	}
+
+	// Should remove app2 selection
+	if m.selectedApps[1] {
+		t.Error("Expected app2 (filtered) to be deselected")
+	}
+
+	// Should keep sub-entry under visible app
+	if !m.selectedSubEntries["0:0"] {
+		t.Error("Expected sub-entry under visible app to remain selected")
+	}
+
+	// Should remove sub-entry under filtered app
+	if m.selectedSubEntries["1:0"] {
+		t.Error("Expected sub-entry under filtered app to be deselected")
+	}
+
+	// multiSelectActive should be updated
+	if !m.multiSelectActive {
+		t.Error("Expected multiSelectActive to remain true (visible app still selected)")
+	}
+}

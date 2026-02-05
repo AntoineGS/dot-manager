@@ -910,6 +910,59 @@ func (m *Model) getSelectionCounts() (appCount int, subEntryCount int) {
 	return appCount, subEntryCount
 }
 
+// countHiddenSelections returns the number of selected items that would be hidden
+// when filter is enabled. Used to determine if a confirmation dialog is needed.
+func (m *Model) countHiddenSelections() int {
+	count := 0
+
+	// Count selected apps that are filtered
+	for appIdx := range m.selectedApps {
+		if appIdx >= 0 && appIdx < len(m.Applications) && m.Applications[appIdx].IsFiltered {
+			count++
+		}
+	}
+
+	// Count selected sub-entries under filtered apps
+	for key := range m.selectedSubEntries {
+		var appIdx, subIdx int
+		if _, err := fmt.Sscanf(key, "%d:%d", &appIdx, &subIdx); err != nil {
+			continue
+		}
+
+		if appIdx >= 0 && appIdx < len(m.Applications) && m.Applications[appIdx].IsFiltered {
+			count++
+		}
+	}
+
+	return count
+}
+
+// clearHiddenSelections removes selections for apps where IsFiltered=true.
+// Called after toggling filter ON to keep selections in sync with visible items.
+func (m *Model) clearHiddenSelections() {
+	// Remove filtered apps from selected apps
+	for appIdx := range m.selectedApps {
+		if appIdx >= 0 && appIdx < len(m.Applications) && m.Applications[appIdx].IsFiltered {
+			delete(m.selectedApps, appIdx)
+		}
+	}
+
+	// Remove sub-entries under filtered apps
+	for key := range m.selectedSubEntries {
+		var appIdx, subIdx int
+		if _, err := fmt.Sscanf(key, "%d:%d", &appIdx, &subIdx); err != nil {
+			continue
+		}
+
+		if appIdx >= 0 && appIdx < len(m.Applications) && m.Applications[appIdx].IsFiltered {
+			delete(m.selectedSubEntries, key)
+		}
+	}
+
+	// Update multiSelectActive flag
+	m.updateMultiSelectActive()
+}
+
 // moveToNextExpandedNode moves the cursor to the next expanded node in the table.
 // It wraps around to the beginning if it reaches the end.
 func (m *Model) moveToNextExpandedNode() {
