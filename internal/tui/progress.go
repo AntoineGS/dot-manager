@@ -230,7 +230,7 @@ func (m *Model) initTableModel() {
 		})
 	}
 
-	m.tableRows = flattenApplications(filtered, m.Platform.OS)
+	m.tableRows = flattenApplications(filtered, m.Platform.OS, false)
 
 	// Apply sorting (only sorts sub-entries now, preserves app order)
 	m.sortTableRows()

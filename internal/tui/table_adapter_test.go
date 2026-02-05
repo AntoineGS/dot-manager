@@ -24,7 +24,7 @@ func TestFlattenApplications(t *testing.T) {
 			},
 		}
 
-		rows := flattenApplications(apps, "linux")
+		rows := flattenApplications(apps, "linux", false)
 
 		if len(rows) != 1 {
 			t.Errorf("Expected 1 row, got %d", len(rows))
@@ -50,7 +50,7 @@ func TestFlattenApplications(t *testing.T) {
 			},
 		}
 
-		rows := flattenApplications(apps, "linux")
+		rows := flattenApplications(apps, "linux", false)
 
 		if len(rows) != 2 {
 			t.Errorf("Expected 2 rows, got %d", len(rows))
@@ -82,7 +82,7 @@ func TestFlattenApplications(t *testing.T) {
 			},
 		}
 
-		rows := flattenApplications(apps, "linux")
+		rows := flattenApplications(apps, "linux", false)
 
 		if len(rows) != 4 {
 			t.Errorf("Expected 4 rows, got %d", len(rows))
@@ -275,6 +275,49 @@ func TestAppInfoNeedsAttention(t *testing.T) {
 		}
 		if appInfoNeedsAttention(app) {
 			t.Errorf("Filtered app should not need attention")
+		}
+	})
+}
+
+func TestFlattenApplications_WithFilterEnabled(t *testing.T) {
+	apps := []ApplicationItem{
+		{
+			Application: config.Application{Name: "visible-app"},
+			SubItems: []SubEntryItem{
+				{SubEntry: config.SubEntry{Name: "config1"}},
+			},
+			Expanded:   true,
+			IsFiltered: false, // Not filtered - should be visible
+		},
+		{
+			Application: config.Application{Name: "filtered-app"},
+			SubItems: []SubEntryItem{
+				{SubEntry: config.SubEntry{Name: "config2"}},
+			},
+			Expanded:   true,
+			IsFiltered: true, // Filtered - should be hidden
+		},
+	}
+
+	t.Run("filter enabled hides filtered apps", func(t *testing.T) {
+		rows := flattenApplications(apps, "linux", true)
+
+		// Should only show visible-app (1 app + 1 sub-entry = 2 rows)
+		if len(rows) != 2 {
+			t.Errorf("Expected 2 rows (1 app + 1 sub-entry), got %d", len(rows))
+		}
+
+		if rows[0].Data[0] != "▼ visible-app" {
+			t.Errorf("Expected first row to be visible-app, got %s", rows[0].Data[0])
+		}
+	})
+
+	t.Run("filter disabled shows all apps", func(t *testing.T) {
+		rows := flattenApplications(apps, "linux", false)
+
+		// Should show both apps (2 apps + 2 sub-entries = 4 rows)
+		if len(rows) != 4 {
+			t.Errorf("Expected 4 rows (2 apps + 2 sub-entries), got %d", len(rows))
 		}
 	})
 }

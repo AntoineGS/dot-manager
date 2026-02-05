@@ -21,10 +21,15 @@ type TableRow struct {
 }
 
 // flattenApplications converts hierarchical apps to flat table rows
-func flattenApplications(apps []ApplicationItem, osType string) []TableRow {
+func flattenApplications(apps []ApplicationItem, osType string, filterEnabled bool) []TableRow {
 	var rows []TableRow
 
 	for appIdx, app := range apps {
+		// Skip filtered apps when filter is enabled
+		if filterEnabled && app.IsFiltered {
+			continue
+		}
+
 		// Level 0: Application row
 		expandChar := "▶ "
 		if app.Expanded {
