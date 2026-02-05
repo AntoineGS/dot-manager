@@ -137,6 +137,7 @@ type ApplicationForm struct {
 // SubEntryForm holds state for editing SubEntry data
 type SubEntryForm struct {
 	err                string
+	successMessage     string
 	originalValue      string
 	suggestions        []string
 	files              []string

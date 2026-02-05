@@ -329,6 +329,8 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		m.updateSubEntryFormFocus()
+		m.subEntryForm.err = ""            // Clear error on navigation
+		m.subEntryForm.successMessage = "" // Clear success message on navigation
 
 		return m, nil
 
@@ -339,6 +341,8 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		m.updateSubEntryFormFocus()
+		m.subEntryForm.err = ""            // Clear error on navigation
+		m.subEntryForm.successMessage = "" // Clear success message on navigation
 
 		return m, nil
 
@@ -351,6 +355,8 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		m.updateSubEntryFormFocus()
+		m.subEntryForm.err = ""            // Clear error on navigation
+		m.subEntryForm.successMessage = "" // Clear success message on navigation
 
 		return m, nil
 
@@ -361,6 +367,8 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		m.updateSubEntryFormFocus()
+		m.subEntryForm.err = ""            // Clear error on navigation
+		m.subEntryForm.successMessage = "" // Clear success message on navigation
 
 		return m, nil
 
@@ -858,6 +866,12 @@ func (m Model) viewSubEntryForm() string {
 	// Error message
 	if m.subEntryForm.err != "" {
 		b.WriteString(ErrorStyle.Render("  Error: " + m.subEntryForm.err))
+		b.WriteString("\n\n")
+	}
+
+	// Success message
+	if m.subEntryForm.successMessage != "" {
+		b.WriteString(SuccessStyle.Render("  " + m.subEntryForm.successMessage))
 		b.WriteString("\n\n")
 	}
 
@@ -1581,9 +1595,11 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			relativePaths, errs := convertToRelativePaths(selectedPaths, expandedTarget)
 
 			// Add all successfully converted paths to files list
+			addedCount := 0
 			for i, relativePath := range relativePaths {
 				if errs[i] == nil && relativePath != "" {
 					m.subEntryForm.files = append(m.subEntryForm.files, relativePath)
+					addedCount++
 				}
 			}
 
@@ -1592,6 +1608,11 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			// Move cursor to "Add File" button
 			m.subEntryForm.filesCursor = len(m.subEntryForm.files)
+
+			// Set success message
+			if addedCount > 0 {
+				m.subEntryForm.successMessage = fmt.Sprintf("Added %d file(s)", addedCount)
+			}
 
 			// Reset mode
 			m.subEntryForm.addFileMode = ModeNone

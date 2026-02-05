@@ -230,7 +230,7 @@ func (m Model) updateSummary(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Quit the application
 		return m, tea.Quit
 
-	case "up", "k", "down", "j":
+	case "up", "k", KeyDown, "j":
 		// Navigation placeholders for future hierarchical navigation
 		// For now, summary is static (no cursor navigation needed)
 		return m, nil
