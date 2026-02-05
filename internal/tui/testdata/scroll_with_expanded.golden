@@ -1,0 +1,24 @@
+
+    filter: on (showing 15 of 15 apps)
+  ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
+  │ name ↑                │ status                │ info                  │ path                 │
+  ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
+  │ ▶ app-01              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-02              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-03              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-04              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-05              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-06              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-07              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-08              │ Missing               │ 5 entries             │                      │
+  │ ▶ app-09              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-10              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-11              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-12              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-13              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-14              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-15              │ Missing               │ 1 entry               │                      │
+  └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
+
+
+  / search  Add app  add entry  edit  delete  restore  install  quit

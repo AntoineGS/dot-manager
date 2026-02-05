@@ -1,0 +1,18 @@
+
+    /  vim
+    filter: on (showing 8 of 8 apps)
+  ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
+  │ name ↑                │ status                │ info                  │ path                 │
+  ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
+  │ ▶ alacritty           │ Missing               │ 1 entry               │                      │
+  │ ▶ bash                │ Installed             │ 1 entry               │                      │
+  │ ▶ git                 │ Missing               │ 1 entry               │                      │
+  │ ▶ nvim                │ Installed             │ 1 entry               │                      │
+  │ ▶ tmux                │ Installed             │ 1 entry               │                      │
+  │ ▶ vim                 │ Missing               │ 1 entry               │                      │
+  │ ▶ vscode              │ Missing               │ 1 entry               │                      │
+  │ ▶ zsh                 │ Installed             │ 1 entry               │                      │
+  └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
+
+
+  / search  Add app  add entry  edit  delete  restore  install  quit

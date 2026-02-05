@@ -1,0 +1,13 @@
+
+    filter: on (showing 4 of 4 apps)
+  ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
+  │ name ↑                │ status                │ info                  │ path                 │
+  ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
+  │ ▶ bash                │ Installed             │ 1 entry               │                      │
+  │ ▶ git                 │ Missing               │ 1 entry               │                      │
+  │ ▶ nvim                │ Missing               │ 2 entries             │                      │
+  │ ▶ zsh                 │ Installed             │ 1 entry               │                      │
+  └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
+      2 app(s), 0 item(s) selected
+
+  tab toggle  esc clear  restore  install  delete  quit
