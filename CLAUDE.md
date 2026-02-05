@@ -19,9 +19,26 @@ go test ./internal/manager/...
 
 # Run golangci-lint (REQUIRED after each feature change)
 golangci-lint run
+
+# Run snapshot tests
+go test ./internal/tui -run TestScreenResults_Snapshots
+
+# Update golden files (after intentional UI changes)
+go test ./internal/tui -run TestScreenResults_Snapshots -update
+
+# Run all tests including snapshots
+go test ./...
 ```
 
 **IMPORTANT:** After implementing any feature change, bug fix, or refactoring, ALWAYS run `golangci-lint run` to ensure code quality and catch potential issues before committing.
+
+## Testing
+
+See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
+- Unit, integration, and snapshot testing
+- TUI golden file workflow
+- Test patterns and best practices
+- Troubleshooting guide
 
 ## Architecture
 
