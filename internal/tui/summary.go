@@ -17,11 +17,11 @@ func (m Model) viewSummary() string {
 	switch m.summaryOperation {
 	case OpInstallPackages:
 		title = "📦  Install Packages - Confirmation"
-	case OpRestore, OpRestoreDryRun:
+	case OpRestore:
 		title = "🔄  Restore Configs - Confirmation"
-	case OpAdd, OpList:
-		// These operations don't use summary screen
-		title = "⚠️  Unexpected Operation"
+	case OpList:
+		// OpList is used for delete operation in multi-select mode
+		title = "🗑️  Delete Entries - Confirmation"
 	default:
 		title = "🗑️  Delete Entries - Confirmation"
 	}
@@ -33,12 +33,11 @@ func (m Model) viewSummary() string {
 	switch m.summaryOperation {
 	case OpInstallPackages:
 		b.WriteString(m.renderInstallSummary())
-	case OpRestore, OpRestoreDryRun:
+	case OpRestore:
 		b.WriteString(m.renderHierarchicalSummary("restore"))
-	case OpAdd, OpList:
-		// These operations don't use summary screen
-		b.WriteString(ErrorStyle.Render("Error: Invalid operation for summary screen"))
-		b.WriteString("\n")
+	case OpList:
+		// OpList is used for delete operation in multi-select mode
+		b.WriteString(m.renderHierarchicalSummary("delete"))
 	default:
 		b.WriteString(m.renderHierarchicalSummary("delete"))
 	}
@@ -266,11 +265,11 @@ func (m Model) executeConfirmedOperation() (tea.Model, tea.Cmd) {
 	// Execute appropriate batch operation based on summaryOperation
 	var cmd tea.Cmd
 	switch m.summaryOperation {
-	case OpRestore, OpRestoreDryRun:
+	case OpRestore:
 		cmd = m.executeBatchRestore()
 	case OpInstallPackages:
 		cmd = m.executeBatchInstall()
-	case OpAdd, OpList:
+	case OpList:
 		// Delete operation (OpList is used for delete in summary)
 		cmd = m.executeBatchDelete()
 	default:

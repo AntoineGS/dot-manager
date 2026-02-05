@@ -160,8 +160,6 @@ func TestOperationString(t *testing.T) {
 		op   Operation
 	}{
 		{"Restore", OpRestore},
-		{"Restore (Dry Run)", OpRestoreDryRun},
-		{"Add", OpAdd},
 		{"List", OpList},
 		{"Install Packages", OpInstallPackages},
 	}
@@ -236,35 +234,26 @@ func TestModelView(t *testing.T) {
 
 	model := NewModel(cfg, plat, false)
 
-	// Test menu view
+	// Test results view (manage screen)
+	model.Screen = ScreenResults
+	model.Operation = OpList
 	view := model.View()
 	if view == "" {
-		t.Error("Menu view should not be empty")
-	}
-
-	// Test path select view
-	model.Screen = ScreenPathSelect
-
-	view = model.View()
-	if view == "" {
-		t.Error("Path select view should not be empty")
-	}
-
-	// Test confirm view
-	model.Screen = ScreenConfirm
-
-	view = model.View()
-	if view == "" {
-		t.Error("Confirm view should not be empty")
-	}
-
-	// Test results view
-	model.Screen = ScreenResults
-	model.results = []ResultItem{{Name: "test", Success: true, Message: "OK"}}
-
-	view = model.View()
-	if view == "" {
 		t.Error("Results view should not be empty")
+	}
+
+	// Test progress view
+	model.Screen = ScreenProgress
+	view = model.View()
+	if view == "" {
+		t.Error("Progress view should not be empty")
+	}
+
+	// Test summary view
+	model.Screen = ScreenSummary
+	view = model.View()
+	if view == "" {
+		t.Error("Summary view should not be empty")
 	}
 }
 

@@ -20,16 +20,8 @@ type Screen int
 
 // TUI screen types.
 const (
-	// ScreenMenu is the main menu screen
-	ScreenMenu Screen = iota
-	// ScreenPathSelect is the path selection screen
-	ScreenPathSelect
-	// ScreenPackageSelect is the package selection screen
-	ScreenPackageSelect
-	// ScreenConfirm is the confirmation screen
-	ScreenConfirm
 	// ScreenProgress is the progress display screen
-	ScreenProgress
+	ScreenProgress Screen = iota
 	// ScreenResults is the results display screen
 	ScreenResults
 	// ScreenAddForm is the add/edit form screen
@@ -45,10 +37,6 @@ type Operation int
 const (
 	// OpRestore is the restore operation
 	OpRestore Operation = iota
-	// OpRestoreDryRun is the restore dry-run operation
-	OpRestoreDryRun
-	// OpAdd is the add entry operation
-	OpAdd
 	// OpList is the list entries operation
 	OpList
 	// OpInstallPackages is the install packages operation
@@ -59,10 +47,6 @@ func (o Operation) String() string {
 	switch o {
 	case OpRestore:
 		return "Restore"
-	case OpRestoreDryRun:
-		return "Restore (Dry Run)"
-	case OpAdd:
-		return "Add"
 	case OpList:
 		return "List"
 	case OpInstallPackages:
@@ -198,16 +182,13 @@ type Model struct {
 	sortColumn               string // "name", "status", or "path"
 	sortAscending            bool
 	viewHeight               int
-	pathCursor               int
 	height                   int
 	width                    int
 	currentPackageIndex      int
-	menuCursor               int
 	Operation                Operation
 	scrollOffset             int
 	appCursor                int
 	Screen                   Screen
-	packageCursor            int
 	activeForm               FormType
 	DryRun                   bool
 	processing               bool
@@ -629,14 +610,6 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.Screen {
-	case ScreenMenu:
-		return m.updateMenu(msg)
-	case ScreenPathSelect:
-		return m.updatePathSelect(msg)
-	case ScreenPackageSelect:
-		return m.updatePackageSelect(msg)
-	case ScreenConfirm:
-		return m.updateConfirm(msg)
 	case ScreenResults:
 		return m.updateResults(msg)
 	case ScreenProgress:
@@ -656,14 +629,6 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // This is part of the Bubble Tea model interface.
 func (m Model) View() string {
 	switch m.Screen {
-	case ScreenMenu:
-		return m.viewMenu()
-	case ScreenPathSelect:
-		return m.viewPathSelect()
-	case ScreenPackageSelect:
-		return m.viewPackageSelect()
-	case ScreenConfirm:
-		return m.viewConfirm()
 	case ScreenProgress:
 		return m.viewProgress()
 	case ScreenResults:
@@ -977,4 +942,16 @@ func (m *Model) moveToNextExpandedNode() {
 	if m.tableCursor >= len(m.tableRows) {
 		m.tableCursor = 0
 	}
+}
+
+// resolvePath resolves relative paths and expands ~ in paths
+func (m Model) resolvePath(path string) string {
+	// Resolve relative paths against BackupRoot
+	resolvedPath := path
+	if len(path) > 0 && path[0] == '.' {
+		resolvedPath = m.Config.BackupRoot + path[1:]
+	}
+
+	// Expand ~ for file operations
+	return config.ExpandPath(resolvedPath, m.Platform.EnvVars)
 }
