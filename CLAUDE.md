@@ -192,6 +192,49 @@ List fields have their own cursor (`filesCursor`, `filtersCursor`) separate from
 **Help Text**
 Use `RenderHelp()` to show context-sensitive help. Update help based on current state (editing vs navigating). Include vim-style keys alongside arrows (e.g., `"↑/k ↓/j", "navigate"`).
 
+### File Picker Feature (internal/tui/)
+
+The SubEntryForm includes an interactive file picker for adding files to config entries:
+
+**Three-Mode Workflow**
+When adding files to a config entry (Files mode), users progress through three modes:
+
+1. **ModeChoosing**: Choose how to add file
+   - `Browse Files` - Launch interactive file picker
+   - `Type Path` - Enter path manually (legacy text input)
+   - Navigate with `↑/↓` or `k/j`, select with `enter`, cancel with `esc`
+
+2. **ModePicker**: Interactive file browser (Browse mode)
+   - Navigate filesystem with arrow keys or vim keys (`↑/k`, `↓/j`)
+   - Toggle file selection with `space` or `tab` (multi-select supported)
+   - Selected files shown with lighter purple background (`SelectedRowStyle`)
+   - Current cursor position shown with darker purple (`SelectedMenuItemStyle`)
+   - Confirm selections with `enter`, cancel with `esc`
+
+3. **ModeTextInput**: Manual text entry (Type mode)
+   - Type relative file path directly
+   - Confirm with `enter`, cancel with `esc`
+
+**Path Resolution**
+- File picker starts in target directory (or nearest existing parent)
+- Selected files are stored as absolute paths internally (`selectedFiles` map)
+- On confirmation, absolute paths are converted to relative paths (relative to target)
+- Only files within target directory hierarchy are accepted
+- Uses `path_utils.go` functions: `expandTargetPath`, `resolvePickerStartDirectory`, `convertToRelativePaths`
+
+**Visual Feedback**
+- Selection count shown at bottom: "N file(s) selected"
+- Success message after adding files: "Added N file(s)"
+- Error messages for invalid paths or files outside target
+- Context-sensitive help text updates based on current mode
+
+**Implementation Notes**
+- `selectedFiles` map tracks absolute paths during picker session
+- `addFileMode` controls current workflow state (ModeNone/ModeChoosing/ModePicker/ModeTextInput)
+- `modeMenuCursor` tracks position in mode selection menu
+- File picker initialized lazily when entering ModePicker
+- Selections cleared after confirmation or cancellation
+
 ### Multi-Selection Feature (internal/tui/)
 
 The TUI supports batch operations through multi-selection mode:
