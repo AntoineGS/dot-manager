@@ -301,6 +301,61 @@ func (m *Model) formatHeaderWithShortcut(text string, shortcut rune, columnName 
 	return result
 }
 
+// updateScrollOffset recalculates scrollOffset based on current cursor position.
+// This should be called after cursor movements in Update() to maintain scroll state.
+func (m *Model) updateScrollOffset() {
+	// Estimate available rows: height minus chrome (header, borders, help, etc.)
+	// Using a conservative estimate that matches typical rendering
+	maxVisibleRows := m.height - 12 // Account for header, borders, help, filter line, etc.
+	if maxVisibleRows < 3 {
+		maxVisibleRows = 3
+	}
+
+	totalRows := len(m.tableRows)
+	if totalRows == 0 {
+		m.scrollOffset = 0
+		return
+	}
+
+	scrollOffset := m.scrollOffset
+
+	// Ensure scroll offset is valid
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	if scrollOffset > totalRows-maxVisibleRows && totalRows > maxVisibleRows {
+		scrollOffset = totalRows - maxVisibleRows
+	}
+	if totalRows <= maxVisibleRows {
+		scrollOffset = 0
+		m.scrollOffset = scrollOffset
+		return
+	}
+
+	// Calculate cursor position relative to viewport
+	cursorPosInViewport := m.tableCursor - scrollOffset
+
+	// Smooth scrolling: keep cursor within buffer zone from edges
+	if cursorPosInViewport < ScrollOffsetMargin {
+		// Cursor too close to top - scroll up to maintain buffer
+		scrollOffset = m.tableCursor - ScrollOffsetMargin
+		if scrollOffset < 0 {
+			scrollOffset = 0
+		}
+	} else if cursorPosInViewport >= maxVisibleRows-ScrollOffsetMargin {
+		// Cursor too close to bottom - scroll down to maintain buffer
+		scrollOffset = m.tableCursor - maxVisibleRows + ScrollOffsetMargin + 1
+		if scrollOffset+maxVisibleRows > totalRows {
+			scrollOffset = totalRows - maxVisibleRows
+			if scrollOffset < 0 {
+				scrollOffset = 0
+			}
+		}
+	}
+
+	m.scrollOffset = scrollOffset
+}
+
 // renderTable renders the table using lipgloss with custom styling.
 // availableHeight is the number of lines available for the entire table (including borders/headers).
 func (m *Model) renderTable(availableHeight int) string {
@@ -958,6 +1013,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Move cursor up
 			if m.tableCursor > 0 {
 				m.tableCursor--
+				m.updateScrollOffset()
 			}
 			return m, nil
 		}
@@ -970,6 +1026,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Move cursor down
 			if m.tableCursor < len(m.tableRows)-1 {
 				m.tableCursor++
+				m.updateScrollOffset()
 			}
 			return m, nil
 		}

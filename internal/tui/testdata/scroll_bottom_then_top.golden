@@ -3,7 +3,10 @@
   ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
   │ name ↑                │ status                │ info                  │ path                 │
   ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
-  │ ↑ 4 more above        │                       │                       │                      │
+  │ ▶ app-01              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-02              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-03              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-04              │ Missing               │ 1 entry               │                      │
   │ ▶ app-05              │ Missing               │ 1 entry               │                      │
   │ ▶ app-06              │ Missing               │ 1 entry               │                      │
   │ ▶ app-07              │ Missing               │ 1 entry               │                      │
@@ -20,10 +23,7 @@
   │ ▶ app-18              │ Missing               │ 1 entry               │                      │
   │ ▶ app-19              │ Missing               │ 1 entry               │                      │
   │ ▶ app-20              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-21              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-22              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-23              │ Missing               │ 1 entry               │                      │
-  │ ↓ 17 more below       │                       │                       │                      │
+  │ ↓ 20 more below       │                       │                       │                      │
   └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
 
 

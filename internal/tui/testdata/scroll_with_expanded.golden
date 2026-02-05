@@ -1,24 +1,30 @@
 
-    filter: on (showing 15 of 15 apps)
-  ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
-  │ name ↑                │ status                │ info                  │ path                 │
-  ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
-  │ ▶ app-01              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-02              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-03              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-04              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-05              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-06              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-07              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-08              │ Missing               │ 5 entries             │                      │
-  │ ▶ app-09              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-10              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-11              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-12              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-13              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-14              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-15              │ Missing               │ 1 entry               │                      │
-  └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
+    filter: on (showing 25 of 25 apps)
+  ┌──────────────────────┬──────────────────────┬─────────────────────┬──────────────────────────┐
+  │ name ↑               │ status               │ info                │ path                     │
+  ├──────────────────────┼──────────────────────┼─────────────────────┼──────────────────────────┤
+  │ ▶ app-01             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-02             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-03             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-04             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-05             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-06             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-07             │ Missing              │ 1 entry             │                          │
+  │ ▼ app-08             │ Missing              │ 5 entries           │                          │
+  │   ├─ entry-5         │ Missing              │ folder              │ ~/.config/app-08/entry-5 │
+  │   ├─ entry-1         │ Missing              │ folder              │ ~/.config/app-08/entry-1 │
+  │   ├─ entry-2         │ Missing              │ folder              │ ~/.config/app-08/entry-2 │
+  │   ├─ entry-3         │ Missing              │ folder              │ ~/.config/app-08/entry-3 │
+  │   └─ entry-4         │ Missing              │ folder              │ ~/.config/app-08/entry-4 │
+  │ ▶ app-09             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-10             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-11             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-12             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-13             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-14             │ Missing              │ 1 entry             │                          │
+  │ ▶ app-15             │ Missing              │ 1 entry             │                          │
+  │ ↓ 10 more below      │                      │                     │                          │
+  └──────────────────────┴──────────────────────┴─────────────────────┴──────────────────────────┘
 
 
-  / search  Add app  add entry  edit  delete  restore  install  quit
+  / search  Add app  add entry  edit  delete  restore  quit
