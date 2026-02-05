@@ -10,6 +10,10 @@ import (
 	"github.com/sebdah/goldie/v2"
 )
 
+const (
+	nvimAppName = "nvim"
+)
+
 // TestScreenResults_Snapshots tests the visual output of ScreenResults
 // in various states using golden file snapshots.
 func TestScreenResults_Snapshots(t *testing.T) {
@@ -63,14 +67,6 @@ func createTestModel() *Model {
 
 // Placeholder setup functions (to be implemented in Tasks 4-6)
 
-func setupBasicList(_ *Model) {
-	// TODO: Implement in Task 4
-}
-
-func setupAppExpanded(_ *Model) {
-	// TODO: Implement in Task 4
-}
-
 func setupMultiSelect(_ *Model) {
 	// TODO: Implement in Task 4
 }
@@ -89,4 +85,106 @@ func setupScrollBottom(_ *Model) {
 
 func setupScrollWithExpanded(_ *Model) {
 	// TODO: Implement in Task 6
+}
+
+// setupBasicList creates a basic list view with 5 collapsed applications.
+// Tests: basic rendering, spacing, help text.
+func setupBasicList(m *Model) {
+	// Set fixed dimensions for consistent rendering
+	m.width = 100
+	m.height = 30
+
+	// Create 5 simple applications
+	m.Config.Applications = []config.Application{
+		{
+			Name:        "bash",
+			Description: "Bash shell",
+			Entries: []config.SubEntry{
+				{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+			},
+		},
+		{
+			Name:        "git",
+			Description: "Git version control",
+			Entries: []config.SubEntry{
+				{Name: "gitconfig", Backup: "./git", Targets: map[string]string{"linux": "~/.gitconfig"}},
+			},
+		},
+		{
+			Name:        nvimAppName,
+			Description: "Neovim text editor",
+			Entries: []config.SubEntry{
+				{Name: "init", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
+			},
+		},
+		{
+			Name:        "tmux",
+			Description: "Terminal multiplexer",
+			Entries: []config.SubEntry{
+				{Name: "tmux.conf", Backup: "./tmux", Targets: map[string]string{"linux": "~/.tmux.conf"}},
+			},
+		},
+		{
+			Name:        "zsh",
+			Description: "Z shell",
+			Entries: []config.SubEntry{
+				{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+			},
+		},
+	}
+
+	// Initialize the model
+	m.initApplicationItems()
+	m.Screen = ScreenResults
+	m.Operation = OpList
+	m.appCursor = 0
+}
+
+// setupAppExpanded creates a view with expanded application showing sub-entries.
+// Tests: indentation, sub-entry rendering, expansion indicator.
+func setupAppExpanded(m *Model) {
+	m.width = 100
+	m.height = 30
+
+	// Create 3 apps, middle one has multiple sub-entries
+	m.Config.Applications = []config.Application{
+		{
+			Name:        "bash",
+			Description: "Bash shell",
+			Entries: []config.SubEntry{
+				{Name: "bashrc", Backup: "./bash", Targets: map[string]string{"linux": "~/.bashrc"}},
+			},
+		},
+		{
+			Name:        nvimAppName,
+			Description: "Neovim text editor",
+			Entries: []config.SubEntry{
+				{Name: "init.lua", Backup: "./nvim/init", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
+				{Name: "plugins", Backup: "./nvim/plugins", Targets: map[string]string{"linux": "~/.config/nvim/lua/plugins"}},
+				{Name: "mappings", Backup: "./nvim/mappings", Targets: map[string]string{"linux": "~/.config/nvim/lua/mappings.lua"}},
+				{Name: "settings", Backup: "./nvim/settings", Targets: map[string]string{"linux": "~/.config/nvim/lua/settings.lua"}},
+			},
+		},
+		{
+			Name:        "zsh",
+			Description: "Z shell",
+			Entries: []config.SubEntry{
+				{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
+			},
+		},
+	}
+
+	m.initApplicationItems()
+
+	// Expand the middle app (nvim, index 1 after sorting)
+	for i, app := range m.Applications {
+		if app.Application.Name == nvimAppName {
+			m.Applications[i].Expanded = true
+			break
+		}
+	}
+
+	m.Screen = ScreenResults
+	m.Operation = OpList
+	m.appCursor = 1 // Cursor on nvim
 }
