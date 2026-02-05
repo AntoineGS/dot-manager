@@ -43,3 +43,10 @@ const (
 	SortColumnStatus = "status"
 	SortColumnPath   = "path"
 )
+
+// Scrolling behavior constants
+const (
+	// ScrollOffsetMargin is the minimum number of rows to keep between cursor and viewport edges
+	// Similar to vim's 'scrolloff' setting - provides smooth scrolling with buffer zone
+	ScrollOffsetMargin = 3
+)

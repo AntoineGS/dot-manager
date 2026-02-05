@@ -339,20 +339,33 @@ func (m *Model) renderTable(availableHeight int) string {
 
 	totalRows := len(m.tableRows)
 
-	// Preserve scroll position when possible (e.g., when expanding/collapsing nodes)
-	// Only adjust if cursor moves out of the current view
+	// Implement smooth incremental scrolling with buffer zone (like vim's scrolloff)
 	scrollOffset := m.scrollOffset
 
-	// Check if cursor is still in view with current scroll offset
-	cursorInView := m.tableCursor >= scrollOffset && m.tableCursor < scrollOffset+maxVisibleRows
+	// Ensure scroll offset is valid
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	if scrollOffset > totalRows-maxVisibleRows && totalRows > maxVisibleRows {
+		scrollOffset = totalRows - maxVisibleRows
+	}
+	if totalRows <= maxVisibleRows {
+		scrollOffset = 0 // Show all rows if they fit
+	}
 
-	if !cursorInView || scrollOffset < 0 || scrollOffset > totalRows {
-		// Cursor out of view or invalid offset - recalculate to center cursor
-		halfView := maxVisibleRows / 2
-		scrollOffset = m.tableCursor - halfView
+	// Calculate cursor position relative to viewport
+	cursorPosInViewport := m.tableCursor - scrollOffset
+
+	// Smooth scrolling: keep cursor within buffer zone from edges
+	if cursorPosInViewport < ScrollOffsetMargin {
+		// Cursor too close to top - scroll up to maintain buffer
+		scrollOffset = m.tableCursor - ScrollOffsetMargin
 		if scrollOffset < 0 {
 			scrollOffset = 0
 		}
+	} else if cursorPosInViewport >= maxVisibleRows-ScrollOffsetMargin {
+		// Cursor too close to bottom - scroll down to maintain buffer
+		scrollOffset = m.tableCursor - maxVisibleRows + ScrollOffsetMargin + 1
 		if scrollOffset+maxVisibleRows > totalRows {
 			scrollOffset = totalRows - maxVisibleRows
 			if scrollOffset < 0 {
