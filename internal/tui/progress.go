@@ -1115,6 +1115,23 @@ func (m Model) viewListTable() string {
 		b.WriteString("\n")
 	}
 
+	// Filter banner (when filter is enabled)
+	if m.filterEnabled {
+		visibleCount := 0
+		totalCount := len(m.Applications)
+
+		// Count visible apps
+		for _, app := range m.Applications {
+			if !app.IsFiltered {
+				visibleCount++
+			}
+		}
+
+		filterBanner := fmt.Sprintf("Filter: ON (showing %d of %d apps)", visibleCount, totalCount)
+		b.WriteString(SelectedRowStyle.Render(filterBanner))
+		b.WriteString("\n")
+	}
+
 	b.WriteString("\n")
 
 	// Initialize table if not already initialized
@@ -1173,6 +1190,15 @@ func (m Model) viewListTable() string {
 			b.WriteString(WarningStyle.Render(fmt.Sprintf("Delete '%s'? ", name)))
 			b.WriteString(RenderHelpWithWidth(m.width, "y/enter", "yes", "n/esc", "no"))
 		}
+	case m.confirmingFilterToggle:
+		// Filter toggle confirmation dialog
+		itemText := "item(s)"
+		if m.filterToggleHiddenCount == 1 {
+			itemText = "item"
+		}
+		prompt := fmt.Sprintf("Enabling filter will hide %d selected %s. Continue? (y/n)",
+			m.filterToggleHiddenCount, itemText)
+		b.WriteString(WarningStyle.Render(prompt))
 	case m.searching:
 		b.WriteString(RenderHelpWithWidth(m.width,
 			"enter", "confirm",
@@ -1201,6 +1227,7 @@ func (m Model) viewListTable() string {
 			// Normal mode help text
 			helpItems = []string{
 				"/", "search",
+				"f", "filter",
 				"A", "add app",
 				"a", "add entry",
 				"e", "edit",
