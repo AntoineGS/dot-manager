@@ -902,7 +902,7 @@ func (m Model) renderApplicationFormHelp() string {
 	ft := m.getApplicationFieldType()
 
 	if m.applicationForm.editingPackage {
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter", "save",
 			"esc", "cancel",
 		)
@@ -911,26 +911,26 @@ func (m Model) renderApplicationFormHelp() string {
 	if m.applicationForm.addingFilter || m.applicationForm.editingFilter {
 		switch m.applicationForm.filterAddStep {
 		case filterStepType:
-			return RenderHelp(
+			return RenderHelpWithWidth(m.width,
 				"←/h →/l", "select type",
 				"↓/j", "next step",
 				"enter/tab", "next",
 				"esc", "cancel",
 			)
 		case filterStepKey:
-			return RenderHelp(
+			return RenderHelpWithWidth(m.width,
 				"←/h →/l", "select key",
 				"enter/tab", "next",
 				"esc", "cancel",
 			)
 		case filterStepValue:
 			if m.applicationForm.editingFilterValue {
-				return RenderHelp(
+				return RenderHelpWithWidth(m.width,
 					"enter", "save filter",
 					"esc", "cancel edit",
 				)
 			}
-			return RenderHelp(
+			return RenderHelpWithWidth(m.width,
 				"enter/e", "edit value",
 				"esc", "cancel",
 			)
@@ -938,7 +938,7 @@ func (m Model) renderApplicationFormHelp() string {
 	}
 
 	if m.applicationForm.editingField {
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter/tab", "save",
 			"esc", "cancel edit",
 		)
@@ -949,7 +949,7 @@ func (m Model) renderApplicationFormHelp() string {
 		if m.applicationForm.packagesCursor >= 0 && m.applicationForm.packagesCursor < len(knownPackageManagers) {
 			manager := knownPackageManagers[m.applicationForm.packagesCursor]
 			if m.applicationForm.packageManagers[manager] != "" {
-				return RenderHelp(
+				return RenderHelpWithWidth(m.width,
 					"enter/e", "edit",
 					"d/del", "clear",
 					"s", "save",
@@ -957,7 +957,7 @@ func (m Model) renderApplicationFormHelp() string {
 				)
 			}
 		}
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter/e", "set package",
 			"s", "save",
 			"q", "back",
@@ -966,14 +966,14 @@ func (m Model) renderApplicationFormHelp() string {
 
 	if ft == appFieldFilters {
 		if m.applicationForm.filtersCursor < len(m.applicationForm.filters) {
-			return RenderHelp(
+			return RenderHelpWithWidth(m.width,
 				"enter", "edit",
 				"d/del", "remove",
 				"s", "save",
 				"q", "back",
 			)
 		}
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter", "add filter",
 			"s", "save",
 			"q", "back",
@@ -981,7 +981,7 @@ func (m Model) renderApplicationFormHelp() string {
 	}
 
 	// Text field focused (not editing)
-	return RenderHelp(
+	return RenderHelpWithWidth(m.width,
 		"enter/e", "edit",
 		"s", "save",
 		"q", "back",

@@ -45,7 +45,7 @@ func (m Model) viewSummary() string {
 
 	// Help
 	b.WriteString("\n\n")
-	b.WriteString(RenderHelp(
+	b.WriteString(RenderHelpWithWidth(m.width,
 		"y/enter", "confirm",
 		"n/esc", "cancel",
 		"q", "quit",

@@ -159,7 +159,7 @@ func (m Model) viewConfirm() string {
 
 	// Help
 	b.WriteString("\n")
-	b.WriteString(RenderHelp(
+	b.WriteString(RenderHelpWithWidth(m.width,
 		"y/enter", "confirm",
 		"n/esc", "cancel",
 	))

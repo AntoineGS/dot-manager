@@ -186,14 +186,12 @@ var (
 
 	// FilterHighlightStyle is the style for highlighted filter matches with amber background.
 	FilterHighlightStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#000")).
-				Background(accentColor).
+				Foreground(mutedColor).
 				Bold(true)
 
 	// MultiSelectBannerStyle is the style for the multi-select banner showing selection counts.
 	MultiSelectBannerStyle = lipgloss.NewStyle().
-				Foreground(textColor).
-				Background(primaryColor).
+				Foreground(mutedColor).
 				Bold(true).
 				Padding(0, 2).
 				MarginTop(1).
@@ -223,8 +221,10 @@ func RenderHelpWithWidth(width int, keys ...string) string {
 	}
 
 	var lines []string
-	var currentLine string
+	var lineTexts []string    // Styled text for current line
+	var currentVisibleLen int // Track visible length separately
 	separator := "  "
+	separatorLen := len(separator)
 
 	for i := 0; i < len(keys); i += 2 {
 		key := keys[i]
@@ -269,35 +269,26 @@ func RenderHelpWithWidth(width int, keys ...string) string {
 			itemLen = len(key) + 1 + len(desc)
 		}
 
-		// Calculate current line length (approximate, ignoring ANSI)
-		currentLen := 0
-
-		if currentLine != "" {
-			// Count visible characters roughly
-			for _, r := range currentLine {
-				if r != '\x1b' {
-					currentLen++
-				}
-			}
-			// Rough estimate: subtract ANSI overhead per item
-			currentLen = len(currentLine) / 2
-		}
-
 		// Check if adding this item would exceed width
-		if currentLine != "" && currentLen+len(separator)+itemLen > width-4 {
+		willExceed := len(lineTexts) > 0 && currentVisibleLen+separatorLen+itemLen > width-4
+
+		if willExceed {
 			// Wrap to new line
-			lines = append(lines, currentLine)
-			currentLine = itemText
+			lines = append(lines, joinLineTexts(lineTexts, separator))
+			lineTexts = []string{itemText}
+			currentVisibleLen = itemLen
 		} else {
-			if currentLine != "" {
-				currentLine += separator
+			lineTexts = append(lineTexts, itemText)
+			if len(lineTexts) > 1 {
+				currentVisibleLen += separatorLen
 			}
-			currentLine += itemText
+			currentVisibleLen += itemLen
 		}
 	}
 
-	if currentLine != "" {
-		lines = append(lines, currentLine)
+	// Add remaining items
+	if len(lineTexts) > 0 {
+		lines = append(lines, joinLineTexts(lineTexts, separator))
 	}
 
 	// Join lines and apply help style
@@ -311,6 +302,18 @@ func RenderHelpWithWidth(width int, keys ...string) string {
 	}
 
 	return HelpStyle.Render(result)
+}
+
+// joinLineTexts joins styled text items with a separator.
+func joinLineTexts(items []string, separator string) string {
+	result := ""
+	for i, item := range items {
+		if i > 0 {
+			result += separator
+		}
+		result += item
+	}
+	return result
 }
 
 // RenderCursor renders a cursor indicator for list items

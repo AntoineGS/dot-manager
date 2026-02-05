@@ -881,14 +881,14 @@ func (m Model) renderSubEntryFormHelp() string {
 	ft := m.getSubEntryFieldType()
 
 	if m.subEntryForm.addingFile {
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter", "add file",
 			"esc", "cancel",
 		)
 	}
 
 	if m.subEntryForm.editingFile {
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter", "save",
 			"esc", "cancel",
 		)
@@ -897,7 +897,7 @@ func (m Model) renderSubEntryFormHelp() string {
 	if m.subEntryForm.editingField {
 		// Editing a text field
 		if m.subEntryForm.showSuggestions && len(m.subEntryForm.suggestions) > 0 && m.subEntryForm.suggestionCursor >= 0 {
-			return RenderHelp(
+			return RenderHelpWithWidth(m.width,
 				"↑/↓", "select",
 				"tab/enter", "accept",
 				"esc", "cancel edit",
@@ -905,14 +905,14 @@ func (m Model) renderSubEntryFormHelp() string {
 		}
 
 		if m.subEntryForm.showSuggestions && len(m.subEntryForm.suggestions) > 0 {
-			return RenderHelp(
+			return RenderHelpWithWidth(m.width,
 				"↑/↓", "select suggestion",
 				"enter/tab", "save",
 				"esc", "cancel edit",
 			)
 		}
 
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter/tab", "save",
 			"esc", "cancel edit",
 		)
@@ -921,7 +921,7 @@ func (m Model) renderSubEntryFormHelp() string {
 	if ft == subFieldFiles {
 		// Files list focused
 		if m.subEntryForm.filesCursor < len(m.subEntryForm.files) {
-			return RenderHelp(
+			return RenderHelpWithWidth(m.width,
 				"enter/e", "edit",
 				"d/del", "remove",
 				"s", "save",
@@ -929,7 +929,7 @@ func (m Model) renderSubEntryFormHelp() string {
 			)
 		}
 
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter/e", "add file",
 			"s", "save",
 			"q", "back",
@@ -938,7 +938,7 @@ func (m Model) renderSubEntryFormHelp() string {
 
 	if m.isSubEntryTextInputField() {
 		// Text field focused (not editing)
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter/e", "edit",
 			"s", "save",
 			"q", "back",
@@ -947,14 +947,14 @@ func (m Model) renderSubEntryFormHelp() string {
 
 	if m.isSubEntryToggleField() {
 		// Toggle field focused
-		return RenderHelp(
+		return RenderHelpWithWidth(m.width,
 			"enter/space", "toggle",
 			"s", "save",
 			"q", "back",
 		)
 	}
 
-	return RenderHelp(
+	return RenderHelpWithWidth(m.width,
 		"enter/e", "edit",
 		"s", "save",
 		"q", "back",
