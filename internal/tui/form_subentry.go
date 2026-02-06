@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -1418,33 +1419,41 @@ func (m Model) updateFileAddModeChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up", "k":
-		// Move up with wrapping (0=Browse, 1=Type)
+		// Move up with wrapping (0=Browse target, 1=Browse source, 2=Type)
 		m.subEntryForm.modeMenuCursor--
 		if m.subEntryForm.modeMenuCursor < 0 {
-			m.subEntryForm.modeMenuCursor = 1
+			m.subEntryForm.modeMenuCursor = 2
 		}
 		return m, nil
 
 	case KeyDown, "j":
 		// Move down with wrapping
 		m.subEntryForm.modeMenuCursor++
-		if m.subEntryForm.modeMenuCursor > 1 {
+		if m.subEntryForm.modeMenuCursor > 2 {
 			m.subEntryForm.modeMenuCursor = 0
 		}
 		return m, nil
 
 	case KeyEnter:
 		// Select the current option
-		if m.subEntryForm.modeMenuCursor == 0 {
-			// Browse Files - transition to ModePicker
-			// Initialize file picker
+		switch m.subEntryForm.modeMenuCursor {
+		case 0:
+			// Browse target directory - transition to ModePicker
 			if err := m.initFilePicker(); err != nil {
 				m.subEntryForm.err = fmt.Sprintf("failed to initialize file picker: %v", err)
 				m.subEntryForm.addFileMode = ModeNone
 				return m, nil
 			}
 			m.subEntryForm.addFileMode = ModePicker
-		} else {
+		case 1:
+			// Browse source directory - transition to ModePicker starting at backup path
+			if err := m.initFilePickerForBackup(); err != nil {
+				m.subEntryForm.err = fmt.Sprintf("failed to initialize file picker: %v", err)
+				m.subEntryForm.addFileMode = ModeNone
+				return m, nil
+			}
+			m.subEntryForm.addFileMode = ModePicker
+		case 2:
 			// Type Path - transition to ModeTextInput
 			m.subEntryForm.addFileMode = ModeTextInput
 			m.subEntryForm.addingFile = true
@@ -1469,20 +1478,19 @@ func (m Model) viewFileAddModeMenu() string {
 	b.WriteString(TitleStyle.Render("  Choose how to add file:"))
 	b.WriteString("\n\n")
 
-	// Browse option
-	browseText := "Browse Files (pick from filesystem)"
-	if m.subEntryForm.modeMenuCursor == 0 {
-		b.WriteString(fmt.Sprintf("  %s\n", SelectedMenuItemStyle.Render("→ "+browseText)))
-	} else {
-		b.WriteString(fmt.Sprintf("    %s\n", browseText))
+	// Menu options
+	options := []string{
+		"Browse target directory (pick from target path)",
+		"Browse source directory (pick from backup path)",
+		"Type Path (enter manually)",
 	}
 
-	// Type option
-	typeText := "Type Path (enter manually)"
-	if m.subEntryForm.modeMenuCursor == 1 {
-		b.WriteString(fmt.Sprintf("  %s\n", SelectedMenuItemStyle.Render("→ "+typeText)))
-	} else {
-		b.WriteString(fmt.Sprintf("    %s\n", typeText))
+	for i, text := range options {
+		if m.subEntryForm.modeMenuCursor == i {
+			b.WriteString(fmt.Sprintf("  %s\n", SelectedMenuItemStyle.Render("→ "+text)))
+		} else {
+			b.WriteString(fmt.Sprintf("    %s\n", text))
+		}
 	}
 
 	b.WriteString("\n")
@@ -1517,6 +1525,54 @@ func (m *Model) initFilePicker() error {
 	startDir, err := resolvePickerStartDirectory(targetPath, m.Platform.OS)
 	if err != nil {
 		return fmt.Errorf("failed to resolve start directory: %w", err)
+	}
+
+	// Initialize the file picker
+	picker := filepicker.New()
+	picker.CurrentDirectory = startDir
+	picker.DirAllowed = true
+	picker.FileAllowed = true
+	picker.ShowHidden = true
+
+	m.subEntryForm.filePicker = picker
+
+	return nil
+}
+
+// initFilePickerForBackup initializes the file picker starting at the backup/source directory
+func (m *Model) initFilePickerForBackup() error {
+	if m.subEntryForm == nil {
+		return fmt.Errorf("subEntryForm is nil")
+	}
+
+	// Get the backup path and resolve it relative to the config directory
+	backupPath := m.subEntryForm.backupInput.Value()
+
+	var startDir string
+	if backupPath == "" {
+		// No backup path set, fall back to config directory
+		if m.ConfigPath != "" {
+			startDir = filepath.Dir(m.ConfigPath)
+		} else {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to get home directory: %w", err)
+			}
+			startDir = home
+		}
+	} else {
+		// Resolve backup path relative to the config directory
+		configDir := filepath.Dir(m.ConfigPath)
+		resolvedPath := backupPath
+		if !filepath.IsAbs(backupPath) {
+			resolvedPath = filepath.Join(configDir, backupPath)
+		}
+
+		var err error
+		startDir, err = resolvePickerStartDirectory(resolvedPath, m.Platform.OS)
+		if err != nil {
+			return fmt.Errorf("failed to resolve start directory: %w", err)
+		}
 	}
 
 	// Initialize the file picker

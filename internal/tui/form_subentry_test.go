@@ -265,10 +265,10 @@ func TestUpdateFileAddModeChoice_Navigation(t *testing.T) {
 		key            string
 		expectedCursor int
 	}{
-		{"Down arrow moves to Type", KeyDown, 1},
-		{"Up arrow from Browse wraps to Type", "up", 1},
-		{"j key moves to Type", "j", 1},
-		{"k key from Browse wraps to Type", "k", 1},
+		{"Down arrow moves to Browse source", KeyDown, 1},
+		{"Up arrow from Browse target wraps to Type", "up", 2},
+		{"j key moves to Browse source", "j", 1},
+		{"k key from Browse target wraps to Type", "k", 2},
 	}
 
 	for _, tt := range tests {
@@ -304,8 +304,8 @@ func TestUpdateFileAddModeChoice_WrapAround(t *testing.T) {
 	m.initSubEntryFormNew(0)
 	m.subEntryForm.addFileMode = ModeChoosing
 
-	// Test down wrapping: Type -> Browse
-	m.subEntryForm.modeMenuCursor = 1
+	// Test down wrapping: Type -> Browse target
+	m.subEntryForm.modeMenuCursor = 2
 	updatedModel, _ := m.updateFileAddModeChoice(createKeyMsg(KeyDown))
 	model := updatedModel.(Model)
 
@@ -313,13 +313,13 @@ func TestUpdateFileAddModeChoice_WrapAround(t *testing.T) {
 		t.Errorf("cursor = %d, want 0 after wrapping down", model.subEntryForm.modeMenuCursor)
 	}
 
-	// Test up wrapping: Browse -> Type
+	// Test up wrapping: Browse target -> Type
 	m.subEntryForm.modeMenuCursor = 0
 	updatedModel, _ = m.updateFileAddModeChoice(createKeyMsg("up"))
 	model = updatedModel.(Model)
 
-	if model.subEntryForm.modeMenuCursor != 1 {
-		t.Errorf("cursor = %d, want 1 after wrapping up", model.subEntryForm.modeMenuCursor)
+	if model.subEntryForm.modeMenuCursor != 2 {
+		t.Errorf("cursor = %d, want 2 after wrapping up", model.subEntryForm.modeMenuCursor)
 	}
 }
 
@@ -363,7 +363,7 @@ func TestUpdateFileAddModeChoice_SelectType(t *testing.T) {
 	m := NewModel(cfg, plat, false)
 	m.initSubEntryFormNew(0)
 	m.subEntryForm.addFileMode = ModeChoosing
-	m.subEntryForm.modeMenuCursor = 1
+	m.subEntryForm.modeMenuCursor = 2
 
 	// Press enter to select Type
 	updatedModel, _ := m.updateFileAddModeChoice(createKeyMsg(KeyEnter))
@@ -428,7 +428,8 @@ func TestViewFileAddModeMenu_Content(t *testing.T) {
 	// Check for expected content
 	expectedStrings := []string{
 		"Choose how to add file:",
-		"Browse Files",
+		"Browse target directory",
+		"Browse source directory",
 		"Type Path",
 	}
 
