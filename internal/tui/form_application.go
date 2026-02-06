@@ -43,6 +43,26 @@ func (m *Model) initApplicationFormNew() {
 	packageNameInput.CharLimit = 128
 	packageNameInput.Width = 40
 
+	gitURLInput := textinput.New()
+	gitURLInput.Placeholder = PlaceholderGitURL
+	gitURLInput.CharLimit = 256
+	gitURLInput.Width = 40
+
+	gitBranchInput := textinput.New()
+	gitBranchInput.Placeholder = PlaceholderGitBranch
+	gitBranchInput.CharLimit = 128
+	gitBranchInput.Width = 40
+
+	gitLinuxInput := textinput.New()
+	gitLinuxInput.Placeholder = PlaceholderGitLinux
+	gitLinuxInput.CharLimit = 256
+	gitLinuxInput.Width = 40
+
+	gitWindowsInput := textinput.New()
+	gitWindowsInput.Placeholder = PlaceholderGitWindows
+	gitWindowsInput.CharLimit = 256
+	gitWindowsInput.Width = 40
+
 	m.applicationForm = &ApplicationForm{
 		nameInput:          nameInput,
 		descriptionInput:   descriptionInput,
@@ -65,6 +85,13 @@ func (m *Model) initApplicationFormNew() {
 		originalValue:      "",
 		editAppIdx:         -1,
 		err:                "",
+		gitURLInput:        gitURLInput,
+		gitBranchInput:     gitBranchInput,
+		gitLinuxInput:      gitLinuxInput,
+		gitWindowsInput:    gitWindowsInput,
+		gitFieldCursor:     -1,
+		hasGitPackage:      false,
+		gitSudo:            false,
 	}
 
 	m.activeForm = FormApplication
@@ -110,6 +137,26 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 	packageNameInput.CharLimit = 128
 	packageNameInput.Width = 40
 
+	gitURLInput := textinput.New()
+	gitURLInput.Placeholder = PlaceholderGitURL
+	gitURLInput.CharLimit = 256
+	gitURLInput.Width = 40
+
+	gitBranchInput := textinput.New()
+	gitBranchInput.Placeholder = PlaceholderGitBranch
+	gitBranchInput.CharLimit = 128
+	gitBranchInput.Width = 40
+
+	gitLinuxInput := textinput.New()
+	gitLinuxInput.Placeholder = PlaceholderGitLinux
+	gitLinuxInput.CharLimit = 256
+	gitLinuxInput.Width = 40
+
+	gitWindowsInput := textinput.New()
+	gitWindowsInput.Placeholder = PlaceholderGitWindows
+	gitWindowsInput.CharLimit = 256
+	gitWindowsInput.Width = 40
+
 	// Load filters
 	var filters []FilterCondition
 	for filterIdx, f := range app.Filters {
@@ -145,6 +192,26 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 		}
 	}
 
+	// Load git package if present
+	hasGitPackage := false
+	gitSudo := false
+
+	if app.Package != nil {
+		if gitVal, ok := app.Package.Managers[TypeGit]; ok && gitVal.IsGit() {
+			hasGitPackage = true
+			gitURLInput.SetValue(gitVal.Git.URL)
+			gitBranchInput.SetValue(gitVal.Git.Branch)
+			gitSudo = gitVal.Git.Sudo
+
+			if target, ok := gitVal.Git.Targets[OSLinux]; ok {
+				gitLinuxInput.SetValue(target)
+			}
+			if target, ok := gitVal.Git.Targets[OSWindows]; ok {
+				gitWindowsInput.SetValue(target)
+			}
+		}
+	}
+
 	m.applicationForm = &ApplicationForm{
 		nameInput:          nameInput,
 		descriptionInput:   descriptionInput,
@@ -167,6 +234,13 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 		originalValue:      "",
 		editAppIdx:         configAppIdx,
 		err:                "",
+		gitURLInput:        gitURLInput,
+		gitBranchInput:     gitBranchInput,
+		gitLinuxInput:      gitLinuxInput,
+		gitWindowsInput:    gitWindowsInput,
+		gitFieldCursor:     -1,
+		hasGitPackage:      hasGitPackage,
+		gitSudo:            gitSudo,
 	}
 
 	m.activeForm = FormApplication
@@ -1095,10 +1169,58 @@ func NewApplicationForm(app config.Application, isEdit bool) *ApplicationForm {
 		editAppIdx = 0
 	}
 
+	// Initialize git text inputs
+	gitURLInput := textinput.New()
+	gitURLInput.Placeholder = PlaceholderGitURL
+	gitURLInput.CharLimit = 256
+	gitURLInput.Width = 40
+
+	gitBranchInput := textinput.New()
+	gitBranchInput.Placeholder = PlaceholderGitBranch
+	gitBranchInput.CharLimit = 128
+	gitBranchInput.Width = 40
+
+	gitLinuxInput := textinput.New()
+	gitLinuxInput.Placeholder = PlaceholderGitLinux
+	gitLinuxInput.CharLimit = 256
+	gitLinuxInput.Width = 40
+
+	gitWindowsInput := textinput.New()
+	gitWindowsInput.Placeholder = PlaceholderGitWindows
+	gitWindowsInput.CharLimit = 256
+	gitWindowsInput.Width = 40
+
+	// Load git package if present
+	hasGitPackage := false
+	gitSudo := false
+
+	if app.Package != nil {
+		if gitVal, ok := app.Package.Managers[TypeGit]; ok && gitVal.IsGit() {
+			hasGitPackage = true
+			gitURLInput.SetValue(gitVal.Git.URL)
+			gitBranchInput.SetValue(gitVal.Git.Branch)
+			gitSudo = gitVal.Git.Sudo
+
+			if target, ok := gitVal.Git.Targets[OSLinux]; ok {
+				gitLinuxInput.SetValue(target)
+			}
+			if target, ok := gitVal.Git.Targets[OSWindows]; ok {
+				gitWindowsInput.SetValue(target)
+			}
+		}
+	}
+
 	return &ApplicationForm{
 		nameInput:        nameInput,
 		descriptionInput: descriptionInput,
 		editAppIdx:       editAppIdx,
+		gitURLInput:      gitURLInput,
+		gitBranchInput:   gitBranchInput,
+		gitLinuxInput:    gitLinuxInput,
+		gitWindowsInput:  gitWindowsInput,
+		gitFieldCursor:   -1,
+		hasGitPackage:    hasGitPackage,
+		gitSudo:          gitSudo,
 	}
 }
 

@@ -308,6 +308,77 @@ func TestBuildFiltersFromConditions(t *testing.T) {
 	})
 }
 
+func TestApplicationForm_GitPackageLoad(t *testing.T) {
+	t.Run("new_form_has_no_git_package", func(t *testing.T) {
+		form := NewApplicationForm(config.Application{Name: "test"}, false)
+		if form.hasGitPackage {
+			t.Error("new form should not have git package")
+		}
+		if form.gitFieldCursor != -1 {
+			t.Errorf("gitFieldCursor = %d, want -1", form.gitFieldCursor)
+		}
+	})
+
+	t.Run("edit_form_loads_git_package", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "neovim"},
+					"git": {Git: &config.GitPackage{
+						URL:    "https://github.com/user/repo.git",
+						Branch: "main",
+						Targets: map[string]string{
+							"linux":   "~/.local/share/app",
+							"windows": "~/AppData/Local/app",
+						},
+						Sudo: true,
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+
+		if !form.hasGitPackage {
+			t.Error("form should have git package")
+		}
+		if form.gitURLInput.Value() != "https://github.com/user/repo.git" {
+			t.Errorf("gitURLInput = %q, want %q", form.gitURLInput.Value(), "https://github.com/user/repo.git")
+		}
+		if form.gitBranchInput.Value() != "main" {
+			t.Errorf("gitBranchInput = %q, want %q", form.gitBranchInput.Value(), "main")
+		}
+		if form.gitLinuxInput.Value() != "~/.local/share/app" {
+			t.Errorf("gitLinuxInput = %q, want %q", form.gitLinuxInput.Value(), "~/.local/share/app")
+		}
+		if form.gitWindowsInput.Value() != "~/AppData/Local/app" {
+			t.Errorf("gitWindowsInput = %q, want %q", form.gitWindowsInput.Value(), "~/AppData/Local/app")
+		}
+		if !form.gitSudo {
+			t.Error("gitSudo should be true")
+		}
+	})
+
+	t.Run("edit_form_without_git_package", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "neovim"},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+
+		if form.hasGitPackage {
+			t.Error("form should not have git package")
+		}
+		if form.gitURLInput.Value() != "" {
+			t.Errorf("gitURLInput = %q, want empty", form.gitURLInput.Value())
+		}
+	})
+}
+
 func TestBuildPackageSpec(t *testing.T) {
 	t.Run("empty_managers", func(t *testing.T) {
 		result := buildPackageSpec(map[string]string{})
