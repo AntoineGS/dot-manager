@@ -1553,7 +1553,7 @@ func (m Model) getSearchedApplications() []ApplicationItem {
 			}
 		}
 
-		if len(matchingSubItems) > 0 {
+		if appMatches || len(matchingSubItems) > 0 {
 			appCopy := app
 			appCopy.SubItems = matchingSubItems
 			searched = append(searched, appCopy)
