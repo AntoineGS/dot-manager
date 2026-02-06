@@ -17,10 +17,14 @@ const (
 
 // UI element constants
 const (
-	PlaceholderNeovim = "e.g., neovim"
-	IndentSpaces      = "    "
-	CheckboxUnchecked = "[ ]"
-	CheckboxChecked   = "[✓]"
+	PlaceholderNeovim     = "e.g., neovim"
+	PlaceholderGitURL     = "e.g., https://github.com/user/repo.git"
+	PlaceholderGitBranch  = "e.g., main"
+	PlaceholderGitLinux   = "e.g., ~/.local/share/app"
+	PlaceholderGitWindows = "e.g., ~/AppData/Local/app"
+	IndentSpaces          = "    "
+	CheckboxUnchecked     = "[ ]"
+	CheckboxChecked       = "[✓]"
 )
 
 // Entry type constants
