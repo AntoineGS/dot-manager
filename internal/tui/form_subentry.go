@@ -293,6 +293,11 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateSubEntryFilePicker(msg)
 	}
 
+	// Handle manual text input mode (from "Type Path" menu option)
+	if m.subEntryForm.addFileMode == ModeTextInput {
+		return m.updateSubEntryFileInput(msg)
+	}
+
 	// Handle editing a text field
 	if m.subEntryForm.editingField {
 		return m.updateSubEntryFieldInput(msg)
@@ -603,7 +608,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyEnter, " ":
+	case KeyEnter, " ", "e":
 		// If on "Add File" button, start mode selection
 		if m.subEntryForm.filesCursor == len(m.subEntryForm.files) {
 			m.subEntryForm.addFileMode = ModeChoosing
@@ -671,6 +676,7 @@ func (m Model) updateSubEntryFileInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.subEntryForm.addingFile = false
 		m.subEntryForm.editingFile = false
 		m.subEntryForm.editingFileIndex = -1
+		m.subEntryForm.addFileMode = ModeNone
 		m.subEntryForm.newFileInput.SetValue("")
 
 		return m, nil
@@ -693,6 +699,7 @@ func (m Model) updateSubEntryFileInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.subEntryForm.addingFile = false
 		}
 
+		m.subEntryForm.addFileMode = ModeNone
 		m.subEntryForm.newFileInput.SetValue("")
 
 		return m, nil
@@ -1440,6 +1447,9 @@ func (m Model) updateFileAddModeChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			// Type Path - transition to ModeTextInput
 			m.subEntryForm.addFileMode = ModeTextInput
+			m.subEntryForm.addingFile = true
+			m.subEntryForm.newFileInput.SetValue("")
+			m.subEntryForm.newFileInput.Focus()
 		}
 		return m, nil
 	}
@@ -1514,7 +1524,7 @@ func (m *Model) initFilePicker() error {
 	picker.CurrentDirectory = startDir
 	picker.DirAllowed = true
 	picker.FileAllowed = true
-	picker.ShowHidden = false
+	picker.ShowHidden = true
 
 	m.subEntryForm.filePicker = picker
 
