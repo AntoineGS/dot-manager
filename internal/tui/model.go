@@ -137,6 +137,16 @@ type ApplicationForm struct {
 	editingFilter      bool
 	addingFilter       bool
 	editingPackage     bool
+
+	// Git package fields
+	gitURLInput     textinput.Model //nolint:unused // Used in upcoming git package TUI tasks
+	gitBranchInput  textinput.Model //nolint:unused // Used in upcoming git package TUI tasks
+	gitLinuxInput   textinput.Model //nolint:unused // Used in upcoming git package TUI tasks
+	gitWindowsInput textinput.Model //nolint:unused // Used in upcoming git package TUI tasks
+	gitFieldCursor  int             //nolint:unused // -1 = on git label/button, 0-4 = on sub-fields
+	editingGitField bool            //nolint:unused // true when editing a git text field
+	hasGitPackage   bool            //nolint:unused // true when git package is configured/expanded
+	gitSudo         bool            //nolint:unused // sudo toggle for git package
 }
 
 // SubEntryForm holds state for editing SubEntry data

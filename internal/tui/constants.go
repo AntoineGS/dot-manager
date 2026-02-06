@@ -56,3 +56,13 @@ const (
 	OSLinux   = "linux"
 	OSWindows = "windows"
 )
+
+// Git package field indices within the git sub-section
+const (
+	GitFieldURL     = 0
+	GitFieldBranch  = 1
+	GitFieldLinux   = 2
+	GitFieldWindows = 3
+	GitFieldSudo    = 4
+	GitFieldCount   = 5
+)
