@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -407,14 +408,13 @@ func TestRestoreV3MultipleSubEntries(t *testing.T) {
 
 func TestRestoreEntry_PathError(t *testing.T) {
 	tests := []struct {
-		setup       func(t *testing.T, tmpDir string) (*Manager, config.Entry)
-		name        string
-		wantErr     bool
-		wantPathErr bool
+		setup   func(t *testing.T, tmpDir string) (*Manager, config.SubEntry, string)
+		name    string
+		wantErr bool
 	}{
 		{
-			name: "symlink_creation_failure_returns_path_error",
-			setup: func(_ *testing.T, tmpDir string) (*Manager, config.Entry) {
+			name: "symlink_creation_failure_returns_error",
+			setup: func(_ *testing.T, tmpDir string) (*Manager, config.SubEntry, string) {
 				// Create backup but make target dir read-only
 				backupRoot := filepath.Join(tmpDir, "backup")
 				backupDir := filepath.Join(backupRoot, "test")
@@ -447,41 +447,23 @@ func TestRestoreEntry_PathError(t *testing.T) {
 				plat := &platform.Platform{OS: platform.OSLinux}
 				mgr := New(cfg, plat)
 
-				ctx := &config.FilterContext{}
-				entries := cfg.GetAllConfigSubEntries(ctx)
-				// Convert SubEntry to Entry for compatibility with test
-				entry := config.Entry{
-					Name:    entries[0].Name,
-					Backup:  entries[0].Backup,
-					Targets: entries[0].Targets,
-					Files:   entries[0].Files,
-					Sudo:    entries[0].Sudo,
-				}
-				return mgr, entry
+				subEntry := cfg.Applications[0].Entries[0]
+				target := subEntry.GetTarget(plat.OS)
+				return mgr, subEntry, target
 			},
-			wantErr:     true,
-			wantPathErr: true,
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			mgr, entry := tt.setup(t, tmpDir)
+			mgr, subEntry, target := tt.setup(t, tmpDir)
 
-			target := entry.GetTarget(mgr.Platform.OS)
-			err := mgr.restoreEntry(entry, target)
+			err := mgr.restoreSubEntry("test", subEntry, target)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("restoreEntry() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if tt.wantPathErr {
-				var pathErr *PathError
-				if !errors.As(err, &pathErr) {
-					t.Errorf("error is not PathError: %v", err)
-				}
+				t.Errorf("restoreSubEntry() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -642,7 +624,7 @@ func TestCreateSymlink_Success(t *testing.T) {
 
 	target := filepath.Join(tmpDir, "target")
 
-	err := createSymlink(source, target, false)
+	err := createSymlink(context.Background(), source, target, false)
 	if err != nil {
 		t.Fatalf("createSymlink() error = %v", err)
 	}
@@ -664,7 +646,7 @@ func TestCreateSymlink_SourceNotExist(t *testing.T) {
 	source := filepath.Join(tmpDir, "nonexistent")
 	target := filepath.Join(tmpDir, "target")
 
-	err := createSymlink(source, target, false)
+	err := createSymlink(context.Background(), source, target, false)
 	if err == nil {
 		t.Fatal("createSymlink() should fail when source doesn't exist")
 	}
@@ -686,7 +668,7 @@ func TestCreateSymlink_FileSource(t *testing.T) {
 
 	target := filepath.Join(tmpDir, "target.txt")
 
-	err := createSymlink(source, target, false)
+	err := createSymlink(context.Background(), source, target, false)
 	if err != nil {
 		t.Fatalf("createSymlink() error = %v", err)
 	}

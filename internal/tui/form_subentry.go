@@ -42,6 +42,18 @@ const (
 
 // initSubEntryFormNew initializes the form for adding a new sub-entry to an existing application
 func (m *Model) initSubEntryFormNew(appIdx int) {
+	// appIdx is an index into m.Applications (sorted), not m.Config.Applications (unsorted)
+	// We need to find the correct index in m.Config.Applications by application name
+	if appIdx < 0 || appIdx >= len(m.Applications) {
+		return
+	}
+
+	appName := m.Applications[appIdx].Application.Name
+	configAppIdx := m.findConfigApplicationIndex(appName)
+	if configAppIdx < 0 {
+		return
+	}
+
 	nameInput := textinput.New()
 	nameInput.Placeholder = "e.g., nvim-config"
 	nameInput.Focus()
@@ -87,7 +99,7 @@ func (m *Model) initSubEntryFormNew(appIdx int) {
 		suggestions:        nil,
 		suggestionCursor:   -1,
 		showSuggestions:    false,
-		targetAppIdx:       appIdx,
+		targetAppIdx:       configAppIdx,
 		editAppIdx:         -1,
 		editSubIdx:         -1,
 		err:                "",
@@ -1045,7 +1057,7 @@ func (m Model) renderSubEntrySuggestions() string {
 // saveSubEntryForm validates and saves the sub-entry form
 func (m *Model) saveSubEntryForm() error {
 	if m.subEntryForm == nil {
-		return fmt.Errorf("no form data")
+		return errors.New("no form data")
 	}
 
 	name := strings.TrimSpace(m.subEntryForm.nameInput.Value())
@@ -1053,16 +1065,16 @@ func (m *Model) saveSubEntryForm() error {
 
 	// Validation
 	if name == "" {
-		return fmt.Errorf("name is required")
+		return errors.New("name is required")
 	}
 
 	if len(targets) == 0 {
-		return fmt.Errorf("at least one target is required")
+		return errors.New("at least one target is required")
 	}
 
 	backup := strings.TrimSpace(m.subEntryForm.backupInput.Value())
 	if backup == "" {
-		return fmt.Errorf("backup path is required")
+		return errors.New("backup path is required")
 	}
 
 	// Build SubEntry from form
@@ -1076,7 +1088,7 @@ func (m *Model) saveSubEntryForm() error {
 	// Add files if in files mode
 	if !m.subEntryForm.isFolder {
 		if len(m.subEntryForm.files) == 0 {
-			return fmt.Errorf("at least one file is required when using Files mode")
+			return errors.New("at least one file is required when using Files mode")
 		}
 		subEntry.Files = make([]string, len(m.subEntryForm.files))
 		copy(subEntry.Files, m.subEntryForm.files)

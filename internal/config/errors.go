@@ -10,7 +10,6 @@ import (
 var (
 	ErrUnsupportedVersion = errors.New("unsupported config version")
 	ErrInvalidConfig      = errors.New("invalid configuration")
-	ErrFilterMismatch     = errors.New("filter criteria not met")
 )
 
 // ValidationErrors holds multiple validation errors

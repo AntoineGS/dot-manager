@@ -113,22 +113,6 @@ func (m *Manager) GetApplications() []config.Application {
 	return m.Config.GetFilteredApplications(m.FilterCtx)
 }
 
-// logEntryRestore logs restore operations with structured attributes
-func (m *Manager) logEntryRestore(entry config.Entry, target string, err error) {
-	if err != nil {
-		m.logger.Error("restore failed",
-			slog.String("entry", entry.Name),
-			slog.String("target", target),
-			slog.String("error", err.Error()),
-		)
-	} else {
-		m.logger.Info("restore complete",
-			slog.String("entry", entry.Name),
-			slog.String("target", target),
-		)
-	}
-}
-
 // resolvePath expands ~ and environment variables in paths and resolves relative paths
 // against BackupRoot. This ensures paths work correctly even when stored with ~ in config.
 func (m *Manager) resolvePath(path string) string {

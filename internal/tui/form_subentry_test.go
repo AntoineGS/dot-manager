@@ -39,6 +39,12 @@ func TestInitSubEntryFormNew_FilePickerFields(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -251,6 +257,12 @@ func TestUpdateFileAddModeChoice_Navigation(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -296,6 +308,12 @@ func TestUpdateFileAddModeChoice_WrapAround(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -330,6 +348,12 @@ func TestUpdateFileAddModeChoice_SelectBrowse(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -356,6 +380,12 @@ func TestUpdateFileAddModeChoice_SelectType(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -382,6 +412,12 @@ func TestUpdateFileAddModeChoice_Cancel(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -413,6 +449,12 @@ func TestViewFileAddModeMenu_Content(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -457,6 +499,12 @@ func TestInitFilePicker_FromModePicker(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -481,6 +529,12 @@ func TestUpdateSubEntryFilePicker_Cancel(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -514,6 +568,12 @@ func TestAddFileFromPicker_SingleSelection(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -553,6 +613,12 @@ func TestPickerStartDirectory_Resolution(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -638,6 +704,12 @@ func TestFilePicker_MultipleSelections(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}

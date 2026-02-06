@@ -62,61 +62,6 @@ func TestManager_VerboseLogging(t *testing.T) {
 	}
 }
 
-func TestManager_LogEntryRestore_Success(t *testing.T) {
-	t.Parallel()
-	m := setupTestManager(t)
-
-	var buf bytes.Buffer
-	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})
-	m = m.WithLogger(slog.New(handler))
-
-	entry := config.Entry{Name: "test-entry", Backup: "./test"}
-	m.logEntryRestore(entry, "/test/target", nil)
-
-	output := buf.String()
-	if !strings.Contains(output, "restore complete") {
-		t.Error("missing success message")
-	}
-
-	if !strings.Contains(output, "entry=test-entry") {
-		t.Error("missing entry attribute")
-	}
-
-	if !strings.Contains(output, "target=/test/target") {
-		t.Error("missing target attribute")
-	}
-}
-
-func TestManager_LogEntryRestore_Error(t *testing.T) {
-	t.Parallel()
-	m := setupTestManager(t)
-
-	var buf bytes.Buffer
-	handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})
-	m = m.WithLogger(slog.New(handler))
-
-	entry := config.Entry{Name: "test-entry", Backup: "./test"}
-	testErr := NewPathError("restore", "/test/target", nil)
-	m.logEntryRestore(entry, "/test/target", testErr)
-
-	output := buf.String()
-	if !strings.Contains(output, "restore failed") {
-		t.Error("missing error message")
-	}
-
-	if !strings.Contains(output, "entry=test-entry") {
-		t.Error("missing entry attribute")
-	}
-
-	if !strings.Contains(output, "target=/test/target") {
-		t.Error("missing target attribute")
-	}
-
-	if !strings.Contains(output, "error=") {
-		t.Error("missing error attribute")
-	}
-}
-
 func TestManager_WithVerbose(t *testing.T) {
 	t.Parallel()
 	// Create a manager without setupTestManager to avoid Verbose=true

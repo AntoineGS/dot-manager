@@ -50,9 +50,7 @@ func LoadAppConfig() (*AppConfig, error) {
 	}
 
 	// Expand ~ in config_dir
-	if len(cfg.ConfigDir) > 0 && cfg.ConfigDir[0] == '~' {
-		cfg.ConfigDir = filepath.Join(home, cfg.ConfigDir[1:])
-	}
+	cfg.ConfigDir = ExpandPath(cfg.ConfigDir, nil)
 
 	// Verify the directory exists
 	if _, err := os.Stat(cfg.ConfigDir); os.IsNotExist(err) {

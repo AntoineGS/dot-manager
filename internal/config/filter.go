@@ -1,6 +1,9 @@
 package config
 
-import "regexp"
+import (
+	"regexp"
+	"sync"
+)
 
 // Filter represents a single filter with include/exclude conditions.
 // Include conditions are AND'd together - all must match.
@@ -56,11 +59,21 @@ func (ctx *FilterContext) getAttribute(attr string) string {
 	}
 }
 
+var regexCache sync.Map // pattern string -> *regexp.Regexp
+
 func matchesPattern(pattern, value string) bool {
-	re, err := regexp.Compile("^(" + pattern + ")$")
+	fullPattern := "^(" + pattern + ")$"
+
+	if cached, ok := regexCache.Load(fullPattern); ok {
+		return cached.(*regexp.Regexp).MatchString(value)
+	}
+
+	re, err := regexp.Compile(fullPattern)
 	if err != nil {
 		return pattern == value // Fallback to exact match
 	}
+
+	regexCache.Store(fullPattern, re)
 
 	return re.MatchString(value)
 }

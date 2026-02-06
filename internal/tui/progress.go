@@ -3,9 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -644,119 +642,10 @@ func (m *Model) buildVisibleRowsWithIndicators(
 
 // detectSubEntryState determines the state of a sub-entry item
 func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
-	// Similar to detectPathState but for SubEntry
-	// Expand ~ in target path for file operations
 	targetPath := config.ExpandPath(item.Target, m.Platform.EnvVars)
-
-	// Config entry logic
 	backupPath := m.resolvePath(item.SubEntry.Backup)
 
-	if item.SubEntry.IsFolder() {
-		if info, err := os.Lstat(targetPath); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 {
-				return StateLinked
-			}
-		}
-
-		backupExists := pathExists(backupPath)
-		targetExists := pathExists(targetPath)
-
-		if backupExists {
-			return StateReady
-		}
-
-		if targetExists {
-			return StateAdopt
-		}
-
-		return StateMissing
-	}
-
-	// File-based config
-	allLinked := true
-	anyBackup := false
-	anyTarget := false
-	checkedAnyFile := false
-
-	for _, file := range item.SubEntry.Files {
-		srcFile := filepath.Join(backupPath, file)
-		dstFile := filepath.Join(targetPath, file)
-
-		// Skip files that don't exist in backup (shouldn't affect state)
-		if !pathExists(srcFile) {
-			continue
-		}
-
-		checkedAnyFile = true
-		anyBackup = true
-
-		if info, err := os.Lstat(dstFile); err == nil {
-			anyTarget = true
-			if info.Mode()&os.ModeSymlink == 0 {
-				allLinked = false
-			}
-		} else {
-			allLinked = false
-		}
-	}
-
-	// If all existing backup files are symlinked at target
-	if allLinked && checkedAnyFile {
-		return StateLinked
-	}
-
-	if anyBackup {
-		return StateReady
-	}
-
-	if anyTarget {
-		return StateAdopt
-	}
-
-	return StateMissing
-}
-
-// getApplicationAtCursor returns the application and sub-entry indices for the current cursor position
-func (m *Model) getApplicationAtCursor() (int, int) {
-	visualRow := 0
-	filtered := m.getSearchedApplications()
-
-	for _, fapp := range filtered {
-		if visualRow == m.appCursor {
-			// Find the real index in m.Applications
-			for appIdx, app := range m.Applications {
-				if app.Application.Name == fapp.Application.Name {
-					return appIdx, -1
-				}
-			}
-		}
-
-		visualRow++
-
-		if fapp.Expanded {
-			for fsubIdx, fsub := range fapp.SubItems {
-				if visualRow == m.appCursor {
-					// Find the real indices in m.Applications
-					for appIdx, app := range m.Applications {
-						if app.Application.Name == fapp.Application.Name {
-							// Find the sub-entry index by name
-							for subIdx, sub := range app.SubItems {
-								if sub.SubEntry.Name == fsub.SubEntry.Name {
-									return appIdx, subIdx
-								}
-							}
-							// If not found (shouldn't happen), return with the filtered sub index
-							return appIdx, fsubIdx
-						}
-					}
-				}
-
-				visualRow++
-			}
-		}
-	}
-
-	return -1, -1
+	return detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files)
 }
 
 // getApplicationAtCursorFromTable returns the application and sub-entry indices from table cursor
@@ -884,13 +773,17 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if m.confirmingDeleteApp && appIdx >= 0 {
 				m.confirmingDeleteApp = false
-				if err := m.deleteApplication(appIdx); err == nil {
+				if err := m.deleteApplication(appIdx); err != nil {
+					m.err = err
+				} else {
 					// Rebuild table after deletion
 					m.rebuildTable()
 				}
 			} else if m.confirmingDeleteSubEntry && appIdx >= 0 && subIdx >= 0 {
 				m.confirmingDeleteSubEntry = false
-				if err := m.deleteSubEntry(appIdx, subIdx); err == nil {
+				if err := m.deleteSubEntry(appIdx, subIdx); err != nil {
+					m.err = err
+				} else {
 					// Rebuild table after deletion
 					m.rebuildTable()
 				}
@@ -1107,8 +1000,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Check if multi-select mode is active
 			if m.multiSelectActive {
 				// Show summary screen for batch delete
-				// No specific delete operation type exists, so we use OpList with a different summary
-				m.summaryOperation = OpList // Will be interpreted as delete in summary screen
+				m.summaryOperation = OpDelete
 				m.Screen = ScreenSummary
 				return m, nil
 			}
@@ -1170,13 +1062,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 && subIdx >= 0 {
 				subItem := &m.Applications[appIdx].SubItems[subIdx]
-				// Ensure Manager is in real mode (not dry-run) for Manage screen restores
-				originalDryRun := m.Manager.DryRun
-				m.Manager.DryRun = false
 				// Perform restore using SubEntry data
 				success, message := m.performRestoreSubEntry(subItem.SubEntry, subItem.Target)
-				// Restore original dry-run state
-				m.Manager.DryRun = originalDryRun
 				// Update the state after restore
 				if success {
 					m.Applications[appIdx].SubItems[subIdx].State = m.detectSubEntryState(subItem)
@@ -1443,10 +1330,8 @@ func (m Model) viewListTable() string {
 	b.WriteString("\n")
 	linesUsed++
 
-	// Initialize table if needed
-	if len(m.tableRows) == 0 {
-		m.initTableModel()
-	}
+	// Table should already be initialized via Update()/initTableModel()
+	// Do not call initTableModel() from View() — mutating state in View is a Bubble Tea anti-pattern
 
 	// Count lines after table
 	linesAfterTable := 1 // Blank line or multi-select banner after table

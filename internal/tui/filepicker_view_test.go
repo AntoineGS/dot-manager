@@ -12,7 +12,15 @@ import (
 func TestRenderFilePicker_Header(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app"},
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: "linux"}
@@ -40,7 +48,15 @@ func TestRenderFilePicker_Header(t *testing.T) {
 func TestRenderFilePicker_SelectionCount(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app"},
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: "linux"}
@@ -94,7 +110,15 @@ func TestRenderFilePicker_SelectionCount(t *testing.T) {
 func TestRenderFilePicker_HelpText(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app"},
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: "linux"}
@@ -119,7 +143,15 @@ func TestRenderFilePicker_HelpText(t *testing.T) {
 func TestRenderFilePicker_SelectedRowStyle(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app"},
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: "linux"}
@@ -146,7 +178,15 @@ func TestRenderFilePicker_SelectedRowStyle(t *testing.T) {
 func TestRenderFilePicker_NoSelections(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app"},
+			{
+				Name: "test-app",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: "linux"}

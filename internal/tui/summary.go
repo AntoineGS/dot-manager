@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,10 +20,7 @@ func (m Model) viewSummary() string {
 		title = "📦  Install Packages - Confirmation"
 	case OpRestore:
 		title = "🔄  Restore Configs - Confirmation"
-	case OpList:
-		// OpList is used for delete operation in multi-select mode
-		title = "🗑️  Delete Entries - Confirmation"
-	default:
+	case OpDelete, OpList:
 		title = "🗑️  Delete Entries - Confirmation"
 	}
 
@@ -35,10 +33,7 @@ func (m Model) viewSummary() string {
 		b.WriteString(m.renderInstallSummary())
 	case OpRestore:
 		b.WriteString(m.renderHierarchicalSummary("restore"))
-	case OpList:
-		// OpList is used for delete operation in multi-select mode
-		b.WriteString(m.renderHierarchicalSummary("delete"))
-	default:
+	case OpDelete, OpList:
 		b.WriteString(m.renderHierarchicalSummary("delete"))
 	}
 
@@ -58,9 +53,16 @@ func (m Model) viewSummary() string {
 func (m Model) renderInstallSummary() string {
 	var b strings.Builder
 
+	// Collect and sort selected app indices for deterministic output
+	sortedAppIndices := make([]int, 0, len(m.selectedApps))
+	for appIdx := range m.selectedApps {
+		sortedAppIndices = append(sortedAppIndices, appIdx)
+	}
+	sort.Ints(sortedAppIndices)
+
 	// Count selected apps with packages
 	selectedAppsWithPkg := 0
-	for appIdx := range m.selectedApps {
+	for _, appIdx := range sortedAppIndices {
 		if appIdx >= 0 && appIdx < len(m.Applications) {
 			app := m.Applications[appIdx]
 			if app.PkgInstalled != nil && !*app.PkgInstalled {
@@ -73,7 +75,7 @@ func (m Model) renderInstallSummary() string {
 	b.WriteString("\n\n")
 
 	// List selected apps with packages
-	for appIdx := range m.selectedApps {
+	for _, appIdx := range sortedAppIndices {
 		if appIdx >= 0 && appIdx < len(m.Applications) {
 			app := m.Applications[appIdx]
 			if app.PkgInstalled != nil && !*app.PkgInstalled {
@@ -111,8 +113,15 @@ func (m Model) renderHierarchicalSummary(operation string) string {
 	b.WriteString(SubtitleStyle.Render(fmt.Sprintf("%d application(s), %d item(s) will be %s:", appCount, subEntryCount, actionVerb)))
 	b.WriteString("\n\n")
 
-	// Show selected apps (expanded with sub-entries)
+	// Collect and sort selected app indices for deterministic output
+	sortedAppIndices := make([]int, 0, len(m.selectedApps))
 	for appIdx := range m.selectedApps {
+		sortedAppIndices = append(sortedAppIndices, appIdx)
+	}
+	sort.Ints(sortedAppIndices)
+
+	// Show selected apps (expanded with sub-entries)
+	for _, appIdx := range sortedAppIndices {
 		if appIdx >= 0 && appIdx < len(m.Applications) {
 			app := m.Applications[appIdx]
 			// App header
@@ -134,7 +143,15 @@ func (m Model) renderHierarchicalSummary(operation string) string {
 
 	// Show standalone selected sub-entries (parent not selected)
 	standaloneSubs := make(map[int][]int) // appIdx -> []subIdx
+
+	// Sort the selectedSubEntries keys for deterministic iteration
+	sortedSubKeys := make([]string, 0, len(m.selectedSubEntries))
 	for key := range m.selectedSubEntries {
+		sortedSubKeys = append(sortedSubKeys, key)
+	}
+	sort.Strings(sortedSubKeys)
+
+	for _, key := range sortedSubKeys {
 		var appIdx, subIdx int
 		if _, err := fmt.Sscanf(key, "%d:%d", &appIdx, &subIdx); err != nil {
 			continue
@@ -148,8 +165,16 @@ func (m Model) renderHierarchicalSummary(operation string) string {
 		standaloneSubs[appIdx] = append(standaloneSubs[appIdx], subIdx)
 	}
 
+	// Collect and sort standalone app indices for deterministic output
+	sortedStandaloneIndices := make([]int, 0, len(standaloneSubs))
+	for appIdx := range standaloneSubs {
+		sortedStandaloneIndices = append(sortedStandaloneIndices, appIdx)
+	}
+	sort.Ints(sortedStandaloneIndices)
+
 	// Render standalone sub-entries grouped by app
-	for appIdx, subIndices := range standaloneSubs {
+	for _, appIdx := range sortedStandaloneIndices {
+		subIndices := standaloneSubs[appIdx]
 		if appIdx >= 0 && appIdx < len(m.Applications) {
 			app := m.Applications[appIdx]
 			// Show app header (not fully selected, just a container)
@@ -269,11 +294,10 @@ func (m Model) executeConfirmedOperation() (tea.Model, tea.Cmd) {
 		cmd = m.executeBatchRestore()
 	case OpInstallPackages:
 		cmd = m.executeBatchInstall()
-	case OpList:
-		// Delete operation (OpList is used for delete in summary)
+	case OpDelete:
 		cmd = m.executeBatchDelete()
-	default:
-		// Unknown operation - return to manage view
+	case OpList:
+		// OpList should not reach the summary screen; return to manage view
 		m.Screen = ScreenResults
 		m.Operation = OpList
 		m.processing = false

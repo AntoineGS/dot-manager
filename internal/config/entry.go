@@ -6,11 +6,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	// SubEntryTypeConfig represents a config type sub-entry
-	SubEntryTypeConfig = "config"
-)
-
 // Entry is a unified configuration entry that manages symlink configuration.
 // Entries can optionally have a package field for installation.
 type Entry struct {

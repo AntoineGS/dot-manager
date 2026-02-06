@@ -14,7 +14,7 @@ func TestBackupFolder(t *testing.T) {
 	t.Parallel()
 	tmpDir := t.TempDir()
 
-	// Create source directory with content
+	// Create source directory with content (this is the "target" in SubEntry terms)
 	srcDir := filepath.Join(tmpDir, "source", "config")
 	if err := os.MkdirAll(srcDir, 0750); err != nil {
 		t.Fatal(err)
@@ -33,9 +33,17 @@ func TestBackupFolder(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	err := mgr.backupFolder("test", srcDir, backupDir)
+	subEntry := config.SubEntry{
+		Name:   "test",
+		Backup: "./backup",
+		Targets: map[string]string{
+			"linux": srcDir,
+		},
+	}
+
+	err := mgr.backupFolderSubEntry("test", subEntry, backupDir, srcDir)
 	if err != nil {
-		t.Fatalf("backupFolder() error = %v", err)
+		t.Fatalf("backupFolderSubEntry() error = %v", err)
 	}
 
 	// Check files were copied
@@ -63,7 +71,7 @@ func TestBackupFolderSkipsSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create symlink as "source"
+	// Create symlink as "target"
 	symlinkSrc := filepath.Join(tmpDir, "symlink")
 	if err := os.Symlink(realSrc, symlinkSrc); err != nil {
 		t.Fatal(err)
@@ -79,15 +87,23 @@ func TestBackupFolderSkipsSymlink(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	err := mgr.backupFolder("test", symlinkSrc, backupDir)
+	subEntry := config.SubEntry{
+		Name:   "test",
+		Backup: "./backup",
+		Targets: map[string]string{
+			"linux": symlinkSrc,
+		},
+	}
+
+	err := mgr.backupFolderSubEntry("test", subEntry, backupDir, symlinkSrc)
 	if err != nil {
-		t.Fatalf("backupFolder() error = %v", err)
+		t.Fatalf("backupFolderSubEntry() error = %v", err)
 	}
 
 	// Backup directory should be empty (symlink was skipped)
 	entries, _ := os.ReadDir(backupDir)
 	if len(entries) != 0 {
-		t.Error("Backup should be empty when source is a symlink")
+		t.Error("Backup should be empty when target is a symlink")
 	}
 }
 
@@ -95,7 +111,7 @@ func TestBackupFiles(t *testing.T) {
 	t.Parallel()
 	tmpDir := t.TempDir()
 
-	// Create source files
+	// Create source files (this is the "target" in SubEntry terms)
 	srcDir := filepath.Join(tmpDir, "source")
 	if err := os.MkdirAll(srcDir, 0750); err != nil {
 		t.Fatal(err)
@@ -118,9 +134,18 @@ func TestBackupFiles(t *testing.T) {
 
 	files := []string{"config1.txt", "config2.txt"}
 
-	err := mgr.backupFiles("test", files, srcDir, backupDir)
+	subEntry := config.SubEntry{
+		Name:   "test",
+		Files:  files,
+		Backup: "./backup",
+		Targets: map[string]string{
+			"linux": srcDir,
+		},
+	}
+
+	err := mgr.backupFilesSubEntry("test", subEntry, backupDir, srcDir)
 	if err != nil {
-		t.Fatalf("backupFiles() error = %v", err)
+		t.Fatalf("backupFilesSubEntry() error = %v", err)
 	}
 
 	// Check files were copied
@@ -162,9 +187,18 @@ func TestBackupFilesSkipsSymlinks(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	err := mgr.backupFiles("test", []string{"symlink.txt"}, srcDir, backupDir)
+	subEntry := config.SubEntry{
+		Name:   "test",
+		Files:  []string{"symlink.txt"},
+		Backup: "./backup",
+		Targets: map[string]string{
+			"linux": srcDir,
+		},
+	}
+
+	err := mgr.backupFilesSubEntry("test", subEntry, backupDir, srcDir)
 	if err != nil {
-		t.Fatalf("backupFiles() error = %v", err)
+		t.Fatalf("backupFilesSubEntry() error = %v", err)
 	}
 
 	// Symlink should not have been backed up
@@ -196,9 +230,18 @@ func TestBackupDryRun(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.DryRun = true
 
-	err := mgr.backupFiles("test", []string{"config.txt"}, srcDir, backupDir)
+	subEntry := config.SubEntry{
+		Name:   "test",
+		Files:  []string{"config.txt"},
+		Backup: "./backup",
+		Targets: map[string]string{
+			"linux": srcDir,
+		},
+	}
+
+	err := mgr.backupFilesSubEntry("test", subEntry, backupDir, srcDir)
 	if err != nil {
-		t.Fatalf("backupFiles() error = %v", err)
+		t.Fatalf("backupFilesSubEntry() error = %v", err)
 	}
 
 	// File should NOT be copied in dry run mode

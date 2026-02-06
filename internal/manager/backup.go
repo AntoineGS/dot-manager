@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -28,6 +29,8 @@ func (m *Manager) Backup() error {
 
 	m.logger.Info("backing up configurations", slog.String("os", m.Platform.OS)) //nolint:dupl // similar structure to restoreV3, but semantically different
 	apps := m.GetApplications()
+
+	var errs []error
 
 	for _, app := range apps {
 		// Check context before each application
@@ -69,11 +72,12 @@ func (m *Manager) Backup() error {
 					slog.String("app", app.Name),
 					slog.String("entry", subEntry.Name),
 					slog.String("error", err.Error()))
+				errs = append(errs, err)
 			}
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (m *Manager) backupSubEntry(appName string, subEntry config.SubEntry, target string) error {
@@ -111,7 +115,7 @@ func (m *Manager) backupFolderSubEntry(_ string, subEntry config.SubEntry, backu
 		// Copy source folder into backup directory (e.g., /source/nvim -> /backup/nvim)
 		destPath := filepath.Join(backup, filepath.Base(target))
 		if subEntry.Sudo {
-			cmd := exec.CommandContext(context.Background(), "sudo", "cp", "-r", target, destPath) //nolint:gosec // intentional sudo command
+			cmd := exec.CommandContext(m.ctx, "sudo", "cp", "-r", target, destPath) //nolint:gosec // intentional sudo command
 			return cmd.Run()
 		}
 
@@ -155,7 +159,7 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 
 		if !m.DryRun {
 			if subEntry.Sudo {
-				cmd := exec.CommandContext(context.Background(), "sudo", "cp", srcFile, dstFile) //nolint:gosec // intentional sudo command
+				cmd := exec.CommandContext(m.ctx, "sudo", "cp", srcFile, dstFile) //nolint:gosec // intentional sudo command
 				if err := cmd.Run(); err != nil {
 					return NewPathError("backup", srcFile, fmt.Errorf("copying file: %w", err))
 				}
@@ -163,63 +167,6 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 				if err := copyFile(srcFile, dstFile); err != nil {
 					return NewPathError("backup", srcFile, fmt.Errorf("copying file: %w", err))
 				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) backupFolder(_, source, backup string) error {
-	if !pathExists(source) {
-		m.logger.Debug("source folder does not exist", slog.String("path", source))
-		return nil
-	}
-
-	// Skip symlinks - they point to our backup already
-	if isSymlink(source) {
-		m.logger.Debug("skipping symlink", slog.String("path", source))
-		return nil
-	}
-
-	m.logger.Info("backing up folder",
-		slog.String("from", source),
-		slog.String("to", backup))
-
-	if !m.DryRun {
-		// Copy source folder into backup directory (e.g., /source/config -> /backup/config)
-		destPath := filepath.Join(backup, filepath.Base(source))
-		if err := copyDir(source, destPath); err != nil {
-			return NewPathError("backup", source, fmt.Errorf("copying folder: %w", err))
-		}
-	}
-
-	return nil
-}
-
-func (m *Manager) backupFiles(_ string, files []string, source, backup string) error {
-	for _, file := range files {
-		srcFile := filepath.Join(source, file)
-		dstFile := filepath.Join(backup, file)
-
-		if !pathExists(srcFile) {
-			m.logger.Debug("source file does not exist", slog.String("path", srcFile))
-			continue
-		}
-
-		// Skip symlinks
-		if isSymlink(srcFile) {
-			m.logger.Debug("skipping symlink", slog.String("path", srcFile))
-			continue
-		}
-
-		m.logger.Info("backing up file",
-			slog.String("from", srcFile),
-			slog.String("to", dstFile))
-
-		if !m.DryRun {
-			if err := copyFile(srcFile, dstFile); err != nil {
-				return NewPathError("backup", srcFile, fmt.Errorf("copying file: %w", err))
 			}
 		}
 	}

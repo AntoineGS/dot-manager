@@ -42,6 +42,8 @@ const (
 	OpList
 	// OpInstallPackages is the install packages operation
 	OpInstallPackages
+	// OpDelete is the delete entries operation
+	OpDelete
 )
 
 func (o Operation) String() string {
@@ -52,6 +54,8 @@ func (o Operation) String() string {
 		return "List"
 	case OpInstallPackages:
 		return "Install Packages"
+	case OpDelete:
+		return "Delete"
 	}
 
 	return "Unknown"
@@ -193,7 +197,6 @@ type Model struct {
 	currentPackageIndex      int
 	Operation                Operation
 	scrollOffset             int
-	appCursor                int
 	Screen                   Screen
 	activeForm               FormType
 	DryRun                   bool
@@ -301,9 +304,6 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		User:     plat.User,
 	}
 
-	// Track entries we've already added (by name) to avoid duplicates
-	addedEntries := make(map[string]bool)
-
 	items := make([]PathItem, 0)
 
 	// Flatten applications into PathItems
@@ -351,7 +351,6 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 			}
 
 			items = append(items, item)
-			addedEntries[entry.Name] = true
 		}
 	}
 
@@ -673,31 +672,10 @@ type PackageInstallMsg struct {
 	Success bool
 }
 
-// detectPathState determines the state of a path item
-func (m *Model) detectPathState(item *PathItem) PathState {
-	// Expand ~ in target path for file operations
-	targetPath := config.ExpandPath(item.Target, m.Platform.EnvVars)
-
-	// For git entries
-	if item.EntryType == EntryTypeGit {
-		if pathExists(targetPath) {
-			gitDir := filepath.Join(targetPath, ".git")
-			if pathExists(gitDir) {
-				return StateLinked // Already cloned
-			}
-
-			return StateAdopt // Target exists but not a git repo
-		}
-
-		return StateReady // Ready to clone
-	}
-
-	// For config entries (symlinks)
-	backupPath := m.resolvePath(item.Entry.Backup)
-
-	// For folder-based paths
-	if item.Entry.IsFolder() {
-		// Check if target is already a symlink
+// detectConfigState determines the state of a config entry given its paths and file list.
+// This is the shared logic used by both detectPathState and detectSubEntryState.
+func detectConfigState(backupPath, targetPath string, isFolder bool, files []string) PathState {
+	if isFolder {
 		if info, err := os.Lstat(targetPath); err == nil {
 			if info.Mode()&os.ModeSymlink != 0 {
 				return StateLinked
@@ -718,34 +696,34 @@ func (m *Model) detectPathState(item *PathItem) PathState {
 		return StateMissing
 	}
 
-	// For file-based paths, check if all files are ready
+	// File-based config
 	allLinked := true
 	anyBackup := false
 	anyTarget := false
+	checkedAnyFile := false
 
-	for _, file := range item.Entry.Files {
+	for _, file := range files {
 		srcFile := filepath.Join(backupPath, file)
 		dstFile := filepath.Join(targetPath, file)
 
-		// Check if already a symlink
+		if !pathExists(srcFile) {
+			continue
+		}
+
+		checkedAnyFile = true
+		anyBackup = true
+
 		if info, err := os.Lstat(dstFile); err == nil {
+			anyTarget = true
 			if info.Mode()&os.ModeSymlink == 0 {
 				allLinked = false
 			}
 		} else {
 			allLinked = false
 		}
-
-		if pathExists(srcFile) {
-			anyBackup = true
-		}
-
-		if pathExists(dstFile) {
-			anyTarget = true
-		}
 	}
 
-	if allLinked && len(item.Entry.Files) > 0 {
+	if allLinked && checkedAnyFile {
 		return StateLinked
 	}
 
@@ -758,6 +736,30 @@ func (m *Model) detectPathState(item *PathItem) PathState {
 	}
 
 	return StateMissing
+}
+
+// detectPathState determines the state of a path item
+func (m *Model) detectPathState(item *PathItem) PathState {
+	// Expand ~ in target path for file operations
+	targetPath := config.ExpandPath(item.Target, m.Platform.EnvVars)
+
+	// For git entries
+	if item.EntryType == EntryTypeGit {
+		if pathExists(targetPath) {
+			gitDir := filepath.Join(targetPath, ".git")
+			if pathExists(gitDir) {
+				return StateLinked // Already cloned
+			}
+
+			return StateAdopt // Target exists but not a git repo
+		}
+
+		return StateReady // Ready to clone
+	}
+
+	backupPath := m.resolvePath(item.Entry.Backup)
+
+	return detectConfigState(backupPath, targetPath, item.Entry.IsFolder(), item.Entry.Files)
 }
 
 // refreshPathStates updates the state of all path items

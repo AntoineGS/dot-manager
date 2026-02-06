@@ -28,7 +28,6 @@ type Platform struct {
 	Distro   string
 	Hostname string
 	User     string
-	IsArch   bool
 }
 
 // Detect detects the current platform characteristics including OS type,
@@ -43,7 +42,6 @@ func Detect() *Platform {
 
 	if p.OS == OSLinux {
 		p.Distro = detectDistro()
-		p.IsArch = p.Distro == "arch"
 	}
 
 	if p.OS == OSWindows {
@@ -132,10 +130,30 @@ func (p *Platform) detectPowerShellProfile() {
 	}
 }
 
+// IsArchLinux returns true if the detected distribution is Arch Linux.
+func (p *Platform) IsArchLinux() bool {
+	return p.Distro == "arch"
+}
+
+// copyMap returns a shallow copy of a string map.
+func copyMap(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+
+	cp := make(map[string]string, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+
+	return cp
+}
+
 // WithOS returns a copy of the Platform with the OS field overridden.
 func (p *Platform) WithOS(osType string) *Platform {
 	newP := *p
 	newP.OS = osType
+	newP.EnvVars = copyMap(p.EnvVars)
 
 	return &newP
 }
@@ -144,6 +162,7 @@ func (p *Platform) WithOS(osType string) *Platform {
 func (p *Platform) WithHostname(hostname string) *Platform {
 	newP := *p
 	newP.Hostname = hostname
+	newP.EnvVars = copyMap(p.EnvVars)
 
 	return &newP
 }
@@ -152,6 +171,7 @@ func (p *Platform) WithHostname(hostname string) *Platform {
 func (p *Platform) WithUser(username string) *Platform {
 	newP := *p
 	newP.User = username
+	newP.EnvVars = copyMap(p.EnvVars)
 
 	return &newP
 }
@@ -160,6 +180,7 @@ func (p *Platform) WithUser(username string) *Platform {
 func (p *Platform) WithDistro(distro string) *Platform {
 	newP := *p
 	newP.Distro = distro
+	newP.EnvVars = copyMap(p.EnvVars)
 
 	return &newP
 }

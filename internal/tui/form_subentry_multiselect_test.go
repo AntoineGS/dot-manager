@@ -21,6 +21,12 @@ func TestMultiSelect_ToggleSelection(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -69,6 +75,12 @@ func TestMultiSelect_ToggleWithTab(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -98,6 +110,12 @@ func TestMultiSelect_PersistAcrossNavigation(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -145,6 +163,12 @@ func TestMultiSelect_ConfirmMultipleFiles(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -206,6 +230,12 @@ func TestMultiSelect_EmptyConfirm(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -242,6 +272,12 @@ func TestMultiSelect_CancelPreservesNoFiles(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -283,6 +319,12 @@ func TestMultiSelect_SelectionCount(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -321,6 +363,12 @@ func TestMultiSelect_DuplicateSelectionIgnored(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}
@@ -351,6 +399,12 @@ func TestMultiSelect_MixedSelectionsAndConfirm(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
 			},
 		},
 	}

@@ -88,7 +88,7 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 	app := m.Config.Applications[configAppIdx]
 
 	nameInput := textinput.New()
-	nameInput.Placeholder = "PlaceholderNeovim"
+	nameInput.Placeholder = PlaceholderNeovim
 	nameInput.SetValue(app.Name)
 	nameInput.Focus()
 	nameInput.CharLimit = 64
@@ -991,7 +991,7 @@ func (m Model) renderApplicationFormHelp() string {
 // saveApplicationForm validates and saves the application form
 func (m *Model) saveApplicationForm() error {
 	if m.applicationForm == nil {
-		return fmt.Errorf("no form data")
+		return errors.New("no form data")
 	}
 
 	name := strings.TrimSpace(m.applicationForm.nameInput.Value())
@@ -999,7 +999,7 @@ func (m *Model) saveApplicationForm() error {
 
 	// Validation
 	if name == "" {
-		return fmt.Errorf("name is required")
+		return errors.New("name is required")
 	}
 
 	// Build filters and package

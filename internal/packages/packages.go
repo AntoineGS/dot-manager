@@ -1,3 +1,4 @@
+// Package packages provides multi-package-manager support.
 package packages
 
 import (
@@ -6,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
@@ -325,33 +325,51 @@ func (m *Manager) Install(pkg Package) InstallResult {
 	return result
 }
 
-func (m *Manager) installWithManager(mgr PackageManager, pkgName string) (bool, string) {
-	var cmd *exec.Cmd
+// managerCmd defines the install and check commands for a package manager.
+// The placeholder "{pkg}" in args is replaced with the actual package name.
+type managerCmd struct {
+	install []string // command args for install, e.g. {"sudo", "pacman", "-S", "--noconfirm", "{pkg}"}
+	check   []string // command args for checking install status, e.g. {"pacman", "-Q", "{pkg}"}
+}
 
-	switch mgr {
-	case Pacman:
-		cmd = exec.CommandContext(m.ctx, "sudo", "pacman", "-S", "--noconfirm", pkgName)
-	case Yay:
-		cmd = exec.CommandContext(m.ctx, "yay", "-S", "--noconfirm", pkgName)
-	case Paru:
-		cmd = exec.CommandContext(m.ctx, "paru", "-S", "--noconfirm", pkgName)
-	case Apt:
-		cmd = exec.CommandContext(m.ctx, "sudo", "apt-get", "install", "-y", pkgName)
-	case Dnf:
-		cmd = exec.CommandContext(m.ctx, "sudo", "dnf", "install", "-y", pkgName)
-	case Brew:
-		cmd = exec.CommandContext(m.ctx, "brew", "install", pkgName)
-	case Winget:
-		cmd = exec.CommandContext(m.ctx, "winget", "install", "--accept-package-agreements", "--accept-source-agreements", pkgName)
-	case Scoop:
-		cmd = exec.CommandContext(m.ctx, "scoop", "install", pkgName)
-	case Choco:
-		cmd = exec.CommandContext(m.ctx, "choco", "install", "-y", pkgName)
-	case Git:
-		return false, "Git packages should be installed via installGitPackage"
-	default:
+var managerCmds = map[PackageManager]managerCmd{
+	Pacman: {install: []string{"sudo", "pacman", "-S", "--noconfirm", "{pkg}"}, check: []string{"pacman", "-Q", "{pkg}"}},
+	Yay:    {install: []string{"yay", "-S", "--noconfirm", "{pkg}"}, check: []string{"pacman", "-Q", "{pkg}"}},
+	Paru:   {install: []string{"paru", "-S", "--noconfirm", "{pkg}"}, check: []string{"pacman", "-Q", "{pkg}"}},
+	Apt:    {install: []string{"sudo", "apt-get", "install", "-y", "{pkg}"}, check: []string{"dpkg", "-s", "{pkg}"}},
+	Dnf:    {install: []string{"sudo", "dnf", "install", "-y", "{pkg}"}, check: []string{"rpm", "-q", "{pkg}"}},
+	Brew:   {install: []string{"brew", "install", "{pkg}"}, check: []string{"brew", "list", "{pkg}"}},
+	Winget: {install: []string{"winget", "install", "--accept-package-agreements", "--accept-source-agreements", "{pkg}"}, check: []string{"winget", "list", "--id", "{pkg}"}},
+	Scoop:  {install: []string{"scoop", "install", "{pkg}"}, check: []string{"scoop", "info", "{pkg}"}},
+	Choco:  {install: []string{"choco", "install", "-y", "{pkg}"}, check: []string{"choco", "list", "--local-only", "{pkg}"}},
+}
+
+// expandArgs replaces "{pkg}" placeholders in args with the actual package name.
+func expandArgs(args []string, pkgName string) []string {
+	result := make([]string, len(args))
+	for i, arg := range args {
+		if arg == "{pkg}" {
+			result[i] = pkgName
+		} else {
+			result[i] = arg
+		}
+	}
+
+	return result
+}
+
+func (m *Manager) installWithManager(mgr PackageManager, pkgName string) (bool, string) {
+	mc, ok := managerCmds[mgr]
+	if !ok {
+		if mgr == Git {
+			return false, "Git packages should be installed via installGitPackage"
+		}
+
 		return false, fmt.Sprintf("Unknown package manager: %s", mgr)
 	}
+
+	args := expandArgs(mc.install, pkgName)
+	cmd := exec.CommandContext(m.ctx, args[0], args[1:]...) //nolint:gosec // args from trusted lookup table
 
 	if m.DryRun {
 		return true, fmt.Sprintf("Would run: %s", strings.Join(cmd.Args, " "))
@@ -378,7 +396,7 @@ func (m *Manager) runCustomCommand(command string) (bool, string) {
 	}
 
 	var cmd *exec.Cmd
-	if runtime.GOOS == platform.OSWindows {
+	if m.OS == platform.OSWindows {
 		cmd = exec.CommandContext(m.ctx, "powershell", "-Command", command)
 	} else {
 		cmd = exec.CommandContext(m.ctx, "sh", "-c", command)
@@ -427,7 +445,7 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 	// Download file
 	var downloadCmd *exec.Cmd
 
-	if runtime.GOOS == platform.OSWindows {
+	if m.OS == platform.OSWindows {
 		// Escape single quotes in URL and path for PowerShell
 		escapedURL := strings.ReplaceAll(urlInstall.URL, "'", "''")
 		escapedPath := strings.ReplaceAll(tmpPath, "'", "''")
@@ -442,7 +460,7 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 	}
 
 	// Make executable on Unix
-	if runtime.GOOS != platform.OSWindows {
+	if m.OS != platform.OSWindows {
 		if err := os.Chmod(tmpPath, ExecPerms); err != nil { //nolint:gosec // installer scripts need to be executable
 			return false, fmt.Sprintf("Failed to make executable: %v", err)
 		}
@@ -452,7 +470,7 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 	command := strings.ReplaceAll(urlInstall.Command, "{file}", tmpPath)
 
 	var installCmd *exec.Cmd
-	if runtime.GOOS == platform.OSWindows {
+	if m.OS == platform.OSWindows {
 		installCmd = exec.CommandContext(m.ctx, "powershell", "-Command", command) //nolint:gosec // intentional install command
 	} else {
 		installCmd = exec.CommandContext(m.ctx, "sh", "-c", command) //nolint:gosec // intentional install command
@@ -637,30 +655,14 @@ func (m *Manager) GetInstallMethod(pkg Package) string {
 // It uses the appropriate package manager query command based on the installation method.
 // Returns true if the package is installed, false otherwise.
 func IsInstalled(pkgName string, manager string) bool {
-	var cmd *exec.Cmd
-
-	switch PackageManager(manager) {
-	case Pacman, Yay, Paru:
-		cmd = exec.CommandContext(context.Background(), "pacman", "-Q", pkgName)
-	case Apt:
-		cmd = exec.CommandContext(context.Background(), "dpkg", "-s", pkgName)
-	case Dnf:
-		cmd = exec.CommandContext(context.Background(), "rpm", "-q", pkgName)
-	case Brew:
-		cmd = exec.CommandContext(context.Background(), "brew", "list", pkgName)
-	case Winget:
-		cmd = exec.CommandContext(context.Background(), "winget", "list", "--id", pkgName)
-	case Scoop:
-		cmd = exec.CommandContext(context.Background(), "scoop", "info", pkgName)
-	case Choco:
-		cmd = exec.CommandContext(context.Background(), "choco", "list", "--local-only", pkgName)
-	case Git:
-		// For Git repos, we can't easily check installation status via this method
-		return false
-	default:
-		// For custom/url methods, we can't easily check installation status
+	mc, ok := managerCmds[PackageManager(manager)]
+	if !ok {
+		// For git, custom, url methods, we can't easily check installation status
 		return false
 	}
+
+	args := expandArgs(mc.check, pkgName)
+	cmd := exec.CommandContext(context.Background(), args[0], args[1:]...) //nolint:gosec // args from trusted lookup table
 
 	// Run silently - just check exit code
 	cmd.Stdout = nil

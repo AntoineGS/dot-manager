@@ -42,7 +42,7 @@ func TestWithOS(t *testing.T) {
 	t.Parallel()
 	p := &Platform{
 		OS:      OSLinux,
-		IsArch:  true,
+		Distro:  "arch",
 		EnvVars: map[string]string{"key": "value"},
 	}
 
@@ -59,8 +59,8 @@ func TestWithOS(t *testing.T) {
 	}
 
 	// Other fields should be preserved
-	if newP.IsArch != true {
-		t.Error("WithOS() IsArch not preserved")
+	if !newP.IsArchLinux() {
+		t.Error("WithOS() Distro not preserved")
 	}
 }
 

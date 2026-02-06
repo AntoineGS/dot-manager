@@ -42,6 +42,12 @@ func TestFilePickerIntegration_FullFlow(t *testing.T) {
 			{
 				Name:        "test-app",
 				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": targetDir},
+					},
+				},
 			},
 		},
 	}
@@ -183,7 +189,16 @@ func TestFilePickerIntegration_FullFlow(t *testing.T) {
 func TestFilePickerIntegration_CancelFlow(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app", Description: "Test application"},
+			{
+				Name:        "test-app",
+				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: OSLinux}
@@ -302,7 +317,16 @@ func TestFilePickerIntegration_LinuxWindowsTargets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
 				Applications: []config.Application{
-					{Name: "test-app", Description: "Test application"},
+					{
+						Name:        "test-app",
+						Description: "Test application",
+						Entries: []config.SubEntry{
+							{
+								Name:    "placeholder",
+								Targets: map[string]string{"linux": "/tmp/test", "windows": "/tmp/test"},
+							},
+						},
+					},
 				},
 			}
 			plat := &platform.Platform{OS: tt.osType}
@@ -359,7 +383,16 @@ func TestFilePickerIntegration_LinuxWindowsTargets(t *testing.T) {
 func TestFilePickerIntegration_EmptySelection(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app", Description: "Test application"},
+			{
+				Name:        "test-app",
+				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: OSLinux}
@@ -404,7 +437,16 @@ func TestFilePickerIntegration_EmptySelection(t *testing.T) {
 func TestFilePickerIntegration_ModeMenuNavigation(t *testing.T) {
 	cfg := &config.Config{
 		Applications: []config.Application{
-			{Name: "test-app", Description: "Test application"},
+			{
+				Name:        "test-app",
+				Description: "Test application",
+				Entries: []config.SubEntry{
+					{
+						Name:    "placeholder",
+						Targets: map[string]string{"linux": "/tmp/test"},
+					},
+				},
+			},
 		},
 	}
 	plat := &platform.Platform{OS: OSLinux}

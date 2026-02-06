@@ -30,8 +30,6 @@ type BatchCompleteMsg struct {
 
 // executeBatchRestore executes restore operations for all selected items.
 // Returns a command that processes items sequentially and sends progress updates.
-//
-//nolint:unused // Will be used in Task 16
 func (m Model) executeBatchRestore() tea.Cmd {
 	// Collect all selected items to restore
 	var items []struct {
@@ -126,8 +124,6 @@ func (m Model) executeBatchRestore() tea.Cmd {
 
 // executeBatchInstall executes package installation for all selected apps.
 // Returns a command that processes packages sequentially.
-//
-//nolint:unused // Will be used in Task 16
 func (m Model) executeBatchInstall() tea.Cmd {
 	// Collect all selected apps with packages to install
 	var packages []PackageItem
@@ -174,16 +170,12 @@ func (m Model) executeBatchInstall() tea.Cmd {
 }
 
 // initBatchInstallMsg is an internal message to initialize batch package installation.
-//
-//nolint:unused // Will be used in Task 16
 type initBatchInstallMsg struct {
 	packages []PackageItem
 }
 
 // executeBatchDelete executes delete operations for all selected items.
 // Returns a command that processes deletions in reverse order to avoid index shifting.
-//
-//nolint:unused // Will be used in Task 16
 func (m Model) executeBatchDelete() tea.Cmd {
 	// Collect all items to delete with their config indices
 	type deleteItem struct {
@@ -320,8 +312,6 @@ func (m Model) executeBatchDelete() tea.Cmd {
 }
 
 // initBatchProgress initializes the progress bar model for batch operations.
-//
-//nolint:unused // Will be used in Task 15
 func initBatchProgress() progress.Model {
 	prog := progress.New(
 		progress.WithDefaultGradient(),

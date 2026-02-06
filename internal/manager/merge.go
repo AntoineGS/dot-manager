@@ -1,12 +1,14 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -246,7 +248,7 @@ func removeEmptyDirs(rootDir string) error {
 		if err := os.Remove(dir); err != nil {
 			// Ignore "directory not empty" errors (expected for dirs with content)
 			// Log other errors at debug level
-			if !strings.Contains(err.Error(), "directory not empty") {
+			if !errors.Is(err, syscall.ENOTEMPTY) {
 				slog.Debug("Failed to remove directory",
 					"dir", dir,
 					"error", err)

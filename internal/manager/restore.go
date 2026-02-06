@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -35,6 +36,8 @@ func (m *Manager) Restore() error {
 	)
 
 	apps := m.GetApplications()
+
+	var errs []error
 
 	for _, app := range apps {
 		// Check context before each application
@@ -77,21 +80,12 @@ func (m *Manager) Restore() error {
 					slog.String("app", app.Name),
 					slog.String("entry", subEntry.Name),
 					slog.String("error", err.Error()))
+				errs = append(errs, err)
 			}
 		}
 	}
 
-	return nil
-}
-
-func (m *Manager) restoreEntry(entry config.Entry, target string) error {
-	backupPath := m.resolvePath(entry.Backup)
-
-	if entry.IsFolder() {
-		return m.RestoreFolder(entry, backupPath, target)
-	}
-
-	return m.RestoreFiles(entry, backupPath, target)
+	return errors.Join(errs...)
 }
 
 // RestoreFolder creates a symlink from target to source for a folder entry
@@ -257,7 +251,7 @@ func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error
 		slog.String("source", source))
 
 	if !m.DryRun {
-		if err := createSymlink(source, target, entry.Sudo); err != nil {
+		if err := createSymlink(m.ctx, source, target, entry.Sudo); err != nil {
 			return NewPathError("restore", target, fmt.Errorf("creating symlink: %w", err))
 		}
 	}
@@ -410,7 +404,7 @@ func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error 
 			slog.String("source", srcFile))
 
 		if !m.DryRun {
-			if err := createSymlink(srcFile, dstFile, entry.Sudo); err != nil {
+			if err := createSymlink(m.ctx, srcFile, dstFile, entry.Sudo); err != nil {
 				return NewPathError("restore", dstFile, fmt.Errorf("creating symlink: %w", err))
 			}
 		}
@@ -433,7 +427,7 @@ func symlinkPointsTo(path, expectedTarget string) bool {
 	return link == expectedTarget
 }
 
-func createSymlink(source, target string, useSudo bool) error {
+func createSymlink(ctx context.Context, source, target string, useSudo bool) error {
 	// Validate source exists
 	if _, err := os.Stat(source); err != nil {
 		if os.IsNotExist(err) {
@@ -452,17 +446,17 @@ func createSymlink(source, target string, useSudo bool) error {
 
 		if info.IsDir() {
 			// Use mklink /J for directory junctions on Windows
-			cmd := exec.CommandContext(context.Background(), "cmd", "/c", "mklink", "/J", target, source)
+			cmd := exec.CommandContext(ctx, "cmd", "/c", "mklink", "/J", target, source)
 			return cmd.Run()
 		}
 		// Use mklink for files
-		cmd := exec.CommandContext(context.Background(), "cmd", "/c", "mklink", target, source)
+		cmd := exec.CommandContext(ctx, "cmd", "/c", "mklink", target, source)
 
 		return cmd.Run()
 	}
 
 	if useSudo {
-		cmd := exec.CommandContext(context.Background(), "sudo", "ln", "-s", source, target) //nolint:gosec // intentional sudo command
+		cmd := exec.CommandContext(ctx, "sudo", "ln", "-s", source, target) //nolint:gosec // intentional sudo command
 		return cmd.Run()
 	}
 
@@ -637,7 +631,7 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 		slog.String("source", source))
 
 	if !m.DryRun {
-		return createSymlink(source, target, subEntry.Sudo)
+		return createSymlink(m.ctx, source, target, subEntry.Sudo)
 	}
 
 	return nil
@@ -781,7 +775,7 @@ func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, sourc
 			slog.String("source", srcFile))
 
 		if !m.DryRun {
-			if err := createSymlink(srcFile, dstFile, subEntry.Sudo); err != nil {
+			if err := createSymlink(m.ctx, srcFile, dstFile, subEntry.Sudo); err != nil {
 				return NewPathError("restore", dstFile, fmt.Errorf("creating symlink: %w", err))
 			}
 		}

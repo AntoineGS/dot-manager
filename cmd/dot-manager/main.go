@@ -264,20 +264,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 }
 
 func runRestoreWithManager(m manager.Restorer) error {
-	// Create context with cancellation support
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle interrupt signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		fmt.Println("\nOperation canceled by user")
-		cancel()
-	}()
-
-	return m.RestoreWithContext(ctx)
+	return runWithCancellation(m.RestoreWithContext)
 }
 
 func runBackup(cmd *cobra.Command, args []string) error {
@@ -298,20 +285,26 @@ func runBackup(cmd *cobra.Command, args []string) error {
 }
 
 func runBackupWithManager(m manager.Backuper) error {
-	// Create context with cancellation support
+	return runWithCancellation(m.BackupWithContext)
+}
+
+// runWithCancellation runs a context-aware function with signal-based cancellation.
+// It sets up SIGINT/SIGTERM handling and cancels the context when a signal is received.
+func runWithCancellation(fn func(ctx context.Context) error) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
 	go func() {
 		<-sigChan
 		fmt.Println("\nOperation canceled by user")
 		cancel()
 	}()
 
-	return m.BackupWithContext(ctx)
+	return fn(ctx)
 }
 
 func runList(_ *cobra.Command, _ []string) error {

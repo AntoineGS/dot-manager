@@ -170,14 +170,45 @@ func ValidateEntries(entries []Entry) []error {
 
 // ValidateConfig validates the entire config including all applications
 func ValidateConfig(cfg *Config) []error {
-	var errors []error
+	var errs []error
 
 	// Validate version
 	if cfg.Version != 3 {
-		errors = append(errors, fmt.Errorf("unsupported config version: %d (expected 3)", cfg.Version))
+		errs = append(errs, fmt.Errorf("%w: %d (expected 3)", ErrUnsupportedVersion, cfg.Version))
 	}
 
-	// TODO: Add validation for applications and sub-entries
+	// Validate applications
+	appNames := make(map[string]bool)
 
-	return errors
+	for _, app := range cfg.Applications {
+		if app.Name == "" {
+			errs = append(errs, fmt.Errorf("%w: application has empty name", ErrInvalidConfig))
+
+			continue
+		}
+
+		if appNames[app.Name] {
+			errs = append(errs, fmt.Errorf("%w: duplicate application name %q", ErrInvalidConfig, app.Name))
+		}
+
+		appNames[app.Name] = true
+
+		// Validate sub-entries
+		subNames := make(map[string]bool)
+		for _, entry := range app.Entries {
+			if entry.Name == "" {
+				errs = append(errs, fmt.Errorf("%w: application %q has entry with empty name", ErrInvalidConfig, app.Name))
+
+				continue
+			}
+
+			if subNames[entry.Name] {
+				errs = append(errs, fmt.Errorf("%w: application %q has duplicate entry name %q", ErrInvalidConfig, app.Name, entry.Name))
+			}
+
+			subNames[entry.Name] = true
+		}
+	}
+
+	return errs
 }
