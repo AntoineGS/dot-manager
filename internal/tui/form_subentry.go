@@ -1479,7 +1479,6 @@ func (m Model) viewFileAddModeMenu() string {
 
 	// Help
 	b.WriteString(RenderHelpWithWidth(m.width,
-		"↑/k ↓/j", "navigate",
 		"enter", "select",
 		"esc", "cancel",
 	))
