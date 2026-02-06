@@ -1,0 +1,46 @@
+
+    filter: on (showing 36 of 36 apps)
+  ┌───────────────────────────┬───────────────────────────┬───────────────────────────┬──────────────────────────┬─────────────────────────────────┐
+  │ name ↑                    │ status                    │ info                      │ backup                   │ path                            │
+  ├───────────────────────────┼───────────────────────────┼───────────────────────────┼──────────────────────────┼─────────────────────────────────┤
+  │ ▶ app-01                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▼ app-02                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │   ├─ settings             │ Missing                   │ folder                    │ ./nvim/settings          │ ~/.config/nvim/lua/settings.lua │
+  │   ├─ init.lua             │ Adopt                     │ folder                    │ ./nvim/init              │ ~/.config/nvim/init.lua         │
+  │   ├─ mappings             │ Adopt                     │ folder                    │ ./nvim/mappings          │ ~/.config/nvim/lua/mappings.lua │
+  │   └─ plugins              │ Adopt                     │ folder                    │ ./nvim/plugins           │ ~/.config/nvim/lua/plugins      │
+  │ ▶ app-03                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-04                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-05                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-06                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-07                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-08                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-09                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-10                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-11                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-12                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-13                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-14                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-15                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-16                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-17                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-18                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-19                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-20                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-21                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-22                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-23                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-24                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-25                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-26                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-27                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-28                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-29                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-30                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-31                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ▶ app-32                  │ Missing                   │ 4 entries                 │                          │                                 │
+  │ ↓ 4 more below            │                           │                           │                          │                                 │
+  └───────────────────────────┴───────────────────────────┴───────────────────────────┴──────────────────────────┴─────────────────────────────────┘
+
+
+  / search  Add app  add entry  edit  delete  restore  install  quit

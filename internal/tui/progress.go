@@ -1404,20 +1404,7 @@ func (m Model) viewListTable() string {
 	var b strings.Builder
 	linesUsed := 0
 
-	// Search input
-	if m.searching || m.searchText != "" {
-		b.WriteString("  / ")
-		if m.searching {
-			b.WriteString(m.searchInput.View())
-		} else {
-			b.WriteString(FilterInputStyle.Render(m.searchText))
-		}
-		b.WriteString("\n")
-		linesUsed++
-	}
-
-	// Filter banner (always shown)
-	// Highlight the 'f' in "filter" similar to table headers
+	// Filter banner (always shown) with search input right-aligned on the same line
 	highlightedF := lipgloss.NewStyle().
 		Foreground(accentColor).
 		Bold(true).
@@ -1438,6 +1425,18 @@ func (m Model) viewListTable() string {
 		filterBanner = "  " + highlightedF + "ilter: on" + countInfo
 	} else {
 		filterBanner = "  " + highlightedF + "ilter: off"
+	}
+
+	// Append search input after the filter banner on the same line
+	if m.searching || m.searchText != "" {
+		var searchPart string
+		if m.searching {
+			searchPart = "/ " + m.searchInput.View()
+		} else {
+			searchPart = "/ " + FilterInputStyle.Render(m.searchText)
+		}
+
+		filterBanner += "    " + searchPart
 	}
 
 	b.WriteString(filterBanner)
@@ -1483,7 +1482,8 @@ func (m Model) viewListTable() string {
 	linesAfterTable += 1 + helpLines // Blank line + help
 
 	// Calculate available height for table
-	availableForTable := m.height - linesUsed - linesAfterTable
+	// Subtract 2 for BaseStyle vertical padding (1 top + 1 bottom)
+	availableForTable := m.height - linesUsed - linesAfterTable - 2
 	if availableForTable < 10 {
 		availableForTable = 10 // Minimum table height
 	}

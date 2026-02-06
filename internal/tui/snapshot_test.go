@@ -24,6 +24,7 @@ func TestScreenResults_Snapshots(t *testing.T) {
 	}{
 		{"basic_list", setupBasicList},
 		{"app_expanded", setupAppExpanded},
+		{"expand_when_at_capacity", setupExpandWhenAtCapacity},
 		{"multi_select", setupMultiSelect},
 		{"search_active", setupSearchActive},
 		{"scroll_middle", setupScrollMiddle},
@@ -468,18 +469,40 @@ func setupAppExpanded(m *Model) {
 			},
 		},
 	}
-
 	m.initApplicationItems()
 
-	// Expand the middle app (nvim, index 1 after sorting)
-	for i, app := range m.Applications {
-		if app.Application.Name == nvimAppName {
-			m.Applications[i].Expanded = true
-			break
-		}
-	}
+	m.Applications[1].Expanded = true
+	m.initTableModel()
 
 	m.Screen = ScreenResults
 	m.Operation = OpList
-	m.tableCursor = 1 // Cursor on nvim
+	m.tableCursor = 1
+}
+
+func setupExpandWhenAtCapacity(m *Model) {
+	m.width = 150
+	m.height = 48
+
+	apps := make([]config.Application, 36)
+	for i := 0; i < 36; i++ {
+		apps[i] = config.Application{
+			Name:        fmt.Sprintf("app-%02d", i+1),
+			Description: fmt.Sprintf("Application %d", i+1),
+			Entries: []config.SubEntry{
+				{Name: "init.lua", Backup: "./nvim/init", Targets: map[string]string{"linux": "~/.config/nvim/init.lua"}},
+				{Name: "plugins", Backup: "./nvim/plugins", Targets: map[string]string{"linux": "~/.config/nvim/lua/plugins"}},
+				{Name: "mappings", Backup: "./nvim/mappings", Targets: map[string]string{"linux": "~/.config/nvim/lua/mappings.lua"}},
+				{Name: "settings", Backup: "./nvim/settings", Targets: map[string]string{"linux": "~/.config/nvim/lua/settings.lua"}},
+			},
+		}
+	}
+	m.Config.Applications = apps
+	m.initApplicationItems()
+
+	m.Applications[1].Expanded = true
+	m.initTableModel()
+
+	m.Screen = ScreenResults
+	m.Operation = OpList
+	m.tableCursor = 1
 }
