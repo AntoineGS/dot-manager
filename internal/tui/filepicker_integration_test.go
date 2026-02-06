@@ -417,49 +417,57 @@ func TestFilePickerIntegration_ModeMenuNavigation(t *testing.T) {
 	m.subEntryForm.addFileMode = ModeChoosing
 	m.subEntryForm.modeMenuCursor = 0 // Start at Browse
 
-	// Test down navigation
+	// Test down navigation: 0 -> 1 (Browse source)
 	keyMsg := tea.KeyMsg{Type: tea.KeyDown}
 	updatedModel, _ := m.updateFileAddModeChoice(keyMsg)
 	m = updatedModel.(Model)
 
 	if m.subEntryForm.modeMenuCursor != 1 {
-		t.Errorf("after down: modeMenuCursor = %d, want 1 (Type)", m.subEntryForm.modeMenuCursor)
+		t.Errorf("after down: modeMenuCursor = %d, want 1 (Browse source)", m.subEntryForm.modeMenuCursor)
 	}
 
-	// Test down navigation with wrap
+	// Test down navigation: 1 -> 2 (Type)
+	keyMsg = tea.KeyMsg{Type: tea.KeyDown}
+	updatedModel, _ = m.updateFileAddModeChoice(keyMsg)
+	m = updatedModel.(Model)
+
+	if m.subEntryForm.modeMenuCursor != 2 {
+		t.Errorf("after second down: modeMenuCursor = %d, want 2 (Type)", m.subEntryForm.modeMenuCursor)
+	}
+
+	// Test down navigation with wrap: 2 -> 0
 	keyMsg = tea.KeyMsg{Type: tea.KeyDown}
 	updatedModel, _ = m.updateFileAddModeChoice(keyMsg)
 	m = updatedModel.(Model)
 
 	if m.subEntryForm.modeMenuCursor != 0 {
-		t.Errorf("after down with wrap: modeMenuCursor = %d, want 0 (Browse)", m.subEntryForm.modeMenuCursor)
+		t.Errorf("after down with wrap: modeMenuCursor = %d, want 0 (Browse target)", m.subEntryForm.modeMenuCursor)
 	}
 
-	// Test up navigation
+	// Test up navigation with wrap: 0 -> 2
 	keyMsg = tea.KeyMsg{Type: tea.KeyUp}
 	updatedModel, _ = m.updateFileAddModeChoice(keyMsg)
 	m = updatedModel.(Model)
 
-	if m.subEntryForm.modeMenuCursor != 1 {
-		t.Errorf("after up: modeMenuCursor = %d, want 1 (Type)", m.subEntryForm.modeMenuCursor)
+	if m.subEntryForm.modeMenuCursor != 2 {
+		t.Errorf("after up: modeMenuCursor = %d, want 2 (Type)", m.subEntryForm.modeMenuCursor)
 	}
 
-	// Test vim-style navigation (j = down)
-	m.subEntryForm.modeMenuCursor = 1
+	// Test vim-style navigation (j = down): 2 -> 0 (wrap)
 	keyMsg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
 	updatedModel, _ = m.updateFileAddModeChoice(keyMsg)
 	m = updatedModel.(Model)
 
 	if m.subEntryForm.modeMenuCursor != 0 {
-		t.Errorf("after 'j' (vim down): modeMenuCursor = %d, want 0 (Browse)", m.subEntryForm.modeMenuCursor)
+		t.Errorf("after 'j' (vim down): modeMenuCursor = %d, want 0 (Browse target)", m.subEntryForm.modeMenuCursor)
 	}
 
-	// Test vim-style navigation (k = up)
+	// Test vim-style navigation (k = up): 0 -> 2 (wrap)
 	keyMsg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
 	updatedModel, _ = m.updateFileAddModeChoice(keyMsg)
 	m = updatedModel.(Model)
 
-	if m.subEntryForm.modeMenuCursor != 1 {
-		t.Errorf("after 'k' (vim up): modeMenuCursor = %d, want 1 (Type)", m.subEntryForm.modeMenuCursor)
+	if m.subEntryForm.modeMenuCursor != 2 {
+		t.Errorf("after 'k' (vim up): modeMenuCursor = %d, want 2 (Type)", m.subEntryForm.modeMenuCursor)
 	}
 }
