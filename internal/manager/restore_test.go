@@ -33,9 +33,9 @@ func TestRestoreFolder(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.RestoreFolder(entry, srcDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -75,9 +75,9 @@ func TestRestoreFolderSkipsExistingSymlink(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.RestoreFolder(entry, srcDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -111,15 +111,15 @@ func TestRestoreFiles(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	entry := config.Entry{Name: "test", Files: []string{"file1.txt", "file2.txt"}}
+	subEntry := config.SubEntry{Name: "test", Files: []string{"file1.txt", "file2.txt"}}
 
-	err := mgr.RestoreFiles(entry, srcDir, targetDir)
+	err := mgr.RestoreFiles(subEntry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFiles() error = %v", err)
 	}
 
 	// Check symlinks were created
-	for _, file := range entry.Files {
+	for _, file := range subEntry.Files {
 		targetFile := filepath.Join(targetDir, file)
 		if !isSymlink(targetFile) {
 			t.Errorf("%s is not a symlink", file)
@@ -158,9 +158,9 @@ func TestRestoreFilesRemovesExisting(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	entry := config.Entry{Name: "test", Files: []string{"config.txt"}}
+	subEntry := config.SubEntry{Name: "test", Files: []string{"config.txt"}}
 
-	err := mgr.RestoreFiles(entry, srcDir, targetDir)
+	err := mgr.RestoreFiles(subEntry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFiles() error = %v", err)
 	}
@@ -190,9 +190,9 @@ func TestRestoreDryRun(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.DryRun = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.RestoreFolder(entry, srcDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, srcDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -1259,9 +1259,9 @@ func TestRestoreFiles_SourceMissing(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "test", Files: []string{"missing.txt"}}
+	subEntry := config.SubEntry{Name: "test", Files: []string{"missing.txt"}}
 
-	err := mgr.RestoreFiles(entry, backupDir, targetDir)
+	err := mgr.RestoreFiles(subEntry, backupDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFiles() error = %v", err)
 	}
@@ -1286,9 +1286,9 @@ func TestRestoreFolder_SourceMissing(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -1382,9 +1382,9 @@ func TestRestoreFilesSubEntry_SourceMissing(t *testing.T) {
 
 	subEntry := cfg.Applications[0].Entries[0]
 
-	err := mgr.restoreFilesSubEntry("test", subEntry, backupPath, targetDir)
+	err := mgr.RestoreFiles(subEntry, backupPath, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFilesSubEntry() error = %v", err)
+		t.Fatalf("RestoreFiles() error = %v", err)
 	}
 
 	// No symlink should be created
@@ -1429,9 +1429,9 @@ func TestRestoreFolderSubEntry_SourceMissing(t *testing.T) {
 
 	subEntry := cfg.Applications[0].Entries[0]
 
-	err := mgr.restoreFolderSubEntry("test", subEntry, backupPath, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupPath, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFolderSubEntry() error = %v", err)
+		t.Fatalf("RestoreFolder() error = %v", err)
 	}
 
 	// Target should not be created
@@ -1482,9 +1482,9 @@ func TestRestoreFolder_RecreatesChangedSymlink(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err = mgr.RestoreFolder(entry, correctSrc, targetDir)
+	err = mgr.RestoreFolder(subEntry, correctSrc, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFolder() error = %v", err)
 	}
@@ -1552,12 +1552,12 @@ func TestRestoreFiles_RecreatesChangedSymlink(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{
+	subEntry := config.SubEntry{
 		Name:  "test",
 		Files: []string{"config.txt"},
 	}
 
-	err = mgr.RestoreFiles(entry, correctSrc, targetDir)
+	err = mgr.RestoreFiles(subEntry, correctSrc, targetDir)
 	if err != nil {
 		t.Fatalf("restoreFiles() error = %v", err)
 	}
@@ -1607,9 +1607,9 @@ func TestRestoreFolder_MergesExistingContent(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 	if err != nil {
 		t.Fatalf("RestoreFolder() error = %v", err)
 	}
@@ -1664,9 +1664,9 @@ func TestRestoreFolder_ConflictsRenamed(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 	if err != nil {
 		t.Fatalf("RestoreFolder() error = %v", err)
 	}
@@ -1746,12 +1746,12 @@ func TestRestoreFiles_OnlyMergesListedFiles(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	entry := config.Entry{
+	subEntry := config.SubEntry{
 		Name:  "test",
 		Files: []string{"config.txt"}, // Only config.txt is listed
 	}
 
-	err := mgr.RestoreFiles(entry, backupDir, targetDir)
+	err := mgr.RestoreFiles(subEntry, backupDir, targetDir)
 	if err != nil {
 		t.Fatalf("RestoreFiles() error = %v", err)
 	}

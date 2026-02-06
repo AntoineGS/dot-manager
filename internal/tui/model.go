@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -416,17 +417,17 @@ func isPackageInstalledFromPackage(pkg *config.EntryPackage, method, entryName s
 
 	// Get the package name for the detected manager
 	pkgName := ""
-	if name, ok := pkg.Managers[method]; ok {
-		// Type assert to string (skip git packages which are GitPackage type)
-		if str, ok := name.(string); ok {
-			pkgName = str
+	if val, ok := pkg.Managers[method]; ok {
+		// Skip git packages
+		if !val.IsGit() {
+			pkgName = val.PackageName
 		}
 	} else {
 		// For custom/url methods, use the entry name
 		pkgName = entryName
 	}
 
-	return packages.IsInstalled(pkgName, method)
+	return packages.IsInstalled(context.Background(), pkgName, method)
 }
 
 // getPackageInstallMethodFromPackage determines how a package would be installed

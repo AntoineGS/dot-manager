@@ -374,8 +374,8 @@ applications:
 		t.Fatal("Applications[0].Package is nil, want non-nil")
 	}
 
-	if cfg.Applications[0].Package.Managers["pacman"] != "neovim" {
-		t.Errorf("Package.Managers[pacman] = %q, want %q", cfg.Applications[0].Package.Managers["pacman"], "neovim")
+	if cfg.Applications[0].Package.Managers["pacman"].PackageName != "neovim" {
+		t.Errorf("Package.Managers[pacman] = %q, want %q", cfg.Applications[0].Package.Managers["pacman"].PackageName, "neovim")
 	}
 }
 
@@ -611,8 +611,8 @@ applications:
 		t.Fatal("Applications[0].HasPackage() = false, want true")
 	}
 
-	if app1.Package.Managers["pacman"] != "neovim" {
-		t.Errorf("Applications[0].Package.Managers[pacman] = %q, want %q", app1.Package.Managers["pacman"], "neovim")
+	if app1.Package.Managers["pacman"].PackageName != "neovim" {
+		t.Errorf("Applications[0].Package.Managers[pacman] = %q, want %q", app1.Package.Managers["pacman"].PackageName, "neovim")
 	}
 
 	// Test second application (zsh)
@@ -655,7 +655,7 @@ func TestGetFilteredApplications(t *testing.T) {
 				Entries: []SubEntry{
 					{Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
 				},
-				Package: &EntryPackage{Managers: map[string]interface{}{"pacman": "neovim"}},
+				Package: &EntryPackage{Managers: map[string]ManagerValue{"pacman": {PackageName: "neovim"}}},
 			},
 			{
 				Name:        "vscode",

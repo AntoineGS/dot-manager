@@ -628,10 +628,10 @@ func TestRestoreFolder_NoMerge_Fails(t *testing.T) {
 	mgr.NoMerge = true
 	mgr.ForceDelete = false
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
 	// Act: Should fail because NoMerge is enabled and target has content
-	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 
 	// Assert: Error should be returned
 	if err == nil {
@@ -689,10 +689,10 @@ func TestRestoreFolder_NoMerge_ForceDelete_Succeeds(t *testing.T) {
 	mgr.NoMerge = true
 	mgr.ForceDelete = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
 	// Act: Should succeed because ForceDelete is enabled
-	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 
 	// Assert: No error
 	if err != nil {
@@ -830,10 +830,10 @@ func TestRestoreFolder_NoMerge_FailsEvenIfEmpty(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.NoMerge = true
 
-	entry := config.Entry{Name: "test"}
+	subEntry := config.SubEntry{Name: "test"}
 
 	// Act: Should fail because NoMerge is strict (target exists)
-	err := mgr.RestoreFolder(entry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 
 	// Assert: Error should be returned
 	if err == nil {

@@ -102,7 +102,6 @@ func (m Model) renderSubEntryInlineDetail(_ *SubEntryItem, _ int) string {
 }
 
 // performRestoreSubEntry performs restore on a SubEntry
-// This is adapted from performRestore but works with SubEntry instead of PathItem
 func (m Model) performRestoreSubEntry(subEntry config.SubEntry, target string) (bool, string) {
 	if !subEntry.IsConfig() {
 		return false, "Not a config entry"
@@ -110,20 +109,11 @@ func (m Model) performRestoreSubEntry(subEntry config.SubEntry, target string) (
 
 	backupPath := m.resolvePath(subEntry.Backup)
 
-	// Convert SubEntry to Entry for Manager call
-	entry := config.Entry{
-		Name:   subEntry.Name,
-		Files:  subEntry.Files,
-		Backup: subEntry.Backup,
-		Sudo:   subEntry.Sudo,
-	}
-
-	// Use Manager for actual restore operation
 	var err error
 	if subEntry.IsFolder() {
-		err = m.Manager.RestoreFolder(entry, backupPath, target)
+		err = m.Manager.RestoreFolder(subEntry, backupPath, target)
 	} else {
-		err = m.Manager.RestoreFiles(entry, backupPath, target)
+		err = m.Manager.RestoreFiles(subEntry, backupPath, target)
 	}
 
 	if err != nil {

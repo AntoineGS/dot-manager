@@ -314,7 +314,7 @@ func TestCanInstall(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name:     "vim",
-				Managers: map[PackageManager]interface{}{Pacman: "vim"},
+				Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "vim"}},
 			},
 			want: true,
 		},
@@ -324,7 +324,7 @@ func TestCanInstall(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name:     "vim",
-				Managers: map[PackageManager]interface{}{Pacman: "vim"},
+				Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "vim"}},
 			},
 			want: false,
 		},
@@ -378,9 +378,9 @@ func TestCanInstall(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name: "multi-tool",
-				Managers: map[PackageManager]interface{}{
-					Apt:    "multi-tool",
-					Pacman: "multi-tool",
+				Managers: map[PackageManager]ManagerValue{
+					Apt:    {PackageName: "multi-tool"},
+					Pacman: {PackageName: "multi-tool"},
 				},
 				Custom: map[string]string{"linux": "make install"},
 			},
@@ -435,7 +435,7 @@ func TestGetInstallMethod(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name:     "vim",
-				Managers: map[PackageManager]interface{}{Pacman: "vim"},
+				Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "vim"}},
 			},
 			want: "pacman",
 		},
@@ -445,9 +445,9 @@ func TestGetInstallMethod(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name: "vim",
-				Managers: map[PackageManager]interface{}{
-					Pacman: "vim",
-					Yay:    "vim",
+				Managers: map[PackageManager]ManagerValue{
+					Pacman: {PackageName: "vim"},
+					Yay:    {PackageName: "vim"},
 				},
 			},
 			want: "yay",
@@ -489,7 +489,7 @@ func TestGetInstallMethod(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name:     "tool",
-				Managers: map[PackageManager]interface{}{Pacman: "tool"},
+				Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "tool"}},
 				Custom:   map[string]string{"linux": "make install"},
 			},
 			want: "pacman",
@@ -513,7 +513,7 @@ func TestGetInstallMethod(t *testing.T) {
 			osType:    "windows",
 			pkg: Package{
 				Name:     "app",
-				Managers: map[PackageManager]interface{}{Winget: "Publisher.App"},
+				Managers: map[PackageManager]ManagerValue{Winget: {PackageName: "Publisher.App"}},
 			},
 			want: "winget",
 		},
@@ -551,7 +551,7 @@ func TestInstall_DryRun(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name:     "vim",
-				Managers: map[PackageManager]interface{}{Pacman: "vim"},
+				Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "vim"}},
 			},
 			wantSuccess: true,
 			wantMethod:  "pacman",
@@ -596,7 +596,7 @@ func TestInstall_DryRun(t *testing.T) {
 			osType:    "linux",
 			pkg: Package{
 				Name:     "aur-package",
-				Managers: map[PackageManager]interface{}{Yay: "aur-package"},
+				Managers: map[PackageManager]ManagerValue{Yay: {PackageName: "aur-package"}},
 			},
 			wantSuccess: true,
 			wantMethod:  "yay",
@@ -607,7 +607,7 @@ func TestInstall_DryRun(t *testing.T) {
 			osType:    "windows",
 			pkg: Package{
 				Name:     "app",
-				Managers: map[PackageManager]interface{}{Winget: "Publisher.App"},
+				Managers: map[PackageManager]ManagerValue{Winget: {PackageName: "Publisher.App"}},
 			},
 			wantSuccess: true,
 			wantMethod:  "winget",
@@ -857,7 +857,7 @@ func TestFromEntry(t *testing.T) {
 				Name:        "vim",
 				Description: "Text editor",
 				Package: &config.EntryPackage{
-					Managers: map[string]interface{}{"pacman": "vim", "apt": "vim"},
+					Managers: map[string]config.ManagerValue{"pacman": {PackageName: "vim"}, "apt": {PackageName: "vim"}},
 				},
 			},
 			wantNil:    false,
@@ -905,7 +905,7 @@ func TestFromEntry(t *testing.T) {
 					{Include: map[string]string{"os": "linux"}},
 				},
 				Package: &config.EntryPackage{
-					Managers: map[string]interface{}{"pacman": "filtered-pkg"},
+					Managers: map[string]config.ManagerValue{"pacman": {PackageName: "filtered-pkg"}},
 				},
 			},
 			wantNil:  false,
@@ -917,7 +917,7 @@ func TestFromEntry(t *testing.T) {
 				Name:        "full-pkg",
 				Description: "Full package example",
 				Package: &config.EntryPackage{
-					Managers: map[string]interface{}{"pacman": "full-pkg", "apt": "full-pkg"},
+					Managers: map[string]config.ManagerValue{"pacman": {PackageName: "full-pkg"}, "apt": {PackageName: "full-pkg"}},
 					Custom:   map[string]string{"darwin": "brew install full-pkg"},
 					URL: map[string]config.URLInstallSpec{
 						"windows": {URL: "https://example.com/full-pkg.exe", Command: "{file} /install"},
@@ -978,13 +978,13 @@ func TestFromEntries(t *testing.T) {
 				{
 					Name: "vim",
 					Package: &config.EntryPackage{
-						Managers: map[string]interface{}{"pacman": "vim"},
+						Managers: map[string]config.ManagerValue{"pacman": {PackageName: "vim"}},
 					},
 				},
 				{
 					Name: "tmux",
 					Package: &config.EntryPackage{
-						Managers: map[string]interface{}{"pacman": "tmux"},
+						Managers: map[string]config.ManagerValue{"pacman": {PackageName: "tmux"}},
 					},
 				},
 			},
@@ -996,7 +996,7 @@ func TestFromEntries(t *testing.T) {
 				{
 					Name: "pkg1",
 					Package: &config.EntryPackage{
-						Managers: map[string]interface{}{"pacman": "pkg1"},
+						Managers: map[string]config.ManagerValue{"pacman": {PackageName: "pkg1"}},
 					},
 				},
 				{
@@ -1058,8 +1058,8 @@ func TestGetInstallablePackages(t *testing.T) {
 			available: []PackageManager{Pacman},
 			osType:    "linux",
 			packages: []Package{
-				{Name: "pacman-pkg", Managers: map[PackageManager]interface{}{Pacman: "pacman-pkg"}},
-				{Name: "apt-pkg", Managers: map[PackageManager]interface{}{Apt: "apt-pkg"}},
+				{Name: "pacman-pkg", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pacman-pkg"}}},
+				{Name: "apt-pkg", Managers: map[PackageManager]ManagerValue{Apt: {PackageName: "apt-pkg"}}},
 			},
 			want: []string{"pacman-pkg"},
 		},
@@ -1088,8 +1088,8 @@ func TestGetInstallablePackages(t *testing.T) {
 			available: []PackageManager{Pacman, Yay},
 			osType:    "linux",
 			packages: []Package{
-				{Name: "pkg1", Managers: map[PackageManager]interface{}{Pacman: "pkg1"}},
-				{Name: "pkg2", Managers: map[PackageManager]interface{}{Apt: "pkg2"}},
+				{Name: "pkg1", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pkg1"}}},
+				{Name: "pkg2", Managers: map[PackageManager]ManagerValue{Apt: {PackageName: "pkg2"}}},
 				{Name: "pkg3", Custom: map[string]string{"linux": "install.sh"}},
 				{Name: "pkg4", URL: map[string]URLInstall{"darwin": {URL: "http://example.com"}}},
 			},
@@ -1100,7 +1100,7 @@ func TestGetInstallablePackages(t *testing.T) {
 			available: []PackageManager{},
 			osType:    "linux",
 			packages: []Package{
-				{Name: "pkg1", Managers: map[PackageManager]interface{}{Winget: "pkg1"}},
+				{Name: "pkg1", Managers: map[PackageManager]ManagerValue{Winget: {PackageName: "pkg1"}}},
 				{Name: "pkg2", Custom: map[string]string{"windows": "install.bat"}},
 			},
 			want: []string{},
@@ -1117,7 +1117,7 @@ func TestGetInstallablePackages(t *testing.T) {
 			available: []PackageManager{Yay, Pacman},
 			osType:    "linux",
 			packages: []Package{
-				{Name: "pkg1", Managers: map[PackageManager]interface{}{Pacman: "pkg1", Yay: "pkg1"}},
+				{Name: "pkg1", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pkg1"}, Yay: {PackageName: "pkg1"}}},
 			},
 			want: []string{"pkg1"},
 		},
@@ -1163,9 +1163,9 @@ func TestInstallAll_DryRun(t *testing.T) {
 			available: []PackageManager{Pacman},
 			osType:    "linux",
 			packages: []Package{
-				{Name: "pkg1", Managers: map[PackageManager]interface{}{Pacman: "pkg1"}},
-				{Name: "pkg2", Managers: map[PackageManager]interface{}{Pacman: "pkg2"}},
-				{Name: "pkg3", Managers: map[PackageManager]interface{}{Pacman: "pkg3"}},
+				{Name: "pkg1", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pkg1"}}},
+				{Name: "pkg2", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pkg2"}}},
+				{Name: "pkg3", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pkg3"}}},
 			},
 			wantResults: 3,
 			wantSuccess: 3,
@@ -1175,9 +1175,9 @@ func TestInstallAll_DryRun(t *testing.T) {
 			available: []PackageManager{Pacman},
 			osType:    "linux",
 			packages: []Package{
-				{Name: "pkg1", Managers: map[PackageManager]interface{}{Pacman: "pkg1"}},
+				{Name: "pkg1", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pkg1"}}},
 				{Name: "pkg2"}, // No install method
-				{Name: "pkg3", Managers: map[PackageManager]interface{}{Pacman: "pkg3"}},
+				{Name: "pkg3", Managers: map[PackageManager]ManagerValue{Pacman: {PackageName: "pkg3"}}},
 			},
 			wantResults: 3,
 			wantSuccess: 2,
@@ -1227,9 +1227,9 @@ func TestPackage_GitConfigInManagers(t *testing.T) {
 	pkg := Package{
 		Name:        "my-dotfiles",
 		Description: "My dotfiles repo",
-		Managers: map[PackageManager]interface{}{
-			Pacman: "neovim",
-			Git: GitConfig{
+		Managers: map[PackageManager]ManagerValue{
+			Pacman: {PackageName: "neovim"},
+			Git: {Git: &GitConfig{
 				URL:    "https://github.com/user/dotfiles.git",
 				Branch: "main",
 				Targets: map[string]string{
@@ -1237,21 +1237,22 @@ func TestPackage_GitConfigInManagers(t *testing.T) {
 					"windows": "~/dotfiles",
 				},
 				Sudo: false,
-			},
+			}},
 		},
 	}
 
 	// Check traditional manager (string)
-	if pkg.Managers[Pacman] != "neovim" {
-		t.Errorf("Expected pacman package name, got %v", pkg.Managers[Pacman])
+	if pkg.Managers[Pacman].PackageName != "neovim" {
+		t.Errorf("Expected pacman package name, got %v", pkg.Managers[Pacman].PackageName)
 	}
 
 	// Check git manager (GitConfig)
-	gitCfg, ok := pkg.Managers[Git].(GitConfig)
-	if !ok {
+	gitValue := pkg.Managers[Git]
+	if !gitValue.IsGit() {
 		t.Fatal("Expected git manager to be GitConfig")
 	}
 
+	gitCfg := gitValue.Git
 	if gitCfg.URL != "https://github.com/user/dotfiles.git" {
 		t.Errorf("Expected git repo URL, got %s", gitCfg.URL)
 	}
@@ -1288,14 +1289,14 @@ func TestManager_InstallGitPackage_Clone(t *testing.T) {
 	// Create git package
 	pkg := Package{
 		Name: "test-repo",
-		Managers: map[PackageManager]interface{}{
-			Git: GitConfig{
+		Managers: map[PackageManager]ManagerValue{
+			Git: {Git: &GitConfig{
 				URL: bareRepo,
 				Targets: map[string]string{
 					platform.OSLinux: cloneDest,
 				},
 				Sudo: false,
-			},
+			}},
 		},
 	}
 
@@ -1376,14 +1377,14 @@ func TestManager_InstallGitPackage_Pull(t *testing.T) {
 	// Create git package
 	pkg := Package{
 		Name: "test-repo",
-		Managers: map[PackageManager]interface{}{
-			Git: GitConfig{
+		Managers: map[PackageManager]ManagerValue{
+			Git: {Git: &GitConfig{
 				URL: bareRepo,
 				Targets: map[string]string{
 					platform.OSLinux: cloneDest,
 				},
 				Sudo: false,
-			},
+			}},
 		},
 	}
 
@@ -1408,15 +1409,15 @@ func TestManager_InstallGitPackage_DryRun(t *testing.T) {
 
 	pkg := Package{
 		Name: "test-repo",
-		Managers: map[PackageManager]interface{}{
-			Git: GitConfig{
+		Managers: map[PackageManager]ManagerValue{
+			Git: {Git: &GitConfig{
 				URL:    "https://github.com/test/repo.git",
 				Branch: "main",
 				Targets: map[string]string{
 					platform.OSLinux: cloneDest,
 				},
 				Sudo: false,
-			},
+			}},
 		},
 	}
 
@@ -1456,25 +1457,22 @@ managers:
 	}
 
 	// Verify pacman manager (string)
-	pacmanPkg, ok := pkg.Managers[Pacman].(string)
-	if !ok {
-		t.Fatal("Expected pacman to be string")
-	}
-	if pacmanPkg != "neovim" {
-		t.Errorf("Expected 'neovim', got %s", pacmanPkg)
+	pacmanValue := pkg.Managers[Pacman]
+	if pacmanValue.PackageName != "neovim" {
+		t.Errorf("Expected 'neovim', got %s", pacmanValue.PackageName)
 	}
 
 	// Verify git manager (GitConfig)
-	gitCfg, ok := pkg.Managers[Git].(GitConfig)
-	if !ok {
-		t.Fatalf("Expected git to be GitConfig, got %T", pkg.Managers[Git])
+	gitValue := pkg.Managers[Git]
+	if !gitValue.IsGit() {
+		t.Fatal("Expected git to be GitConfig")
 	}
 
-	if gitCfg.URL != "https://github.com/user/repo.git" {
-		t.Errorf("Expected URL, got %s", gitCfg.URL)
+	if gitValue.Git.URL != "https://github.com/user/repo.git" {
+		t.Errorf("Expected URL, got %s", gitValue.Git.URL)
 	}
 
-	if !gitCfg.Sudo {
+	if !gitValue.Git.Sudo {
 		t.Error("Expected sudo to be true")
 	}
 }
@@ -1488,14 +1486,14 @@ func TestManager_InstallGitPackage_WithSudo(t *testing.T) {
 
 	pkg := Package{
 		Name: "test-repo",
-		Managers: map[PackageManager]interface{}{
-			Git: GitConfig{
+		Managers: map[PackageManager]ManagerValue{
+			Git: {Git: &GitConfig{
 				URL: "https://github.com/test/repo.git",
 				Targets: map[string]string{
 					platform.OSLinux: cloneDest,
 				},
 				Sudo: true,
-			},
+			}},
 		},
 	}
 

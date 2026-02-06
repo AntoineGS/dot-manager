@@ -337,8 +337,8 @@ func TestBuildPackageSpec(t *testing.T) {
 			t.Errorf("len(Managers) = %d, want 1", len(result.Managers))
 		}
 
-		if result.Managers["pacman"] != "neovim" {
-			t.Errorf("Managers[pacman] = %q, want %q", result.Managers["pacman"], "neovim")
+		if result.Managers["pacman"].PackageName != "neovim" {
+			t.Errorf("Managers[pacman] = %q, want %q", result.Managers["pacman"].PackageName, "neovim")
 		}
 	})
 
@@ -359,8 +359,8 @@ func TestBuildPackageSpec(t *testing.T) {
 		}
 
 		for mgr, pkg := range managers {
-			if result.Managers[mgr] != pkg {
-				t.Errorf("Managers[%s] = %q, want %q", mgr, result.Managers[mgr], pkg)
+			if result.Managers[mgr].PackageName != pkg {
+				t.Errorf("Managers[%s] = %q, want %q", mgr, result.Managers[mgr].PackageName, pkg)
 			}
 		}
 	})

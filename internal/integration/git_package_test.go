@@ -63,13 +63,13 @@ func TestGitPackageEndToEnd(t *testing.T) {
 	// Create package config
 	pkg := packages.Package{
 		Name: "test-dotfiles",
-		Managers: map[packages.PackageManager]interface{}{
-			packages.Git: packages.GitConfig{
+		Managers: map[packages.PackageManager]packages.ManagerValue{
+			packages.Git: {Git: &packages.GitConfig{
 				URL: bareRepo,
 				Targets: map[string]string{
 					platform.OSLinux: cloneDest,
 				},
-			},
+			}},
 		},
 	}
 

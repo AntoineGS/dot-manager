@@ -156,8 +156,8 @@ func TestList_V3Format(t *testing.T) {
 				},
 			},
 			Package: &config.EntryPackage{
-				Managers: map[string]interface{}{
-					"pacman": "test-package",
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "test-package"},
 				},
 			},
 		},

@@ -341,7 +341,7 @@ func TestE2E_BackupThenRestore(t *testing.T) {
 	}
 
 	// Verify backup was created
-	backedUpInit := filepath.Join(repoDir, "nvim", "nvim", "init.lua")
+	backedUpInit := filepath.Join(repoDir, "nvim", "init.lua")
 	if !pathExists(backedUpInit) {
 		t.Errorf("nvim backup should exist at %s", backedUpInit)
 	}
@@ -368,7 +368,7 @@ func TestE2E_BackupThenRestore(t *testing.T) {
 					{
 						Name:   "config",
 						Files:  []string{},
-						Backup: "./nvim/nvim", // Points to the backed up folder
+						Backup: "./nvim", // Points to the backed up folder
 						Targets: map[string]string{
 							"linux": nvimDir,
 						},
@@ -1225,7 +1225,7 @@ func TestE2E_V3BackupThenRestore(t *testing.T) {
 	}
 
 	// Verify backup was created
-	backedUpInit := filepath.Join(repoDir, "nvim", "nvim", "init.lua")
+	backedUpInit := filepath.Join(repoDir, "nvim", "init.lua")
 	if !pathExists(backedUpInit) {
 		t.Error("backup should exist")
 	}
@@ -1244,7 +1244,7 @@ func TestE2E_V3BackupThenRestore(t *testing.T) {
 				Entries: []config.SubEntry{
 					{
 						Name:   "config",
-						Backup: "./nvim/nvim", // Points to the backed up folder
+						Backup: "./nvim", // Points to the backed up folder
 						Targets: map[string]string{
 							"linux": nvimDir,
 						},

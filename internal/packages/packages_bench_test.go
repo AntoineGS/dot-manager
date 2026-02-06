@@ -11,8 +11,8 @@ func BenchmarkFilterPackages(b *testing.B) {
 	for i := range packages {
 		packages[i] = Package{
 			Name: "test-package",
-			Managers: map[PackageManager]interface{}{
-				Pacman: "test",
+			Managers: map[PackageManager]ManagerValue{
+				Pacman: {PackageName: "test"},
 			},
 		}
 	}
@@ -37,8 +37,8 @@ func BenchmarkFromEntries(b *testing.B) {
 		entries[i] = config.Entry{
 			Name: "test",
 			Package: &config.EntryPackage{
-				Managers: map[string]interface{}{
-					"pacman": "test",
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "test"},
 				},
 			},
 		}

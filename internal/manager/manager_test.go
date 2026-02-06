@@ -447,7 +447,7 @@ func TestGetPackageEntries(t *testing.T) {
 			{
 				Name: "with-package",
 				Package: &config.EntryPackage{
-					Managers: map[string]interface{}{"pacman": "neovim"},
+					Managers: map[string]config.ManagerValue{"pacman": {PackageName: "neovim"}},
 				},
 				Entries: []config.SubEntry{
 					{

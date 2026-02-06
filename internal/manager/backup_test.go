@@ -47,7 +47,7 @@ func TestBackupFolder(t *testing.T) {
 	}
 
 	// Check files were copied
-	copiedFile := filepath.Join(backupDir, "config", "settings.json")
+	copiedFile := filepath.Join(backupDir, "settings.json")
 	if !pathExists(copiedFile) {
 		t.Error("File was not backed up")
 	}
@@ -321,7 +321,7 @@ func TestBackupIntegration(t *testing.T) {
 	}
 
 	// Check nvim was backed up (as folder)
-	backedUpInit := filepath.Join(backupRoot, "nvim", "nvim", "init.lua")
+	backedUpInit := filepath.Join(backupRoot, "nvim", "init.lua")
 	if !pathExists(backedUpInit) {
 		t.Error("nvim/init.lua was not backed up")
 	}
@@ -387,8 +387,8 @@ func TestBackupV3Application(t *testing.T) {
 		t.Fatalf("Backup() error = %v", err)
 	}
 
-	// Check file was backed up (folder backup adds base name as subfolder)
-	backedUpInit := filepath.Join(backupRoot, "nvim", "nvim", "init.lua")
+	// Check file was backed up
+	backedUpInit := filepath.Join(backupRoot, "nvim", "init.lua")
 	if !pathExists(backedUpInit) {
 		t.Errorf("nvim/init.lua was not backed up at %s", backedUpInit)
 		// List what actually exists
@@ -571,7 +571,7 @@ func TestBackupWithContext(t *testing.T) {
 		t.Fatalf("BackupWithContext() error = %v", err)
 	}
 
-	backedUpInit := filepath.Join(backupRoot, "nvim", "nvim", "init.lua")
+	backedUpInit := filepath.Join(backupRoot, "nvim", "init.lua")
 	if !pathExists(backedUpInit) {
 		t.Error("nvim/init.lua was not backed up")
 	}
@@ -693,9 +693,9 @@ func TestBackupV3_FolderSubEntry(t *testing.T) {
 		t.Fatalf("Backup() error = %v", err)
 	}
 
-	// Check files were backed up (folder backup adds base name as subfolder)
-	backedUpConfig := filepath.Join(backupRoot, "app", "app", "config.json")
-	backedUpSettings := filepath.Join(backupRoot, "app", "app", "settings.json")
+	// Check files were backed up
+	backedUpConfig := filepath.Join(backupRoot, "app", "config.json")
+	backedUpSettings := filepath.Join(backupRoot, "app", "settings.json")
 
 	if !pathExists(backedUpConfig) {
 		t.Error("config.json was not backed up")
@@ -778,7 +778,7 @@ func TestBackupV3_MultipleApplications(t *testing.T) {
 	}
 
 	// Check nvim was backed up
-	backedUpNvim := filepath.Join(backupRoot, "nvim", "nvim", "init.lua")
+	backedUpNvim := filepath.Join(backupRoot, "nvim", "init.lua")
 	if !pathExists(backedUpNvim) {
 		t.Error("nvim/init.lua was not backed up")
 	}

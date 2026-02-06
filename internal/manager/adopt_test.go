@@ -32,9 +32,9 @@ func TestAdoptFolder(t *testing.T) {
 
 	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.restoreFolderSubEntry("test", subEntry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFolderSubEntry() error = %v", err)
+		t.Fatalf("RestoreFolder() error = %v", err)
 	}
 
 	// Check that backup now exists with the content
@@ -85,9 +85,9 @@ func TestAdoptFiles(t *testing.T) {
 
 	subEntry := config.SubEntry{Name: "test", Files: []string{"config1.txt", "config2.txt"}}
 
-	err := mgr.restoreFilesSubEntry("test", subEntry, backupDir, targetDir)
+	err := mgr.RestoreFiles(subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFilesSubEntry() error = %v", err)
+		t.Fatalf("RestoreFiles() error = %v", err)
 	}
 
 	// Check that backup files now exist
@@ -138,9 +138,9 @@ func TestAdoptSkipsExistingBackup(t *testing.T) {
 
 	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.restoreFolderSubEntry("test", subEntry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFolderSubEntry() error = %v", err)
+		t.Fatalf("RestoreFolder() error = %v", err)
 	}
 
 	// Backup content should be preserved (not overwritten)
@@ -177,9 +177,9 @@ func TestAdoptDryRun(t *testing.T) {
 
 	subEntry := config.SubEntry{Name: "test"}
 
-	err := mgr.restoreFolderSubEntry("test", subEntry, backupDir, targetDir)
+	err := mgr.RestoreFolder(subEntry, backupDir, targetDir)
 	if err != nil {
-		t.Fatalf("restoreFolderSubEntry() error = %v", err)
+		t.Fatalf("RestoreFolder() error = %v", err)
 	}
 
 	// Backup should NOT be created in dry run

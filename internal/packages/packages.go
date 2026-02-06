@@ -60,6 +60,17 @@ type GitConfig struct {
 	Sudo    bool              `yaml:"sudo,omitempty"`
 }
 
+// ManagerValue represents a typed value for a package manager entry.
+// It holds either a package name string (for traditional managers like pacman, apt)
+// or a GitConfig (for git repositories).
+type ManagerValue struct {
+	PackageName string
+	Git         *GitConfig
+}
+
+// IsGit returns true if this manager value represents a git package configuration.
+func (v ManagerValue) IsGit() bool { return v.Git != nil }
+
 // Package represents a package to install with multiple installation methods.
 // A package can be installed via a package manager (Managers), a custom shell
 // command (Custom), or by downloading from a URL (URL). The installation method
@@ -67,12 +78,12 @@ type GitConfig struct {
 // custom commands, and finally URL-based installation. Filters can be used to
 // conditionally include the package based on OS, distro, hostname, or user.
 type Package struct {
-	Name        string                         `yaml:"name"`
-	Description string                         `yaml:"description,omitempty"`
-	Managers    map[PackageManager]interface{} `yaml:"managers,omitempty"`
-	Custom      map[string]string              `yaml:"custom,omitempty"` // OS -> command
-	URL         map[string]URLInstall          `yaml:"url,omitempty"`    // OS -> URL install
-	Filters     []config.Filter                `yaml:"filters,omitempty"`
+	Name        string                          `yaml:"name"`
+	Description string                          `yaml:"description,omitempty"`
+	Managers    map[PackageManager]ManagerValue `yaml:"managers,omitempty"`
+	Custom      map[string]string               `yaml:"custom,omitempty"` // OS -> command
+	URL         map[string]URLInstall           `yaml:"url,omitempty"`    // OS -> URL install
+	Filters     []config.Filter                 `yaml:"filters,omitempty"`
 }
 
 // UnmarshalYAML implements custom YAML unmarshaling for Package.
@@ -102,7 +113,7 @@ func (p *Package) UnmarshalYAML(node *yaml.Node) error {
 	p.Filters = alias.Filters
 
 	// Process managers map
-	p.Managers = make(map[PackageManager]interface{})
+	p.Managers = make(map[PackageManager]ManagerValue)
 	for key, valueNode := range alias.Managers {
 		pm := PackageManager(key)
 
@@ -112,14 +123,14 @@ func (p *Package) UnmarshalYAML(node *yaml.Node) error {
 			if err := valueNode.Decode(&gitCfg); err != nil {
 				return fmt.Errorf("failed to decode git config: %w", err)
 			}
-			p.Managers[pm] = gitCfg
+			p.Managers[pm] = ManagerValue{Git: &gitCfg}
 		} else {
 			// Traditional managers are strings
 			var pkgName string
 			if err := valueNode.Decode(&pkgName); err != nil {
 				return fmt.Errorf("failed to decode manager %s: %w", key, err)
 			}
-			p.Managers[pm] = pkgName
+			p.Managers[pm] = ManagerValue{PackageName: pkgName}
 		}
 	}
 
@@ -152,13 +163,14 @@ type Config struct {
 // the appropriate installation method. It supports dry-run mode for previewing
 // operations and verbose mode for detailed output.
 type Manager struct {
-	ctx       context.Context
-	Config    *Config
-	OS        string
-	Preferred PackageManager
-	Available []PackageManager
-	DryRun    bool
-	Verbose   bool
+	ctx          context.Context
+	Config       *Config
+	OS           string
+	Preferred    PackageManager
+	Available    []PackageManager
+	availableSet map[PackageManager]bool
+	DryRun       bool
+	Verbose      bool
 }
 
 // NewManager creates a new package Manager with the given configuration.
@@ -188,8 +200,11 @@ func (m *Manager) WithContext(ctx context.Context) *Manager {
 }
 
 func (m *Manager) detectAvailableManagers() {
+	m.availableSet = make(map[PackageManager]bool)
 	for _, mgr := range platform.DetectAvailableManagers() {
-		m.Available = append(m.Available, PackageManager(mgr))
+		pm := PackageManager(mgr)
+		m.Available = append(m.Available, pm)
+		m.availableSet[pm] = true
 	}
 }
 
@@ -232,13 +247,13 @@ func (m *Manager) selectPreferredManager() {
 // HasManager checks if a package manager is available on the system.
 // It returns true if the specified manager was detected during initialization.
 func (m *Manager) HasManager(mgr PackageManager) bool {
-	for _, available := range m.Available {
-		if available == mgr {
-			return true
+	if m.availableSet == nil {
+		m.availableSet = make(map[PackageManager]bool, len(m.Available))
+		for _, pm := range m.Available {
+			m.availableSet[pm] = true
 		}
 	}
-
-	return false
+	return m.availableSet[mgr]
 }
 
 // InstallResult represents the result of a package installation attempt.
@@ -260,16 +275,9 @@ func (m *Manager) Install(pkg Package) InstallResult {
 	result := InstallResult{Package: pkg.Name}
 
 	// Check if this is a git package
-	if gitValue, ok := pkg.Managers[Git]; ok {
-		// UnmarshalYAML guarantees this is GitConfig for YAML-loaded packages
-		gitCfg, ok := gitValue.(GitConfig)
-		if !ok {
-			result.Success = false
-			result.Message = "invalid git package configuration"
-			return result
-		}
+	if gitValue, ok := pkg.Managers[Git]; ok && gitValue.IsGit() {
 		result.Method = string(Git)
-		success, msg := m.installGitPackage(gitCfg)
+		success, msg := m.installGitPackage(*gitValue.Git)
 		result.Success = success
 		result.Message = msg
 		return result
@@ -283,14 +291,9 @@ func (m *Manager) Install(pkg Package) InstallResult {
 				continue
 			}
 
-			if pkgName, ok := pkg.Managers[mgr]; ok {
+			if val, ok := pkg.Managers[mgr]; ok {
 				result.Method = string(mgr)
-				// Type assert to string for traditional package managers
-				pkgNameStr, ok := pkgName.(string)
-				if !ok {
-					continue
-				}
-				success, msg := m.installWithManager(mgr, pkgNameStr)
+				success, msg := m.installWithManager(mgr, val.PackageName)
 				result.Success = success
 				result.Message = msg
 
@@ -422,25 +425,20 @@ func (m *Manager) installFromURL(urlInstall URLInstall) (bool, string) {
 		return true, fmt.Sprintf("Would download %s and run: %s", urlInstall.URL, urlInstall.Command)
 	}
 
-	// Create temp file
-	tmpFile, err := os.CreateTemp("", "dot-manager-*")
+	// Create temp directory to avoid TOCTOU race on the file path
+	tmpDir, err := os.MkdirTemp("", "dot-manager-*")
 	if err != nil {
-		return false, fmt.Sprintf("Failed to create temp file: %v", err)
-	}
-	tmpPath := tmpFile.Name()
-
-	// Close immediately - we only need the path
-	if err := tmpFile.Close(); err != nil {
-		return false, fmt.Sprintf("Failed to close temp file: %v", err)
+		return false, fmt.Sprintf("Failed to create temp directory: %v", err)
 	}
 
-	// Ensure cleanup on all exit paths
 	defer func() {
-		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+		if err := os.RemoveAll(tmpDir); err != nil {
 			// Log but don't fail on cleanup errors
-			fmt.Printf("[WARN] Failed to remove temp file %s: %v\n", tmpPath, err)
+			fmt.Printf("[WARN] Failed to remove temp directory %s: %v\n", tmpDir, err)
 		}
 	}()
+
+	tmpPath := filepath.Join(tmpDir, "installer")
 
 	// Download file
 	var downloadCmd *exec.Cmd
@@ -654,7 +652,7 @@ func (m *Manager) GetInstallMethod(pkg Package) string {
 // IsInstalled checks if a package is installed on the system.
 // It uses the appropriate package manager query command based on the installation method.
 // Returns true if the package is installed, false otherwise.
-func IsInstalled(pkgName string, manager string) bool {
+func IsInstalled(ctx context.Context, pkgName string, manager string) bool {
 	mc, ok := managerCmds[PackageManager(manager)]
 	if !ok {
 		// For git, custom, url methods, we can't easily check installation status
@@ -662,7 +660,7 @@ func IsInstalled(pkgName string, manager string) bool {
 	}
 
 	args := expandArgs(mc.check, pkgName)
-	cmd := exec.CommandContext(context.Background(), args[0], args[1:]...) //nolint:gosec // args from trusted lookup table
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...) //nolint:gosec // args from trusted lookup table
 
 	// Run silently - just check exit code
 	cmd.Stdout = nil
@@ -681,21 +679,19 @@ func FromEntry(e config.Entry) *Package {
 		return nil
 	}
 
-	managers := make(map[PackageManager]interface{})
+	managers := make(map[PackageManager]ManagerValue)
 	for k, v := range e.Package.Managers {
 		// Convert config.GitPackage to packages.GitConfig
-		if k == "git" {
-			if gitPkg, ok := v.(config.GitPackage); ok {
-				managers[Git] = GitConfig{
-					URL:     gitPkg.URL,
-					Branch:  gitPkg.Branch,
-					Targets: gitPkg.Targets,
-					Sudo:    gitPkg.Sudo,
-				}
-				continue
-			}
+		if k == "git" && v.IsGit() {
+			managers[Git] = ManagerValue{Git: &GitConfig{
+				URL:     v.Git.URL,
+				Branch:  v.Git.Branch,
+				Targets: v.Git.Targets,
+				Sudo:    v.Git.Sudo,
+			}}
+			continue
 		}
-		managers[PackageManager(k)] = v
+		managers[PackageManager(k)] = ManagerValue{PackageName: v.PackageName}
 	}
 
 	urlInstalls := make(map[string]URLInstall)

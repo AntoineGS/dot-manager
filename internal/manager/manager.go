@@ -21,10 +21,6 @@ const (
 	// FilePerms are the default permissions for created files (rw-------)
 	// Owner: read, write; Group: none; Other: none
 	FilePerms os.FileMode = 0600
-
-	// ExecPerms are the permissions for executable files (rwxr-xr-x)
-	// Owner: read, write, execute; Group: read, execute; Other: read, execute
-	ExecPerms os.FileMode = 0755
 )
 
 // Manager handles dotfile operations including backup, restore, and listing of configuration entries.

@@ -19,9 +19,20 @@ type Entry struct {
 	Sudo        bool              `yaml:"sudo,omitempty"`
 }
 
+// ManagerValue represents a typed value for a package manager entry.
+// It holds either a package name string (for traditional managers like pacman, apt)
+// or a GitPackage configuration (for git repositories).
+type ManagerValue struct {
+	PackageName string
+	Git         *GitPackage
+}
+
+// IsGit returns true if this manager value represents a git package configuration.
+func (v ManagerValue) IsGit() bool { return v.Git != nil }
+
 // EntryPackage contains package installation configuration
 type EntryPackage struct {
-	Managers map[string]interface{}    `yaml:"managers,omitempty"` // manager -> package name or GitPackage
+	Managers map[string]ManagerValue   `yaml:"managers,omitempty"` // manager -> package name or GitPackage
 	Custom   map[string]string         `yaml:"custom,omitempty"`   // os -> command
 	URL      map[string]URLInstallSpec `yaml:"url,omitempty"`      // os -> url install
 }
@@ -51,7 +62,7 @@ func (ep *EntryPackage) UnmarshalYAML(node *yaml.Node) error {
 
 	// Process managers to convert git entries to GitPackage
 	if raw.Managers != nil {
-		ep.Managers = make(map[string]interface{}, len(raw.Managers))
+		ep.Managers = make(map[string]ManagerValue, len(raw.Managers))
 		for key, value := range raw.Managers {
 			if key == "git" {
 				// Convert the map to GitPackage
@@ -71,10 +82,14 @@ func (ep *EntryPackage) UnmarshalYAML(node *yaml.Node) error {
 					return fmt.Errorf("unmarshaling git config: %w", err)
 				}
 
-				ep.Managers[key] = gitPkg
+				ep.Managers[key] = ManagerValue{Git: &gitPkg}
 			} else {
-				// Keep as-is (should be string)
-				ep.Managers[key] = value
+				// Traditional managers are strings
+				str, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("manager %s must be a string, got %T", key, value)
+				}
+				ep.Managers[key] = ManagerValue{PackageName: str}
 			}
 		}
 	}
@@ -92,12 +107,11 @@ func (ep *EntryPackage) GetManagerString(manager string) (string, bool) {
 	}
 
 	value, ok := ep.Managers[manager]
-	if !ok {
+	if !ok || value.IsGit() {
 		return "", false
 	}
 
-	str, ok := value.(string)
-	return str, ok
+	return value.PackageName, true
 }
 
 // GetGitPackage returns the git manager configuration, or nil if not found or not a GitPackage
@@ -107,16 +121,11 @@ func (ep *EntryPackage) GetGitPackage() (*GitPackage, bool) {
 	}
 
 	value, ok := ep.Managers["git"]
-	if !ok {
+	if !ok || value.Git == nil {
 		return nil, false
 	}
 
-	gitPkg, ok := value.(GitPackage)
-	if !ok {
-		return nil, false
-	}
-
-	return &gitPkg, true
+	return value.Git, true
 }
 
 // IsConfig returns true if this is a config type entry (has backup field)

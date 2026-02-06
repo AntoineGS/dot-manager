@@ -88,331 +88,6 @@ func (m *Manager) Restore() error {
 	return errors.Join(errs...)
 }
 
-// RestoreFolder creates a symlink from target to source for a folder entry
-//
-//nolint:gocyclo,dupl // refactoring would risk breaking existing logic
-func (m *Manager) RestoreFolder(entry config.Entry, source, target string) error {
-	// Check if already a symlink pointing to the correct source
-	if symlinkPointsTo(target, source) {
-		m.logger.Debug("already a symlink", slog.String("path", target))
-		return nil
-	}
-
-	// If it's a symlink but points to wrong location, remove it
-	if isSymlink(target) {
-		m.logger.Info("removing incorrect symlink", slog.String("path", target))
-		if !m.DryRun {
-			if err := os.Remove(target); err != nil {
-				return NewPathError("restore", target, fmt.Errorf("removing incorrect symlink: %w", err))
-			}
-		}
-	}
-
-	// Handle merge case: both source and target exist
-	if pathExists(source) && pathExists(target) && !isSymlink(target) {
-		if m.NoMerge {
-			if !m.ForceDelete {
-				// List files and return error
-				var fileList []string
-				err := filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
-					if walkErr != nil {
-						return walkErr
-					}
-					if !d.IsDir() {
-						relPath, _ := filepath.Rel(target, path)
-						fileList = append(fileList, relPath)
-					}
-					return nil
-				})
-				if err != nil {
-					return NewPathError("restore", target, fmt.Errorf("listing files: %w", err))
-				}
-				return NewPathError("restore", target, fmt.Errorf(
-					"target exists with %d file(s): %s. Use merge mode or --force to proceed",
-					len(fileList),
-					strings.Join(fileList, ", ")))
-			}
-			// ForceDelete is true, skip to removal logic below
-		} else {
-			// Merge target into backup
-			m.logger.Info("merging existing content into backup",
-				slog.String("target", target),
-				slog.String("backup", source))
-
-			if !m.DryRun {
-				summary := NewMergeSummary(entry.Name)
-				if err := MergeFolder(source, target, entry.Sudo, summary); err != nil {
-					return NewPathError("restore", target, fmt.Errorf("merging folder: %w", err))
-				}
-
-				// Log merge summary
-				if summary.HasOperations() {
-					m.logger.Info("merge complete",
-						slog.Int("merged", len(summary.MergedFiles)),
-						slog.Int("conflicts", len(summary.ConflictFiles)),
-						slog.Int("failed", len(summary.FailedFiles)))
-
-					for _, conflict := range summary.ConflictFiles {
-						m.logger.Warn("conflict resolved by renaming",
-							slog.String("file", conflict.OriginalName),
-							slog.String("renamed_to", conflict.RenamedTo))
-					}
-
-					for _, failed := range summary.FailedFiles {
-						m.logger.Error("merge failed for file",
-							slog.String("file", failed.FileName),
-							slog.String("error", failed.Error))
-					}
-				}
-
-				// Remove empty directories after merge
-				if err := removeEmptyDirs(target); err != nil {
-					m.logger.Warn("failed to clean up empty directories",
-						slog.String("target", target),
-						slog.String("error", err.Error()))
-				}
-			}
-		}
-	}
-
-	// Check if we need to adopt: target exists but backup doesn't
-	if !pathExists(source) && pathExists(target) {
-		m.logger.Info("adopting folder",
-			slog.String("from", target),
-			slog.String("to", source))
-
-		if !m.DryRun {
-			// Create backup parent directory
-			backupParent := filepath.Dir(source)
-			if !pathExists(backupParent) {
-				if err := os.MkdirAll(backupParent, DirPerms); err != nil {
-					return NewPathError("adopt", source, fmt.Errorf("creating backup parent: %w", err))
-				}
-			}
-			// Move target to backup location
-			if entry.Sudo {
-				cmd := exec.CommandContext(m.ctx, "sudo", "mv", target, source) //nolint:gosec // intentional sudo command
-				if err := cmd.Run(); err != nil {
-					return NewPathError("adopt", target, fmt.Errorf("moving to backup: %w", err))
-				}
-			} else {
-				if err := os.Rename(target, source); err != nil {
-					return NewPathError("adopt", target, fmt.Errorf("moving to backup: %w", err))
-				}
-			}
-		}
-	}
-
-	// Now check if backup exists
-	if !pathExists(source) {
-		m.logger.Debug("source folder does not exist", slog.String("path", source))
-		return nil
-	}
-
-	// Create parent directory if it doesn't exist
-	parentDir := filepath.Dir(target)
-	if !pathExists(parentDir) {
-		m.logger.Info("creating directory", slog.String("path", parentDir))
-
-		if !m.DryRun {
-			if entry.Sudo {
-				cmd := exec.CommandContext(m.ctx, "sudo", "mkdir", "-p", parentDir) //nolint:gosec // intentional sudo command
-				if err := cmd.Run(); err != nil {
-					return NewPathError("restore", parentDir, fmt.Errorf("creating parent: %w", err))
-				}
-			} else {
-				if err := os.MkdirAll(parentDir, DirPerms); err != nil {
-					return NewPathError("restore", parentDir, fmt.Errorf("creating parent: %w", err))
-				}
-			}
-		}
-	}
-
-	// Remove existing folder (if still there after adopt check)
-	if pathExists(target) && !isSymlink(target) {
-		m.logger.Info("removing folder", slog.String("path", target))
-
-		if !m.DryRun {
-			if entry.Sudo {
-				cmd := exec.CommandContext(m.ctx, "sudo", "rm", "-rf", target) //nolint:gosec // intentional sudo command
-				if err := cmd.Run(); err != nil {
-					return NewPathError("restore", target, fmt.Errorf("removing existing: %w", err))
-				}
-			} else {
-				if err := removeAll(target); err != nil {
-					return NewPathError("restore", target, fmt.Errorf("removing existing: %w", err))
-				}
-			}
-		}
-	}
-
-	m.logger.Info("creating symlink",
-		slog.String("target", target),
-		slog.String("source", source))
-
-	if !m.DryRun {
-		if err := createSymlink(m.ctx, source, target, entry.Sudo); err != nil {
-			return NewPathError("restore", target, fmt.Errorf("creating symlink: %w", err))
-		}
-	}
-
-	return nil
-}
-
-// RestoreFiles creates symlinks from target to source for individual files in an entry
-//
-//nolint:dupl,gocyclo // similar logic for SubEntry version, complexity acceptable
-func (m *Manager) RestoreFiles(entry config.Entry, source, target string) error {
-	// Create backup directory if it doesn't exist (needed for adopting)
-	if !pathExists(source) {
-		if !m.DryRun {
-			if err := os.MkdirAll(source, DirPerms); err != nil {
-				return NewPathError("restore", source, fmt.Errorf("creating backup directory: %w", err))
-			}
-		}
-	}
-
-	// Create target directory if it doesn't exist
-	if !pathExists(target) {
-		m.logger.Info("creating directory", slog.String("path", target))
-
-		if !m.DryRun {
-			if entry.Sudo {
-				cmd := exec.CommandContext(m.ctx, "sudo", "mkdir", "-p", target) //nolint:gosec // intentional sudo command
-				if err := cmd.Run(); err != nil {
-					return NewPathError("restore", target, fmt.Errorf("creating target directory: %w", err))
-				}
-			} else {
-				if err := os.MkdirAll(target, DirPerms); err != nil {
-					return NewPathError("restore", target, fmt.Errorf("creating target directory: %w", err))
-				}
-			}
-		}
-	}
-
-	for _, file := range entry.Files {
-		srcFile := filepath.Join(source, file)
-		dstFile := filepath.Join(target, file)
-
-		// Check if already a symlink pointing to correct source
-		if symlinkPointsTo(dstFile, srcFile) {
-			m.logger.Debug("already a symlink", slog.String("path", dstFile))
-			continue
-		}
-
-		// If it's a symlink but points to wrong location, remove it
-		if isSymlink(dstFile) {
-			m.logger.Info("removing incorrect symlink", slog.String("path", dstFile))
-			if !m.DryRun {
-				if err := os.Remove(dstFile); err != nil {
-					return NewPathError("restore", dstFile, fmt.Errorf("removing incorrect symlink: %w", err))
-				}
-			}
-		}
-
-		// Handle merge case: both source and target file exist
-		if pathExists(srcFile) && pathExists(dstFile) && !isSymlink(dstFile) {
-			if m.NoMerge {
-				if !m.ForceDelete {
-					return NewPathError("restore", dstFile, fmt.Errorf(
-						"target file exists. Use merge mode or --force to proceed"))
-				}
-				// ForceDelete is true, skip to removal logic below
-			} else {
-				// Merge target file into backup
-				m.logger.Info("merging existing file into backup",
-					slog.String("target", dstFile),
-					slog.String("backup", srcFile))
-
-				if !m.DryRun {
-					summary := NewMergeSummary(entry.Name)
-					if err := mergeFile(dstFile, source, file, entry.Sudo, summary); err != nil {
-						return NewPathError("restore", dstFile, fmt.Errorf("merging file: %w", err))
-					}
-
-					// Log merge summary
-					if summary.HasOperations() {
-						for _, conflict := range summary.ConflictFiles {
-							m.logger.Warn("conflict resolved by renaming",
-								slog.String("file", conflict.OriginalName),
-								slog.String("renamed_to", conflict.RenamedTo))
-						}
-
-						for _, failed := range summary.FailedFiles {
-							m.logger.Error("merge failed for file",
-								slog.String("file", failed.FileName),
-								slog.String("error", failed.Error))
-						}
-					}
-				}
-			}
-		}
-
-		// Check if we need to adopt: target exists but backup doesn't
-		if !pathExists(srcFile) && pathExists(dstFile) {
-			m.logger.Info("adopting file",
-				slog.String("from", dstFile),
-				slog.String("to", srcFile))
-
-			if !m.DryRun {
-				// Move target file to backup location
-				if entry.Sudo {
-					cmd := exec.CommandContext(m.ctx, "sudo", "mv", dstFile, srcFile) //nolint:gosec // intentional sudo command
-					if err := cmd.Run(); err != nil {
-						return NewPathError("adopt", dstFile, fmt.Errorf("moving to backup: %w", err))
-					}
-				} else {
-					if err := os.Rename(dstFile, srcFile); err != nil {
-						// If rename fails (cross-device), try copy and delete
-						if err := copyFile(dstFile, srcFile); err != nil {
-							return NewPathError("adopt", dstFile, fmt.Errorf("copying to backup: %w", err))
-						}
-
-						if err := os.Remove(dstFile); err != nil {
-							return NewPathError("adopt", dstFile, fmt.Errorf("removing original: %w", err))
-						}
-					}
-				}
-			}
-		}
-
-		if !pathExists(srcFile) {
-			m.logger.Debug("source file does not exist", slog.String("path", srcFile))
-			continue
-		}
-
-		// Remove existing file (if still there after adopt/merge check)
-		if pathExists(dstFile) && !isSymlink(dstFile) {
-			m.logger.Info("removing file", slog.String("path", dstFile))
-
-			if !m.DryRun {
-				if entry.Sudo {
-					cmd := exec.CommandContext(m.ctx, "sudo", "rm", "-f", dstFile) //nolint:gosec // intentional sudo command
-					if err := cmd.Run(); err != nil {
-						return NewPathError("restore", dstFile, fmt.Errorf("removing existing file: %w", err))
-					}
-				} else {
-					if err := os.Remove(dstFile); err != nil {
-						return NewPathError("restore", dstFile, fmt.Errorf("removing existing file: %w", err))
-					}
-				}
-			}
-		}
-
-		m.logger.Info("creating symlink",
-			slog.String("target", dstFile),
-			slog.String("source", srcFile))
-
-		if !m.DryRun {
-			if err := createSymlink(m.ctx, srcFile, dstFile, entry.Sudo); err != nil {
-				return NewPathError("restore", dstFile, fmt.Errorf("creating symlink: %w", err))
-			}
-		}
-	}
-
-	return nil
-}
-
 // symlinkPointsTo checks if a symlink at 'path' points to 'expectedTarget'
 func symlinkPointsTo(path, expectedTarget string) bool {
 	if !isSymlink(path) {
@@ -463,20 +138,20 @@ func createSymlink(ctx context.Context, source, target string, useSudo bool) err
 	return os.Symlink(source, target)
 }
 
-// restoreGitEntry clones or updates a git repository
-func (m *Manager) restoreSubEntry(appName string, subEntry config.SubEntry, target string) error {
+func (m *Manager) restoreSubEntry(_ string, subEntry config.SubEntry, target string) error {
 	backupPath := m.resolvePath(subEntry.Backup)
 
 	if subEntry.IsFolder() {
-		return m.restoreFolderSubEntry(appName, subEntry, backupPath, target)
+		return m.RestoreFolder(subEntry, backupPath, target)
 	}
 
-	return m.restoreFilesSubEntry(appName, subEntry, backupPath, target)
+	return m.RestoreFiles(subEntry, backupPath, target)
 }
 
-//nolint:gocyclo,dupl // refactoring would risk breaking existing logic
-func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, source, target string) error {
-	// Similar to restoreFolder but use subEntry fields
+// RestoreFolder creates a symlink from target to source for a folder entry.
+//
+//nolint:gocyclo // complexity acceptable for restore logic
+func (m *Manager) RestoreFolder(subEntry config.SubEntry, source, target string) error {
 	// Check if already a symlink pointing to the correct source
 	if symlinkPointsTo(target, source) {
 		m.logger.Debug("already a symlink", slog.String("path", target))
@@ -637,9 +312,10 @@ func (m *Manager) restoreFolderSubEntry(_ string, subEntry config.SubEntry, sour
 	return nil
 }
 
-//nolint:dupl,gocyclo // similar logic to restoreFiles, complexity acceptable
-func (m *Manager) restoreFilesSubEntry(_ string, subEntry config.SubEntry, source, target string) error {
-	// Similar to restoreFiles but use subEntry fields
+// RestoreFiles creates symlinks from target to source for individual files in an entry.
+//
+//nolint:gocyclo // complexity acceptable for restore logic
+func (m *Manager) RestoreFiles(subEntry config.SubEntry, source, target string) error {
 	if !pathExists(source) {
 		if !m.DryRun {
 			if err := os.MkdirAll(source, DirPerms); err != nil {

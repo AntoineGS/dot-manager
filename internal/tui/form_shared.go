@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
+	"github.com/AntoineGS/dot-manager/internal/platform"
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
@@ -18,8 +19,17 @@ const (
 // Filter attribute keys
 var filterKeys = []string{"os", "distro", "hostname", "user"}
 
-// Known package managers (in display order)
-var knownPackageManagers = []string{"pacman", "yay", "paru", "apt", "dnf", "brew", "winget", "scoop", "choco"}
+// displayPackageManagers is platform.KnownPackageManagers excluding "git"
+// (git is handled as a special case, not shown in the package manager form)
+var displayPackageManagers = func() []string {
+	var managers []string
+	for _, m := range platform.KnownPackageManagers {
+		if m != "git" {
+			managers = append(managers, m)
+		}
+	}
+	return managers
+}()
 
 // renderPackagesSection renders the packages list with editing state
 // focused indicates if the packages section is currently focused
@@ -36,7 +46,7 @@ func renderPackagesSection(
 ) string {
 	var b strings.Builder
 
-	for i, manager := range knownPackageManagers {
+	for i, manager := range displayPackageManagers {
 		prefix := IndentSpaces
 		pkgName := packageManagers[manager]
 
@@ -268,14 +278,13 @@ func buildPackageSpec(managers map[string]string) *config.EntryPackage {
 		return nil
 	}
 
-	// Convert map[string]string to map[string]interface{}
-	managersInterface := make(map[string]interface{}, len(managers))
+	managersTyped := make(map[string]config.ManagerValue, len(managers))
 	for k, v := range managers {
-		managersInterface[k] = v
+		managersTyped[k] = config.ManagerValue{PackageName: v}
 	}
 
 	return &config.EntryPackage{
-		Managers: managersInterface,
+		Managers: managersTyped,
 	}
 }
 

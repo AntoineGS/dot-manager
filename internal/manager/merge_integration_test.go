@@ -277,10 +277,10 @@ func TestMergeIntegration_FullRestoreWorkflow(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.Verbose = true
 
-	entry := config.Entry{Name: "nvim-config"}
+	subEntry := config.SubEntry{Name: "nvim-config"}
 
 	// Act: Perform restore (should trigger merge)
-	err := mgr.RestoreFolder(entry, nvimBackup, targetNvim)
+	err := mgr.RestoreFolder(subEntry, nvimBackup, targetNvim)
 
 	// Assert: No error
 	if err != nil {
@@ -322,10 +322,10 @@ func TestMergeIntegration_WithNoMergeFlag(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.NoMerge = true
 
-	entry := config.Entry{Name: "nvim-config"}
+	subEntry := config.SubEntry{Name: "nvim-config"}
 
 	// Act: Restore should fail
-	err := mgr.RestoreFolder(entry, nvimBackup, targetNvim)
+	err := mgr.RestoreFolder(subEntry, nvimBackup, targetNvim)
 
 	// Assert: Error returned
 	if err == nil {
@@ -375,10 +375,10 @@ func TestMergeIntegration_DryRunMode(t *testing.T) {
 	mgr := New(cfg, plat)
 	mgr.DryRun = true
 
-	entry := config.Entry{Name: "nvim-config"}
+	subEntry := config.SubEntry{Name: "nvim-config"}
 
 	// Act: Restore in dry-run mode
-	err := mgr.RestoreFolder(entry, nvimBackup, targetNvim)
+	err := mgr.RestoreFolder(subEntry, nvimBackup, targetNvim)
 
 	// Assert: No error
 	if err != nil {

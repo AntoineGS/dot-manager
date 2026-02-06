@@ -112,14 +112,13 @@ func (m *Manager) backupFolderSubEntry(_ string, subEntry config.SubEntry, backu
 			return NewPathError("backup", backup, fmt.Errorf("creating parent directory: %w", err))
 		}
 
-		// Copy source folder into backup directory (e.g., /source/nvim -> /backup/nvim)
-		destPath := filepath.Join(backup, filepath.Base(target))
+		// Copy source folder contents into backup directory (e.g., /source/nvim/* -> /backup/*)
 		if subEntry.Sudo {
-			cmd := exec.CommandContext(m.ctx, "sudo", "cp", "-r", target, destPath) //nolint:gosec // intentional sudo command
+			cmd := exec.CommandContext(m.ctx, "sudo", "cp", "-rT", target, backup) //nolint:gosec // intentional sudo command
 			return cmd.Run()
 		}
 
-		return copyDir(target, destPath)
+		return copyDir(target, backup)
 	}
 
 	return nil

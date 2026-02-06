@@ -136,12 +136,11 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 	if app.Package != nil && len(app.Package.Managers) > 0 {
 		for k, v := range app.Package.Managers {
 			// Skip git packages as they require special handling
-			if k == "git" {
+			if k == TypeGit {
 				continue
 			}
-			// Only include string values
-			if str, ok := v.(string); ok {
-				packageManagers[k] = str
+			if !v.IsGit() {
+				packageManagers[k] = v.PackageName
 			}
 		}
 	}
@@ -342,7 +341,7 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 
-	maxCursor := len(knownPackageManagers) - 1
+	maxCursor := len(displayPackageManagers) - 1
 
 	switch msg.String() {
 	case KeyCtrlC:
@@ -394,10 +393,10 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 
 	case KeyEnter, "e", " ":
 		// Edit the selected package manager's package name
-		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(knownPackageManagers) {
+		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
 			return m, nil
 		}
-		manager := knownPackageManagers[m.applicationForm.packagesCursor]
+		manager := displayPackageManagers[m.applicationForm.packagesCursor]
 		currentValue := m.applicationForm.packageManagers[manager]
 
 		// Auto-populate with last package name if empty
@@ -413,10 +412,10 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 
 	case "d", KeyBackspace, KeyDelete:
 		// Clear the package name for the selected manager
-		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(knownPackageManagers) {
+		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
 			return m, nil
 		}
-		manager := knownPackageManagers[m.applicationForm.packagesCursor]
+		manager := displayPackageManagers[m.applicationForm.packagesCursor]
 		delete(m.applicationForm.packageManagers, manager)
 		m.applicationForm.err = ""
 		return m, nil
@@ -457,12 +456,12 @@ func (m Model) updateApplicationPackageInput(msg tea.KeyMsg) (tea.Model, tea.Cmd
 
 	case KeyEnter:
 		pkgName := strings.TrimSpace(m.applicationForm.packageNameInput.Value())
-		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(knownPackageManagers) {
+		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
 			m.applicationForm.editingPackage = false
 			m.applicationForm.packageNameInput.SetValue("")
 			return m, nil
 		}
-		manager := knownPackageManagers[m.applicationForm.packagesCursor]
+		manager := displayPackageManagers[m.applicationForm.packagesCursor]
 
 		if pkgName != "" {
 			m.applicationForm.packageManagers[manager] = pkgName
@@ -946,8 +945,8 @@ func (m Model) renderApplicationFormHelp() string {
 
 	if ft == appFieldPackages {
 		// Bounds check for packagesCursor
-		if m.applicationForm.packagesCursor >= 0 && m.applicationForm.packagesCursor < len(knownPackageManagers) {
-			manager := knownPackageManagers[m.applicationForm.packagesCursor]
+		if m.applicationForm.packagesCursor >= 0 && m.applicationForm.packagesCursor < len(displayPackageManagers) {
+			manager := displayPackageManagers[m.applicationForm.packagesCursor]
 			if m.applicationForm.packageManagers[manager] != "" {
 				return RenderHelpWithWidth(m.width,
 					"enter/e", "edit",
