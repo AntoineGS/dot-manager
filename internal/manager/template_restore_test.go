@@ -12,6 +12,8 @@ import (
 	tmpl "github.com/AntoineGS/dot-manager/internal/template"
 )
 
+const expectedHostnameRender = "Host=testhost"
+
 // setupTemplateTest creates a temporary directory structure for template tests.
 // Returns (backupRoot, targetDir, manager, stateStore).
 func setupTemplateTest(t *testing.T) (string, string, *Manager, *state.Store) {
@@ -44,6 +46,42 @@ func setupTemplateTest(t *testing.T) (string, string, *Manager, *state.Store) {
 	t.Cleanup(func() { _ = store.Close() }) //nolint:errcheck // cleanup is best-effort
 
 	return backupRoot, targetDir, mgr, store
+}
+
+// verifyFolderSymlink checks that target is a symlink pointing to source.
+func verifyFolderSymlink(t *testing.T, target, source string) {
+	t.Helper()
+
+	if !isSymlink(target) {
+		t.Fatalf("expected %q to be a symlink", target)
+	}
+
+	link, err := os.Readlink(target)
+	if err != nil {
+		t.Fatalf("failed to read symlink %q: %v", target, err)
+	}
+
+	if link != source {
+		t.Errorf("folder symlink %q should point to %q, got %q", target, source, link)
+	}
+}
+
+// verifyRelativeSymlink checks that symlinkPath is a relative symlink pointing to expectedTarget.
+func verifyRelativeSymlink(t *testing.T, symlinkPath, expectedTarget string) {
+	t.Helper()
+
+	if !isSymlink(symlinkPath) {
+		t.Fatalf("expected %q to be a symlink", symlinkPath)
+	}
+
+	link, err := os.Readlink(symlinkPath)
+	if err != nil {
+		t.Fatalf("failed to read symlink %q: %v", symlinkPath, err)
+	}
+
+	if link != expectedTarget {
+		t.Errorf("relative symlink %q should point to %q, got %q", symlinkPath, expectedTarget, link)
+	}
 }
 
 func TestRestoreFolderWithTemplates_MixedFiles(t *testing.T) {
@@ -79,6 +117,9 @@ func TestRestoreFolderWithTemplates_MixedFiles(t *testing.T) {
 		t.Fatalf("RestoreFolderWithTemplates failed: %v", err)
 	}
 
+	// Verify folder symlink: targetDir → backupDir
+	verifyFolderSymlink(t, targetDir, backupDir)
+
 	// Verify rendered file exists
 	renderedPath := filepath.Join(backupDir, ".zshrc.tmpl.rendered")
 	if !pathExists(renderedPath) {
@@ -92,24 +133,27 @@ func TestRestoreFolderWithTemplates_MixedFiles(t *testing.T) {
 		t.Errorf("rendered file should contain linux-conditional content, got %q", string(renderedContent))
 	}
 
-	// Verify symlink for template file points to rendered output
-	targetZshrc := filepath.Join(targetDir, ".zshrc")
-	if !isSymlink(targetZshrc) {
-		t.Fatal(".zshrc should be a symlink")
+	// Verify relative symlink in backup: .zshrc → .zshrc.tmpl.rendered
+	verifyRelativeSymlink(t, filepath.Join(backupDir, ".zshrc"), ".zshrc.tmpl.rendered")
+
+	// Verify .zshrc is accessible through the folder symlink chain
+	chainedPath := filepath.Join(targetDir, ".zshrc")
+	chainedContent, err := os.ReadFile(chainedPath) //nolint:gosec
+	if err != nil {
+		t.Fatalf("should be able to read .zshrc through symlink chain: %v", err)
 	}
-	link, _ := os.Readlink(targetZshrc)
-	if link != renderedPath {
-		t.Errorf("symlink should point to %q, got %q", renderedPath, link)
+	if !strings.Contains(string(chainedContent), "testhost") {
+		t.Errorf("chained read should resolve to rendered content, got %q", string(chainedContent))
 	}
 
-	// Verify symlink for regular file
-	targetZshenv := filepath.Join(targetDir, ".zshenv")
-	if !isSymlink(targetZshenv) {
-		t.Fatal(".zshenv should be a symlink")
+	// Verify .zshenv is accessible through the folder symlink (no individual symlink needed)
+	zshenvPath := filepath.Join(targetDir, ".zshenv")
+	zshenvContent, err := os.ReadFile(zshenvPath) //nolint:gosec
+	if err != nil {
+		t.Fatalf("should be able to read .zshenv through folder symlink: %v", err)
 	}
-	regularLink, _ := os.Readlink(targetZshenv)
-	if regularLink != filepath.Join(backupDir, ".zshenv") {
-		t.Errorf("regular symlink should point to backup, got %q", regularLink)
+	if string(zshenvContent) != regularContent {
+		t.Errorf(".zshenv content should match, got %q", string(zshenvContent))
 	}
 }
 
@@ -136,12 +180,19 @@ func TestRestoreFolderWithTemplates_RendersContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
+
+	// Verify rendered content
 	renderedPath := filepath.Join(backupDir, "info.tmpl.rendered")
 	content, _ := os.ReadFile(renderedPath) //nolint:gosec
 	want := "OS=linux Distro=arch Host=testhost User=testuser"
 	if string(content) != want {
 		t.Errorf("rendered content = %q, want %q", string(content), want)
 	}
+
+	// Verify relative symlink
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "info"), "info.tmpl.rendered")
 }
 
 func TestRestoreFolderWithTemplates_ReRenderWithUserEdits(t *testing.T) {
@@ -168,6 +219,9 @@ func TestRestoreFolderWithTemplates_ReRenderWithUserEdits(t *testing.T) {
 	if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
 		t.Fatal(err)
 	}
+
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
 
 	// Simulate user editing the rendered file
 	renderedPath := filepath.Join(backupDir, ".zshrc.tmpl.rendered")
@@ -207,6 +261,9 @@ func TestRestoreFolderWithTemplates_ReRenderWithUserEdits(t *testing.T) {
 	if strings.Contains(string(record.PureRender), "nvim") {
 		t.Error("DB should store pure render without user edits")
 	}
+
+	// Verify relative symlink
+	verifyRelativeSymlink(t, filepath.Join(backupDir, ".zshrc"), ".zshrc.tmpl.rendered")
 }
 
 func TestRestoreFolderWithTemplates_MultiCycle(t *testing.T) {
@@ -232,6 +289,9 @@ func TestRestoreFolderWithTemplates_MultiCycle(t *testing.T) {
 	if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
 		t.Fatal(err)
 	}
+
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
 
 	// User edits cycle 1 output: changes port
 	if err := os.WriteFile(renderedPath, []byte("port=9090\nhost=localhost\n"), 0600); err != nil {
@@ -274,6 +334,9 @@ func TestRestoreFolderWithTemplates_MultiCycle(t *testing.T) {
 	if !strings.Contains(string(content3), "debug=true") {
 		t.Errorf("Cycle 3: user's debug addition should survive, got %q", string(content3))
 	}
+
+	// Verify relative symlink persists through cycles
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "app.conf"), "app.conf.tmpl.rendered")
 }
 
 func TestRestoreFolderWithTemplates_Conflict(t *testing.T) {
@@ -301,6 +364,9 @@ func TestRestoreFolderWithTemplates_Conflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
+
 	// User changes line2 to "user-change"
 	if err := os.WriteFile(renderedPath, []byte("line1\nuser-change\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -322,6 +388,9 @@ func TestRestoreFolderWithTemplates_Conflict(t *testing.T) {
 	if !strings.Contains(string(conflictContent), "<<<<<<< user-edits") {
 		t.Errorf("conflict file should contain conflict markers, got %q", string(conflictContent))
 	}
+
+	// Verify relative symlink
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "app.conf"), "app.conf.tmpl.rendered")
 }
 
 func TestRestoreFolderWithTemplates_HashUnchanged_SkipsReRender(t *testing.T) {
@@ -348,6 +417,9 @@ func TestRestoreFolderWithTemplates_HashUnchanged_SkipsReRender(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
+
 	renderedPath := filepath.Join(backupDir, "file.tmpl.rendered")
 	info1, _ := os.Stat(renderedPath)
 
@@ -361,6 +433,9 @@ func TestRestoreFolderWithTemplates_HashUnchanged_SkipsReRender(t *testing.T) {
 	if info1.ModTime() != info2.ModTime() {
 		t.Error("rendered file should not be rewritten when template is unchanged")
 	}
+
+	// Verify relative symlink
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "file"), "file.tmpl.rendered")
 }
 
 func TestRestoreFolderWithTemplates_DryRun(t *testing.T) {
@@ -386,6 +461,11 @@ func TestRestoreFolderWithTemplates_DryRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// No folder symlink should be created
+	if isSymlink(targetDir) {
+		t.Error("dry run should not create folder symlink")
+	}
+
 	// No rendered file should be created
 	renderedPath := filepath.Join(backupDir, "file.tmpl.rendered")
 	if pathExists(renderedPath) {
@@ -398,9 +478,9 @@ func TestRestoreFolderWithTemplates_DryRun(t *testing.T) {
 		t.Error("dry run should not create DB records")
 	}
 
-	// No symlink
-	if pathExists(filepath.Join(targetDir, "file")) {
-		t.Error("dry run should not create symlinks")
+	// No relative symlink in backup
+	if isSymlink(filepath.Join(backupDir, "file")) {
+		t.Error("dry run should not create relative symlink")
 	}
 }
 
@@ -429,6 +509,9 @@ func TestRestoreFolderWithTemplates_ForceRender(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
+
 	// User edits
 	if err := os.WriteFile(renderedPath, []byte("user-edited"), 0600); err != nil {
 		t.Fatal(err)
@@ -448,6 +531,9 @@ func TestRestoreFolderWithTemplates_ForceRender(t *testing.T) {
 	if string(content) != "version2" {
 		t.Errorf("force render should overwrite, got %q", string(content))
 	}
+
+	// Verify relative symlink
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "file"), "file.tmpl.rendered")
 }
 
 func TestRestoreFolderWithTemplates_Idempotent(t *testing.T) {
@@ -479,15 +565,15 @@ func TestRestoreFolderWithTemplates_Idempotent(t *testing.T) {
 	// Should produce same result
 	renderedPath := filepath.Join(backupDir, "file.tmpl.rendered")
 	content, _ := os.ReadFile(renderedPath) //nolint:gosec
-	if string(content) != "Host=testhost" {
+	if string(content) != expectedHostnameRender {
 		t.Errorf("expected Host=testhost, got %q", string(content))
 	}
 
-	// Symlink should be correct
-	targetFile := filepath.Join(targetDir, "file")
-	if !symlinkPointsTo(targetFile, renderedPath) {
-		t.Error("symlink should point to rendered file")
-	}
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
+
+	// Verify relative symlink is stable
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "file"), "file.tmpl.rendered")
 }
 
 func TestRestoreFolderWithTemplates_SkipsRenderedAndConflictFiles(t *testing.T) {
@@ -519,13 +605,18 @@ func TestRestoreFolderWithTemplates_SkipsRenderedAndConflictFiles(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	// Should not create symlinks for .rendered or .conflict in target
-	if pathExists(filepath.Join(targetDir, "file.tmpl.rendered")) {
-		t.Error("should not symlink .tmpl.rendered files")
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
+
+	// The rendered file should be overwritten with fresh render, not left as "old"
+	renderedPath := filepath.Join(backupDir, "file.tmpl.rendered")
+	content, _ := os.ReadFile(renderedPath) //nolint:gosec
+	if string(content) != "content" {
+		t.Errorf("rendered file should be freshly rendered, got %q", string(content))
 	}
-	if pathExists(filepath.Join(targetDir, "file.tmpl.conflict")) {
-		t.Error("should not symlink .tmpl.conflict files")
-	}
+
+	// Verify relative symlink exists for template
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "file"), "file.tmpl.rendered")
 }
 
 func TestHasTemplateFiles(t *testing.T) {
@@ -616,6 +707,9 @@ func TestRestoreFolderWithTemplates_SubDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Verify folder symlink
+	verifyFolderSymlink(t, targetDir, backupDir)
+
 	// Verify nested template was rendered
 	renderedPath := filepath.Join(subDir, "nested.tmpl.rendered")
 	if !pathExists(renderedPath) {
@@ -623,13 +717,110 @@ func TestRestoreFolderWithTemplates_SubDirectories(t *testing.T) {
 	}
 
 	content, _ := os.ReadFile(renderedPath) //nolint:gosec
-	if string(content) != "Host=testhost" {
+	if string(content) != expectedHostnameRender {
 		t.Errorf("nested template should render correctly, got %q", string(content))
 	}
 
-	// Verify symlink in target subdirectory
-	targetNested := filepath.Join(targetDir, "subdir", "nested")
-	if !isSymlink(targetNested) {
-		t.Fatal("target nested file should be a symlink")
+	// Verify relative symlink in subdirectory
+	verifyRelativeSymlink(t, filepath.Join(subDir, "nested"), "nested.tmpl.rendered")
+
+	// Verify content accessible through symlink chain
+	chainedPath := filepath.Join(targetDir, "subdir", "nested")
+	chainedContent, err := os.ReadFile(chainedPath) //nolint:gosec
+	if err != nil {
+		t.Fatalf("should read nested file through symlink chain: %v", err)
 	}
+	if string(chainedContent) != expectedHostnameRender {
+		t.Errorf("chained read should resolve correctly, got %q", string(chainedContent))
+	}
+}
+
+func TestRestoreFolderWithTemplates_ExistingFileAtSymlinkPath(t *testing.T) {
+	backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+	backupDir := filepath.Join(backupRoot, "config")
+	if err := os.MkdirAll(backupDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create template
+	if err := os.WriteFile(filepath.Join(backupDir, "app.conf.tmpl"), []byte("port=8080"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a plain file where the relative symlink should go
+	if err := os.WriteFile(filepath.Join(backupDir, "app.conf"), []byte("old content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	subEntry := config.SubEntry{
+		Name:    "config",
+		Backup:  "./config",
+		Targets: map[string]string{"linux": targetDir},
+	}
+
+	if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// The plain file should be replaced by a relative symlink
+	verifyRelativeSymlink(t, filepath.Join(backupDir, "app.conf"), "app.conf.tmpl.rendered")
+
+	// Content should resolve to rendered template
+	content, err := os.ReadFile(filepath.Join(backupDir, "app.conf")) //nolint:gosec
+	if err != nil {
+		t.Fatalf("should read through relative symlink: %v", err)
+	}
+	if string(content) != "port=8080" {
+		t.Errorf("content should be rendered template, got %q", string(content))
+	}
+}
+
+func TestRestoreFolderWithTemplates_RelativeSymlinkAlreadyCorrect(t *testing.T) {
+	backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+	backupDir := filepath.Join(backupRoot, "config")
+	if err := os.MkdirAll(backupDir, 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create template
+	if err := os.WriteFile(filepath.Join(backupDir, "file.tmpl"), []byte("content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	subEntry := config.SubEntry{
+		Name:    "config",
+		Backup:  "./config",
+		Targets: map[string]string{"linux": targetDir},
+	}
+
+	// First restore creates everything
+	if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get symlink info before second restore
+	symlinkPath := filepath.Join(backupDir, "file")
+	info1, err := os.Lstat(symlinkPath)
+	if err != nil {
+		t.Fatalf("failed to stat symlink: %v", err)
+	}
+
+	// Second restore should be idempotent - symlink already correct
+	if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+		t.Fatal(err)
+	}
+
+	info2, err := os.Lstat(symlinkPath)
+	if err != nil {
+		t.Fatalf("failed to stat symlink after second restore: %v", err)
+	}
+
+	// Symlink should not have been recreated (same modtime)
+	if info1.ModTime() != info2.ModTime() {
+		t.Error("correct relative symlink should not be recreated")
+	}
+
+	verifyRelativeSymlink(t, symlinkPath, "file.tmpl.rendered")
 }
