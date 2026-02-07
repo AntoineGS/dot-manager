@@ -3,14 +3,14 @@
   ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
   │ name ↑                │ status                │ info                  │ path                 │
   ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
-  │ ▶ alacritty           │ Missing               │ 1 entry               │                      │
-  │ ▶ bash                │ Installed             │ 1 entry               │                      │
-  │ ▶ git                 │ Missing               │ 1 entry               │                      │
-  │ ▶ nvim                │ Installed             │ 1 entry               │                      │
-  │ ▶ tmux                │ Installed             │ 1 entry               │                      │
-  │ ▶ vim                 │ Missing               │ 1 entry               │                      │
-  │ ▶ vscode              │ Missing               │ 1 entry               │                      │
-  │ ▶ zsh                 │ Installed             │ 1 entry               │                      │
+  │ ▶ alacritty           │ Unknown               │ 1 entry               │                      │
+  │ ▶ bash                │ Unknown               │ 1 entry               │                      │
+  │ ▶ git                 │ Unknown               │ 1 entry               │                      │
+  │ ▶ nvim                │ Unknown               │ 1 entry               │                      │
+  │ ▶ tmux                │ Unknown               │ 1 entry               │                      │
+  │ ▶ vim                 │ Unknown               │ 1 entry               │                      │
+  │ ▶ vscode              │ Unknown               │ 1 entry               │                      │
+  │ ▶ zsh                 │ Unknown               │ 1 entry               │                      │
   └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
 
 

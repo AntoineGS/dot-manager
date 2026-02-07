@@ -140,31 +140,16 @@ func TestGetApplicationStatus(t *testing.T) {
 		}
 	})
 
-	t.Run("all linked", func(t *testing.T) {
+	t.Run("no package configured", func(t *testing.T) {
 		app := ApplicationItem{
 			SubItems: []SubEntryItem{
-				{State: StateLinked},
 				{State: StateLinked},
 			},
 		}
 
 		status := getApplicationStatus(app)
-		if status != StatusInstalled {
-			t.Errorf("Expected StatusInstalled, got %s", status)
-		}
-	})
-
-	t.Run("some missing", func(t *testing.T) {
-		app := ApplicationItem{
-			SubItems: []SubEntryItem{
-				{State: StateLinked},
-				{State: StateMissing},
-			},
-		}
-
-		status := getApplicationStatus(app)
-		if status != StatusMissing {
-			t.Errorf("Expected StatusMissing, got %s", status)
+		if status != StatusUnknown {
+			t.Errorf("Expected StatusUnknown, got %s", status)
 		}
 	})
 }
@@ -245,6 +230,12 @@ func TestNeedsAttention(t *testing.T) {
 	t.Run("status does not need attention when Installed", func(t *testing.T) {
 		if needsAttention(StatusInstalled) {
 			t.Errorf("StatusInstalled should not need attention")
+		}
+	})
+
+	t.Run("status does not need attention when Unknown", func(t *testing.T) {
+		if needsAttention(StatusUnknown) {
+			t.Errorf("StatusUnknown should not need attention")
 		}
 	})
 
@@ -388,43 +379,62 @@ func TestFlattenApplications_AppNameMapping(t *testing.T) {
 	}
 }
 
-func TestGetApplicationStatus_Outdated(t *testing.T) {
-	t.Run("all linked but some outdated", func(t *testing.T) {
+func TestGetApplicationStatus_PackageState(t *testing.T) {
+	notInstalled := false
+	installed := true
+
+	t.Run("package not installed overrides linked configs", func(t *testing.T) {
 		app := ApplicationItem{
+			PkgInstalled: &notInstalled,
 			SubItems: []SubEntryItem{
 				{State: StateLinked},
-				{State: StateOutdated},
-			},
-		}
-
-		status := getApplicationStatus(app)
-		if status != StatusOutdated {
-			t.Errorf("Expected StatusOutdated, got %s", status)
-		}
-	})
-
-	t.Run("some missing and some outdated", func(t *testing.T) {
-		app := ApplicationItem{
-			SubItems: []SubEntryItem{
-				{State: StateMissing},
-				{State: StateOutdated},
 			},
 		}
 
 		status := getApplicationStatus(app)
 		if status != StatusMissing {
-			t.Errorf("Expected StatusMissing (Missing takes priority), got %s", status)
+			t.Errorf("Expected StatusMissing, got %s", status)
 		}
 	})
-}
 
-func TestNeedsAttention_Outdated(t *testing.T) {
-	if !needsAttention(StatusOutdated) {
-		t.Error("StatusOutdated should need attention")
-	}
-	if !needsAttention(StateOutdated.String()) {
-		t.Error("StateOutdated.String() should need attention")
-	}
+	t.Run("package not installed with no configs", func(t *testing.T) {
+		app := ApplicationItem{
+			PkgInstalled: &notInstalled,
+		}
+
+		status := getApplicationStatus(app)
+		if status != StatusMissing {
+			t.Errorf("Expected StatusMissing, got %s", status)
+		}
+	})
+
+	t.Run("package installed overrides missing configs", func(t *testing.T) {
+		app := ApplicationItem{
+			PkgInstalled: &installed,
+			SubItems: []SubEntryItem{
+				{State: StateMissing},
+			},
+		}
+
+		status := getApplicationStatus(app)
+		if status != StatusInstalled {
+			t.Errorf("Expected StatusInstalled, got %s", status)
+		}
+	})
+
+	t.Run("package installed with linked configs", func(t *testing.T) {
+		app := ApplicationItem{
+			PkgInstalled: &installed,
+			SubItems: []SubEntryItem{
+				{State: StateLinked},
+			},
+		}
+
+		status := getApplicationStatus(app)
+		if status != StatusInstalled {
+			t.Errorf("Expected StatusInstalled, got %s", status)
+		}
+	})
 }
 
 func TestAppInfoNeedsAttention_Outdated(t *testing.T) {

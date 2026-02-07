@@ -40,6 +40,7 @@ const (
 	StatusMissing   = "Missing"
 	StatusFiltered  = "Filtered"
 	StatusOutdated  = "Outdated"
+	StatusUnknown   = "Unknown"
 )
 
 // Sort column constants

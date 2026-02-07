@@ -505,12 +505,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Message: msg.Message,
 		})
 
-		// Update installed status in Paths if installation succeeded
+		// Update installed status if installation succeeded
 		if msg.Success {
+			installed := true
+
 			for i := range m.Paths {
 				if m.Paths[i].Entry.Name == msg.Package.Entry.Name && m.Paths[i].PkgInstalled != nil {
-					installed := true
 					m.Paths[i].PkgInstalled = &installed
+
+					break
+				}
+			}
+
+			for i := range m.Applications {
+				if m.Applications[i].Application.Name == msg.Package.Entry.Name && m.Applications[i].PkgInstalled != nil {
+					m.Applications[i].PkgInstalled = &installed
 
 					break
 				}
@@ -530,6 +539,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.currentPackageIndex = 0
 		m.Operation = OpList
 		m.Screen = ScreenResults
+		m.rebuildTable()
 
 		return m, nil
 
@@ -561,6 +571,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.results = msg.Results
 		m.Screen = ScreenResults
 		m.Operation = OpList
+
+		// Update installed status for successful installs
+		installed := true
+		for _, result := range msg.Results {
+			if result.Success {
+				for i := range m.Applications {
+					if m.Applications[i].Application.Name == result.Name && m.Applications[i].PkgInstalled != nil {
+						m.Applications[i].PkgInstalled = &installed
+
+						break
+					}
+				}
+			}
+		}
+
+		m.rebuildTable()
 
 		// Clear selections after operation
 		m.clearSelections()

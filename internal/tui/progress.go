@@ -532,7 +532,10 @@ func cellAttentionStyle(tr TableRow, col int) lipgloss.Style {
 		return baseStyle.Foreground(errorColor)
 	}
 
-	// Mute "0 entries" text in info column (col 2)
+	// Mute "Unknown" status and "0 entries" info text
+	if col == 1 && tr.Data[1] == StatusUnknown {
+		return baseStyle.Foreground(mutedColor)
+	}
 	if col == 2 && tr.Data[2] == "0 entries" {
 		return baseStyle.Foreground(mutedColor)
 	}
@@ -1049,14 +1052,18 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if appIdx >= 0 {
 				app := m.Applications[appIdx]
 				if app.PkgInstalled != nil && !*app.PkgInstalled {
-					// Setup for package installation
 					m.Operation = OpInstallPackages
-					// TODO: Convert Application to PackageItem format
-					// For now, we need the Application's package spec
 					m.currentPackageIndex = 0
 					m.results = nil
+					m.pendingPackages = []PackageItem{{
+						Entry: config.Entry{
+							Name:    app.Application.Name,
+							Package: app.Application.Package,
+						},
+						Method:   app.PkgMethod,
+						Selected: true,
+					}}
 					m.Screen = ScreenProgress
-
 					return m, m.installNextPackage()
 				}
 			}

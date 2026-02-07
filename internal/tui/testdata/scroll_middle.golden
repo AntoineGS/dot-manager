@@ -4,23 +4,23 @@
   │ name ↑                │ status                │ info                  │ path                 │
   ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
   │ ↑ 6 more above        │                       │                       │                      │
-  │ ▶ app-07              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-08              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-09              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-10              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-11              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-12              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-13              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-14              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-15              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-16              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-17              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-18              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-19              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-20              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-21              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-22              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-23              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-07              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-08              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-09              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-10              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-11              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-12              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-13              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-14              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-15              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-16              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-17              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-18              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-19              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-20              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-21              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-22              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-23              │ Unknown               │ 1 entry               │                      │
   │ ↓ 17 more below       │                       │                       │                      │
   └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
 

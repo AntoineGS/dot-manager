@@ -30,6 +30,15 @@ type ManagerValue struct {
 // IsGit returns true if this manager value represents a git package configuration.
 func (v ManagerValue) IsGit() bool { return v.Git != nil }
 
+// MarshalYAML writes non-git manager values as plain strings
+func (v ManagerValue) MarshalYAML() (interface{}, error) {
+	if v.IsGit() {
+		return v.Git, nil
+	}
+
+	return v.PackageName, nil
+}
+
 // EntryPackage contains package installation configuration
 type EntryPackage struct {
 	Managers map[string]ManagerValue   `yaml:"managers,omitempty"` // manager -> package name or GitPackage
