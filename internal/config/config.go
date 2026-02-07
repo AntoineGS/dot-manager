@@ -12,11 +12,11 @@ import (
 
 // Config is the main configuration structure
 type Config struct {
+	Version         int           `yaml:"version"`
 	BackupRoot      string        `yaml:"backup_root"`
 	DefaultManager  string        `yaml:"default_manager,omitempty"`
-	Applications    []Application `yaml:"applications,omitempty"`
 	ManagerPriority []string      `yaml:"manager_priority,omitempty"`
-	Version         int           `yaml:"version"`
+	Applications    []Application `yaml:"applications,omitempty"`
 }
 
 // URLInstallSpec defines URL-based installation
