@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -196,7 +197,7 @@ func ExpandPath(path string, envVars map[string]string) string {
 
 // Save writes the config to the specified file path
 func Save(cfg *Config, path string) error {
-	data, err := yaml.Marshal(cfg)
+	data, err := marshalYAML(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
@@ -208,4 +209,21 @@ func Save(cfg *Config, path string) error {
 	}
 
 	return nil
+}
+
+// marshalYAML encodes a value to YAML with 2-space indentation.
+func marshalYAML(v interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }

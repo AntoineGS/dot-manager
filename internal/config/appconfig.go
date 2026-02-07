@@ -74,7 +74,7 @@ func SaveAppConfig(cfg *AppConfig) error {
 
 	configPath := filepath.Join(configDir, appConfigFile)
 
-	data, err := yaml.Marshal(cfg)
+	data, err := marshalYAML(cfg)
 	if err != nil {
 		return fmt.Errorf("marshaling config: %w", err)
 	}

@@ -3,13 +3,13 @@
   ┌────────────────────┬───────────────────┬───────────────────┬─────────────────────────────────┐
   │ name ↑             │ status            │ info              │ path                            │
   ├────────────────────┼───────────────────┼───────────────────┼─────────────────────────────────┤
-  │ ▶ bash             │ Installed         │ 1 entry           │                                 │
-  │ ▼ nvim             │ Missing           │ 4 entries         │                                 │
+  │ ▶ bash             │ Unknown           │ 1 entry           │                                 │
+  │ ▼ nvim             │ Unknown           │ 4 entries         │                                 │
   │   ├─ settings      │ Missing           │ folder            │ ~/.config/nvim/lua/settings.lua │
   │   ├─ init.lua      │ Adopt             │ folder            │ ~/.config/nvim/init.lua         │
   │   ├─ mappings      │ Adopt             │ folder            │ ~/.config/nvim/lua/mappings.lua │
   │   └─ plugins       │ Adopt             │ folder            │ ~/.config/nvim/lua/plugins      │
-  │ ▶ zsh              │ Installed         │ 1 entry           │                                 │
+  │ ▶ zsh              │ Unknown           │ 1 entry           │                                 │
   └────────────────────┴───────────────────┴───────────────────┴─────────────────────────────────┘
 
 

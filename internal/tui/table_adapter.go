@@ -105,29 +105,19 @@ func flattenApplications(apps []ApplicationItem, osType string, filterEnabled bo
 	return rows
 }
 
-// getApplicationStatus determines status text for application row
+// getApplicationStatus determines status text for application row based on
+// package install state only. Config sub-entry states are reflected in the
+// info column via appInfoNeedsAttention.
 func getApplicationStatus(app ApplicationItem) string {
 	if app.IsFiltered {
 		return StatusFiltered
 	}
 
-	allLinkedOrOutdated := true
-	anyOutdated := false
-
-	for _, sub := range app.SubItems {
-		if sub.State == StateOutdated {
-			anyOutdated = true
-		} else if sub.State != StateLinked {
-			allLinkedOrOutdated = false
-			break
-		}
+	if app.PkgInstalled == nil {
+		return StatusUnknown
 	}
 
-	if allLinkedOrOutdated && anyOutdated {
-		return StatusOutdated
-	}
-
-	if allLinkedOrOutdated {
+	if *app.PkgInstalled {
 		return StatusInstalled
 	}
 
@@ -150,7 +140,7 @@ func getTypeInfo(subItem SubEntryItem) string {
 
 // needsAttention returns true if the status text indicates something needs attention
 func needsAttention(status string) bool {
-	return status != StatusInstalled && status != StateLinked.String()
+	return status != StatusInstalled && status != StatusUnknown && status != StateLinked.String()
 }
 
 // appInfoNeedsAttention returns true if the application has any configs that need attention

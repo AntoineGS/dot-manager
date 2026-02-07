@@ -3,10 +3,10 @@
   ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
   │ name ↑                │ status                │ info                  │ path                 │
   ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
-  │ ▶ bash                │ Installed             │ 1 entry               │                      │
-  │ ▶ git                 │ Missing               │ 1 entry               │                      │
-  │ ▶ nvim                │ Missing               │ 2 entries             │                      │
-  │ ▶ zsh                 │ Installed             │ 1 entry               │                      │
+  │ ▶ bash                │ Unknown               │ 1 entry               │                      │
+  │ ▶ git                 │ Unknown               │ 1 entry               │                      │
+  │ ▶ nvim                │ Unknown               │ 2 entries             │                      │
+  │ ▶ zsh                 │ Unknown               │ 1 entry               │                      │
   └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
       2 app(s), 0 item(s) selected
 

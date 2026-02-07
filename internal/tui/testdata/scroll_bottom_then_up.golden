@@ -4,24 +4,24 @@
   │ name ↑                │ status                │ info                  │ path                 │
   ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
   │ ↑ 22 more above       │                       │                       │                      │
-  │ ▶ app-23              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-24              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-25              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-26              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-27              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-28              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-29              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-30              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-31              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-32              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-33              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-34              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-35              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-36              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-37              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-38              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-39              │ Missing               │ 1 entry               │                      │
-  │ ▶ app-40              │ Missing               │ 1 entry               │                      │
+  │ ▶ app-23              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-24              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-25              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-26              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-27              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-28              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-29              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-30              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-31              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-32              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-33              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-34              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-35              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-36              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-37              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-38              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-39              │ Unknown               │ 1 entry               │                      │
+  │ ▶ app-40              │ Unknown               │ 1 entry               │                      │
   └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
 
 

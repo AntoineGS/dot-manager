@@ -3,11 +3,11 @@
   ┌───────────────────────┬───────────────────────┬───────────────────────┬──────────────────────┐
   │ name ↑                │ status                │ info                  │ path                 │
   ├───────────────────────┼───────────────────────┼───────────────────────┼──────────────────────┤
-  │ ▶ bash                │ Installed             │ 1 entry               │                      │
-  │ ▶ git                 │ Missing               │ 1 entry               │                      │
-  │ ▶ nvim                │ Installed             │ 1 entry               │                      │
-  │ ▶ tmux                │ Installed             │ 1 entry               │                      │
-  │ ▶ zsh                 │ Installed             │ 1 entry               │                      │
+  │ ▶ bash                │ Unknown               │ 1 entry               │                      │
+  │ ▶ git                 │ Unknown               │ 1 entry               │                      │
+  │ ▶ nvim                │ Unknown               │ 1 entry               │                      │
+  │ ▶ tmux                │ Unknown               │ 1 entry               │                      │
+  │ ▶ zsh                 │ Unknown               │ 1 entry               │                      │
   └───────────────────────┴───────────────────────┴───────────────────────┴──────────────────────┘
 
 

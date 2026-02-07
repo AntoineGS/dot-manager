@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoad(t *testing.T) {
@@ -1138,4 +1140,67 @@ applications:
 	if cfg == nil {
 		t.Error("Expected config to be loaded")
 	}
+}
+
+func TestManagerValueMarshalYAML(t *testing.T) {
+	t.Parallel()
+
+	t.Run("string manager marshals as plain string", func(t *testing.T) {
+		t.Parallel()
+		ep := EntryPackage{
+			Managers: map[string]ManagerValue{
+				"pacman": {PackageName: "neovim"},
+			},
+		}
+
+		out, err := yaml.Marshal(&ep)
+		if err != nil {
+			t.Fatalf("Marshal error: %v", err)
+		}
+
+		// Should produce "pacman: neovim", not "pacman:\n  packagename: neovim\n  git: null"
+		output := string(out)
+		if strings.Contains(output, "packagename") {
+			t.Errorf("String manager should marshal as plain string, got:\n%s", output)
+		}
+	})
+
+	t.Run("git manager marshals without nested git key", func(t *testing.T) {
+		t.Parallel()
+		ep := EntryPackage{
+			Managers: map[string]ManagerValue{
+				"git": {Git: &GitPackage{
+					URL:     "https://github.com/user/repo.git",
+					Targets: map[string]string{"linux": "/usr/share/test"},
+					Sudo:    true,
+				}},
+			},
+		}
+
+		out, err := yaml.Marshal(&ep)
+		if err != nil {
+			t.Fatalf("Marshal error: %v", err)
+		}
+
+		output := string(out)
+		// Should have url directly under git, not a nested git key
+		if strings.Contains(output, "packagename") {
+			t.Errorf("Git manager should not contain packagename, got:\n%s", output)
+		}
+
+		// Verify round-trip
+		var ep2 EntryPackage
+		if err := yaml.Unmarshal(out, &ep2); err != nil {
+			t.Fatalf("Unmarshal error: %v", err)
+		}
+
+		gitPkg, ok := ep2.Managers["git"]
+		if !ok || gitPkg.Git == nil {
+			t.Fatal("Round-trip lost git manager")
+		}
+
+		if gitPkg.Git.URL != "https://github.com/user/repo.git" {
+			t.Errorf("Round-trip URL = %q, want %q", gitPkg.Git.URL, "https://github.com/user/repo.git")
+		}
+	})
 }
