@@ -22,16 +22,11 @@ func BenchmarkGetFilteredConfigEntries(b *testing.B) {
 		}
 	}
 
-	ctx := &FilterContext{
-		OS:       "linux",
-		Distro:   "arch",
-		Hostname: "localhost",
-		User:     "user",
-	}
+	renderer := &mockWhenRenderer{result: "true"}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = cfg.GetAllConfigSubEntries(ctx)
+		_ = cfg.GetAllConfigSubEntries(renderer)
 	}
 }

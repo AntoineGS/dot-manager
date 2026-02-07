@@ -17,7 +17,7 @@ const (
 	appFieldName applicationFieldType = iota
 	appFieldDescription
 	appFieldPackages
-	appFieldFilters
+	appFieldWhen
 )
 
 // initApplicationFormNew initializes the form for creating a new application
@@ -33,47 +33,39 @@ func (m *Model) initApplicationFormNew() {
 	descriptionInput.CharLimit = 256
 	descriptionInput.Width = 40
 
-	filterValueInput := textinput.New()
-	filterValueInput.Placeholder = "e.g., linux or arch|ubuntu"
-	filterValueInput.CharLimit = 128
-	filterValueInput.Width = 40
-
 	packageNameInput := textinput.New()
 	packageNameInput.Placeholder = PlaceholderNeovim
 	packageNameInput.CharLimit = 128
 	packageNameInput.Width = 40
 
+	whenInput := textinput.New()
+	whenInput.Placeholder = PlaceholderWhen
+	whenInput.CharLimit = 512
+	whenInput.Width = 60
+
 	gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput := newGitTextInputs()
 
 	m.applicationForm = &ApplicationForm{
-		nameInput:          nameInput,
-		descriptionInput:   descriptionInput,
-		packageManagers:    make(map[string]string),
-		packagesCursor:     0,
-		editingPackage:     false,
-		packageNameInput:   packageNameInput,
-		lastPackageName:    "",
-		filters:            nil,
-		filtersCursor:      0,
-		addingFilter:       false,
-		editingFilter:      false,
-		editingFilterIndex: -1,
-		filterAddStep:      0,
-		filterIsExclude:    false,
-		filterValueInput:   filterValueInput,
-		filterKeyCursor:    0,
-		focusIndex:         0,
-		editingField:       false,
-		originalValue:      "",
-		editAppIdx:         -1,
-		err:                "",
-		gitURLInput:        gitURLInput,
-		gitBranchInput:     gitBranchInput,
-		gitLinuxInput:      gitLinuxInput,
-		gitWindowsInput:    gitWindowsInput,
-		gitFieldCursor:     -1,
-		hasGitPackage:      false,
-		gitSudo:            false,
+		nameInput:        nameInput,
+		descriptionInput: descriptionInput,
+		packageManagers:  make(map[string]string),
+		packagesCursor:   0,
+		editingPackage:   false,
+		packageNameInput: packageNameInput,
+		lastPackageName:  "",
+		whenInput:        whenInput,
+		focusIndex:       0,
+		editingField:     false,
+		originalValue:    "",
+		editAppIdx:       -1,
+		err:              "",
+		gitURLInput:      gitURLInput,
+		gitBranchInput:   gitBranchInput,
+		gitLinuxInput:    gitLinuxInput,
+		gitWindowsInput:  gitWindowsInput,
+		gitFieldCursor:   -1,
+		hasGitPackage:    false,
+		gitSudo:          false,
 	}
 
 	m.activeForm = FormApplication
@@ -109,38 +101,18 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 	descriptionInput.CharLimit = 256
 	descriptionInput.Width = 40
 
-	filterValueInput := textinput.New()
-	filterValueInput.Placeholder = "e.g., linux or arch|ubuntu"
-	filterValueInput.CharLimit = 128
-	filterValueInput.Width = 40
-
 	packageNameInput := textinput.New()
 	packageNameInput.Placeholder = PlaceholderNeovim
 	packageNameInput.CharLimit = 128
 	packageNameInput.Width = 40
 
-	gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput := newGitTextInputs()
+	whenInput := textinput.New()
+	whenInput.Placeholder = PlaceholderWhen
+	whenInput.CharLimit = 512
+	whenInput.Width = 60
+	whenInput.SetValue(app.When)
 
-	// Load filters
-	var filters []FilterCondition
-	for filterIdx, f := range app.Filters {
-		for k, v := range f.Include {
-			filters = append(filters, FilterCondition{
-				FilterIndex: filterIdx,
-				IsExclude:   false,
-				Key:         k,
-				Value:       v,
-			})
-		}
-		for k, v := range f.Exclude {
-			filters = append(filters, FilterCondition{
-				FilterIndex: filterIdx,
-				IsExclude:   true,
-				Key:         k,
-				Value:       v,
-			})
-		}
-	}
+	gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput := newGitTextInputs()
 
 	// Load package managers (only string-based managers, skip git)
 	packageManagers := make(map[string]string)
@@ -177,34 +149,26 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 	}
 
 	m.applicationForm = &ApplicationForm{
-		nameInput:          nameInput,
-		descriptionInput:   descriptionInput,
-		packageManagers:    packageManagers,
-		packagesCursor:     0,
-		editingPackage:     false,
-		packageNameInput:   packageNameInput,
-		lastPackageName:    "",
-		filters:            filters,
-		filtersCursor:      0,
-		addingFilter:       false,
-		editingFilter:      false,
-		editingFilterIndex: -1,
-		filterAddStep:      0,
-		filterIsExclude:    false,
-		filterValueInput:   filterValueInput,
-		filterKeyCursor:    0,
-		focusIndex:         0,
-		editingField:       false,
-		originalValue:      "",
-		editAppIdx:         configAppIdx,
-		err:                "",
-		gitURLInput:        gitURLInput,
-		gitBranchInput:     gitBranchInput,
-		gitLinuxInput:      gitLinuxInput,
-		gitWindowsInput:    gitWindowsInput,
-		gitFieldCursor:     -1,
-		hasGitPackage:      hasGitPackage,
-		gitSudo:            gitSudo,
+		nameInput:        nameInput,
+		descriptionInput: descriptionInput,
+		packageManagers:  packageManagers,
+		packagesCursor:   0,
+		editingPackage:   false,
+		packageNameInput: packageNameInput,
+		lastPackageName:  "",
+		whenInput:        whenInput,
+		focusIndex:       0,
+		editingField:     false,
+		originalValue:    "",
+		editAppIdx:       configAppIdx,
+		err:              "",
+		gitURLInput:      gitURLInput,
+		gitBranchInput:   gitBranchInput,
+		gitLinuxInput:    gitLinuxInput,
+		gitWindowsInput:  gitWindowsInput,
+		gitFieldCursor:   -1,
+		hasGitPackage:    hasGitPackage,
+		gitSudo:          gitSudo,
 	}
 
 	m.activeForm = FormApplication
@@ -225,7 +189,7 @@ func (m *Model) getApplicationFieldType() applicationFieldType {
 	case 2:
 		return appFieldPackages
 	case 3:
-		return appFieldFilters
+		return appFieldWhen
 	default:
 		return appFieldName
 	}
@@ -252,9 +216,9 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateApplicationPackageInput(msg)
 	}
 
-	// Handle adding/editing filter
-	if m.applicationForm.addingFilter || m.applicationForm.editingFilter {
-		return m.updateApplicationFilterInput(msg)
+	// Handle editing when expression
+	if m.applicationForm.editingWhen {
+		return m.updateApplicationWhenInput(msg)
 	}
 
 	// Handle packages list navigation
@@ -263,11 +227,6 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.updateApplicationGitFields(msg)
 		}
 		return m.updateApplicationPackagesList(msg)
-	}
-
-	// Handle filters list navigation
-	if m.getApplicationFieldType() == appFieldFilters {
-		return m.updateApplicationFiltersList(msg)
 	}
 
 	switch msg.String() {
@@ -318,6 +277,13 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ft := m.getApplicationFieldType()
 		if ft == appFieldName || ft == appFieldDescription {
 			m.enterApplicationFieldEditMode()
+			return m, nil
+		}
+		if ft == appFieldWhen {
+			m.applicationForm.editingWhen = true
+			m.applicationForm.originalValue = m.applicationForm.whenInput.Value()
+			m.applicationForm.whenInput.Focus()
+			m.applicationForm.whenInput.SetCursor(len(m.applicationForm.whenInput.Value()))
 			return m, nil
 		}
 
@@ -371,8 +337,8 @@ func (m Model) updateApplicationFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 		m.applicationForm.nameInput, cmd = m.applicationForm.nameInput.Update(msg)
 	case appFieldDescription:
 		m.applicationForm.descriptionInput, cmd = m.applicationForm.descriptionInput.Update(msg)
-	case appFieldPackages, appFieldFilters:
-		// List fields don't need text input updates
+	case appFieldPackages, appFieldWhen:
+		// List/when fields don't need text input updates here
 	}
 
 	// Clear error when typing
@@ -587,7 +553,7 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.applicationForm.gitFieldCursor < GitFieldCount-1 {
 			m.applicationForm.gitFieldCursor++
 		} else {
-			// Move to Filters section
+			// Move to When section
 			m.applicationForm.focusIndex++
 			if m.applicationForm.focusIndex > 3 {
 				m.applicationForm.focusIndex = 0
@@ -706,293 +672,38 @@ func (m *Model) getGitFieldInput() *textinput.Model {
 	}
 }
 
-// updateApplicationFiltersList handles key events when filters list is focused
-func (m Model) updateApplicationFiltersList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.applicationForm == nil {
-		return m, nil
-	}
-
-	maxCursor := len(m.applicationForm.filters) // "Add Filter" button is at index len(filters)
-
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
-
-	case "q", KeyEsc:
-		m.activeForm = FormNone
-		m.applicationForm = nil
-		m.Screen = ScreenResults
-		return m, nil
-
-	case "up", "k":
-		if m.applicationForm.filtersCursor > 0 {
-			m.applicationForm.filtersCursor--
-		} else {
-			// Move to previous field
-			m.applicationForm.focusIndex--
-			m.updateApplicationFormFocus()
-		}
-		return m, nil
-
-	case KeyDown, "j":
-		if m.applicationForm.filtersCursor < maxCursor {
-			m.applicationForm.filtersCursor++
-		} else {
-			// Wrap to first field
-			m.applicationForm.focusIndex = 0
-			m.applicationForm.filtersCursor = 0
-			m.updateApplicationFormFocus()
-		}
-		return m, nil
-
-	case KeyTab:
-		// Move to next field (wrap to beginning)
-		m.applicationForm.focusIndex = 0
-		m.applicationForm.filtersCursor = 0
-		m.updateApplicationFormFocus()
-		return m, nil
-
-	case KeyShiftTab:
-		// Move to previous field
-		m.applicationForm.focusIndex--
-		m.updateApplicationFormFocus()
-		return m, nil
-
-	case "enter", " ":
-		// If on "Add Filter" button, start adding
-		if m.applicationForm.filtersCursor == len(m.applicationForm.filters) {
-			m.applicationForm.addingFilter = true
-			m.applicationForm.filterAddStep = 0
-			m.applicationForm.filterIsExclude = false
-			m.applicationForm.filterKeyCursor = 0
-			m.applicationForm.filterValueInput.SetValue("")
-			return m, nil
-		}
-		// Edit the selected filter
-		if m.applicationForm.filtersCursor < len(m.applicationForm.filters) {
-			fc := m.applicationForm.filters[m.applicationForm.filtersCursor]
-			m.applicationForm.editingFilter = true
-			m.applicationForm.editingFilterIndex = m.applicationForm.filtersCursor
-			m.applicationForm.filterAddStep = filterStepValue // Start at value step
-			m.applicationForm.editingFilterValue = false      // Don't start in edit mode
-			m.applicationForm.filterIsExclude = fc.IsExclude
-			// Find key index
-			for i, k := range filterKeys {
-				if k == fc.Key {
-					m.applicationForm.filterKeyCursor = i
-					break
-				}
-			}
-			m.applicationForm.filterValueInput.SetValue(fc.Value)
-		}
-		return m, nil
-
-	case "d", KeyBackspace, KeyDelete:
-		// Delete the selected filter
-		if m.applicationForm.filtersCursor < len(m.applicationForm.filters) && len(m.applicationForm.filters) > 0 {
-			// Remove filter at cursor
-			m.applicationForm.filters = append(
-				m.applicationForm.filters[:m.applicationForm.filtersCursor],
-				m.applicationForm.filters[m.applicationForm.filtersCursor+1:]...,
-			)
-			// Adjust cursor if needed
-			if m.applicationForm.filtersCursor >= len(m.applicationForm.filters) && m.applicationForm.filtersCursor > 0 {
-				m.applicationForm.filtersCursor--
-			}
-		}
-		m.applicationForm.err = ""
-		return m, nil
-
-	case "s", KeyCtrlS:
-		// Save the form
-		if err := m.saveApplicationForm(); err != nil {
-			m.applicationForm.err = err.Error()
-			return m, nil
-		}
-		m.activeForm = FormNone
-		m.applicationForm = nil
-		m.Screen = ScreenResults
-		return m, nil
-	}
-
-	return m, nil
-}
-
-// updateApplicationFilterInput handles key events when adding or editing a filter
-//
-//nolint:gocyclo // UI handler with many states
-func (m Model) updateApplicationFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// updateApplicationWhenInput handles key events when editing the when expression
+func (m Model) updateApplicationWhenInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.applicationForm == nil {
 		return m, nil
 	}
 
 	var cmd tea.Cmd
 
-	// Handle value editing mode separately
-	if m.applicationForm.filterAddStep == filterStepValue && m.applicationForm.editingFilterValue {
-		switch msg.String() {
-		case KeyCtrlC:
-			return m, tea.Quit
-		case KeyEsc:
-			// Cancel value editing
-			m.applicationForm.editingFilterValue = false
-			m.applicationForm.filterValueInput.Blur()
-			m.applicationForm.err = ""
-			return m, nil
-		case "enter":
-			// Save the filter
-			value := strings.TrimSpace(m.applicationForm.filterValueInput.Value())
-			if value == "" {
-				return m, nil // Don't save empty value
-			}
-
-			key := filterKeys[m.applicationForm.filterKeyCursor]
-
-			if m.applicationForm.editingFilter {
-				// Update existing filter
-				if m.applicationForm.editingFilterIndex >= 0 && m.applicationForm.editingFilterIndex < len(m.applicationForm.filters) {
-					m.applicationForm.filters[m.applicationForm.editingFilterIndex] = FilterCondition{
-						FilterIndex: m.applicationForm.filters[m.applicationForm.editingFilterIndex].FilterIndex,
-						IsExclude:   m.applicationForm.filterIsExclude,
-						Key:         key,
-						Value:       value,
-					}
-				}
-				m.applicationForm.editingFilter = false
-				m.applicationForm.editingFilterIndex = -1
-			} else {
-				// Add new filter
-				filterIndex := 0
-				if len(m.applicationForm.filters) > 0 {
-					filterIndex = m.applicationForm.filters[len(m.applicationForm.filters)-1].FilterIndex
-				}
-				m.applicationForm.filters = append(m.applicationForm.filters, FilterCondition{
-					FilterIndex: filterIndex,
-					IsExclude:   m.applicationForm.filterIsExclude,
-					Key:         key,
-					Value:       value,
-				})
-				m.applicationForm.filtersCursor = len(m.applicationForm.filters) // Move to "Add Filter" button
-				m.applicationForm.addingFilter = false
-			}
-			m.applicationForm.editingFilterValue = false
-			m.applicationForm.filterValueInput.SetValue("")
-			return m, nil
-		}
-		// Pass all other keys to the text input
-		m.applicationForm.filterValueInput, cmd = m.applicationForm.filterValueInput.Update(msg)
-		m.applicationForm.err = ""
-		return m, cmd
-	}
-
-	// Handle navigation mode
 	switch msg.String() {
 	case KeyCtrlC:
 		return m, tea.Quit
 
-	case "esc":
-		// Cancel adding/editing filter
-		m.applicationForm.addingFilter = false
-		m.applicationForm.editingFilter = false
-		m.applicationForm.editingFilterIndex = -1
-		m.applicationForm.editingFilterValue = false
-		m.applicationForm.filterValueInput.SetValue("")
+	case KeyEsc:
+		// Cancel editing and restore original value
+		m.applicationForm.whenInput.SetValue(m.applicationForm.originalValue)
+		m.applicationForm.editingWhen = false
+		m.applicationForm.whenInput.Blur()
 		m.applicationForm.err = ""
 		return m, nil
 
-	case "up", "k":
-		// Navigate to previous step
-		switch m.applicationForm.filterAddStep {
-		case filterStepValue:
-			m.applicationForm.filterAddStep = filterStepKey
-		case filterStepKey:
-			m.applicationForm.filterAddStep = filterStepType
-		}
-		return m, nil
-
-	case KeyDown, "j":
-		// Navigate to next step
-		switch m.applicationForm.filterAddStep {
-		case filterStepType:
-			m.applicationForm.filterAddStep = filterStepKey
-		case filterStepKey:
-			m.applicationForm.filterAddStep = filterStepValue
-		}
-		return m, nil
-
-	case KeyLeft, "h":
-		// Navigate in type or key step
-		switch m.applicationForm.filterAddStep {
-		case filterStepType:
-			m.applicationForm.filterIsExclude = !m.applicationForm.filterIsExclude
-		case filterStepKey:
-			if m.applicationForm.filterKeyCursor > 0 {
-				m.applicationForm.filterKeyCursor--
-			}
-		}
-		return m, nil
-
-	case KeyRight, "l":
-		// Navigate in type or key step
-		switch m.applicationForm.filterAddStep {
-		case filterStepType:
-			m.applicationForm.filterIsExclude = !m.applicationForm.filterIsExclude
-		case filterStepKey:
-			if m.applicationForm.filterKeyCursor < len(filterKeys)-1 {
-				m.applicationForm.filterKeyCursor++
-			}
-		}
-		return m, nil
-
-	case KeyTab:
-		// Move to next step
-		switch m.applicationForm.filterAddStep {
-		case filterStepType:
-			m.applicationForm.filterAddStep = filterStepKey
-		case filterStepKey:
-			m.applicationForm.filterAddStep = filterStepValue
-			// Auto-start editing when adding
-			if m.applicationForm.addingFilter {
-				m.applicationForm.editingFilterValue = true
-				m.applicationForm.filterValueInput.Focus()
-				m.applicationForm.filterValueInput.SetCursor(len(m.applicationForm.filterValueInput.Value()))
-			}
-		case filterStepValue:
-			m.applicationForm.editingFilterValue = true
-			m.applicationForm.filterValueInput.Focus()
-			m.applicationForm.filterValueInput.SetCursor(len(m.applicationForm.filterValueInput.Value()))
-		}
-		return m, nil
-
-	case KeyEnter, "e":
-		// Enter edit mode for current step, or advance
-		switch m.applicationForm.filterAddStep {
-		case filterStepType:
-			m.applicationForm.filterAddStep = filterStepKey
-		case filterStepKey:
-			m.applicationForm.filterAddStep = filterStepValue
-			// Auto-start editing when adding
-			if m.applicationForm.addingFilter {
-				m.applicationForm.editingFilterValue = true
-				m.applicationForm.filterValueInput.Focus()
-				m.applicationForm.filterValueInput.SetCursor(len(m.applicationForm.filterValueInput.Value()))
-			}
-		case filterStepValue:
-			m.applicationForm.editingFilterValue = true
-			m.applicationForm.filterValueInput.Focus()
-			m.applicationForm.filterValueInput.SetCursor(len(m.applicationForm.filterValueInput.Value()))
-		}
-		return m, nil
-
-	case KeyShiftTab:
-		// Move to previous step
-		if m.applicationForm.filterAddStep > filterStepType {
-			m.applicationForm.filterAddStep--
-		}
+	case KeyEnter, KeyTab:
+		// Save and exit edit mode
+		m.applicationForm.editingWhen = false
+		m.applicationForm.whenInput.Blur()
 		return m, nil
 	}
 
-	return m, nil
+	// Handle text input
+	m.applicationForm.whenInput, cmd = m.applicationForm.whenInput.Update(msg)
+	m.applicationForm.err = ""
+
+	return m, cmd
 }
 
 // viewApplicationForm renders the application form
@@ -1060,23 +771,16 @@ func (m Model) viewApplicationForm() string {
 	))
 	b.WriteString("\n")
 
-	// Filters section
-	filtersLabel := "Filters:"
-	if ft == appFieldFilters {
-		filtersLabel = HelpKeyStyle.Render("Filters:")
+	// When section
+	whenLabel := "When:"
+	if ft == appFieldWhen {
+		whenLabel = HelpKeyStyle.Render("When:")
 	}
-	b.WriteString(fmt.Sprintf("  %s\n", filtersLabel))
-	b.WriteString(renderFiltersSection(
-		ft == appFieldFilters,
-		m.applicationForm.filters,
-		m.applicationForm.filtersCursor,
-		m.applicationForm.addingFilter,
-		m.applicationForm.editingFilter,
-		m.applicationForm.filterAddStep,
-		m.applicationForm.filterIsExclude,
-		m.applicationForm.filterKeyCursor,
-		m.applicationForm.editingFilterValue,
-		m.applicationForm.filterValueInput,
+	b.WriteString(fmt.Sprintf("  %s\n", whenLabel))
+	b.WriteString(renderWhenField(
+		ft == appFieldWhen,
+		m.applicationForm.editingWhen,
+		m.applicationForm.whenInput,
 	))
 	b.WriteString("\n")
 
@@ -1108,7 +812,7 @@ func (m Model) renderApplicationFieldValue(fieldType applicationFieldType, place
 		input = m.applicationForm.nameInput
 	case appFieldDescription:
 		input = m.applicationForm.descriptionInput
-	case appFieldPackages, appFieldFilters:
+	case appFieldPackages, appFieldWhen:
 		return placeholder
 	default:
 		return placeholder
@@ -1151,33 +855,11 @@ func (m Model) renderApplicationFormHelp() string {
 		)
 	}
 
-	if m.applicationForm.addingFilter || m.applicationForm.editingFilter {
-		switch m.applicationForm.filterAddStep {
-		case filterStepType:
-			return RenderHelpWithWidth(m.width,
-				"←/h →/l", "select type",
-				"↓/j", "next step",
-				"enter/tab", "next",
-				"esc", "cancel",
-			)
-		case filterStepKey:
-			return RenderHelpWithWidth(m.width,
-				"←/h →/l", "select key",
-				"enter/tab", "next",
-				"esc", "cancel",
-			)
-		case filterStepValue:
-			if m.applicationForm.editingFilterValue {
-				return RenderHelpWithWidth(m.width,
-					"enter", "save filter",
-					"esc", "cancel edit",
-				)
-			}
-			return RenderHelpWithWidth(m.width,
-				"enter/e", "edit value",
-				"esc", "cancel",
-			)
-		}
+	if m.applicationForm.editingWhen {
+		return RenderHelpWithWidth(m.width,
+			"enter/tab", "save",
+			"esc", "cancel",
+		)
 	}
 
 	if m.applicationForm.editingField {
@@ -1220,17 +902,9 @@ func (m Model) renderApplicationFormHelp() string {
 		)
 	}
 
-	if ft == appFieldFilters {
-		if m.applicationForm.filtersCursor < len(m.applicationForm.filters) {
-			return RenderHelpWithWidth(m.width,
-				"enter", "edit",
-				"d/del", "remove",
-				"s", "save",
-				"q", "back",
-			)
-		}
+	if ft == appFieldWhen {
 		return RenderHelpWithWidth(m.width,
-			"enter", "add filter",
+			"enter/e", "edit",
 			"s", "save",
 			"q", "back",
 		)
@@ -1258,8 +932,8 @@ func (m *Model) saveApplicationForm() error {
 		return errors.New("name is required")
 	}
 
-	// Build filters and package
-	filters := buildFiltersFromConditions(m.applicationForm.filters)
+	// Build when expression and package
+	when := strings.TrimSpace(m.applicationForm.whenInput.Value())
 	pkg := buildPackageSpec(m.applicationForm.packageManagers)
 
 	// Merge git package data
@@ -1288,12 +962,12 @@ func (m *Model) saveApplicationForm() error {
 
 	// Save based on edit mode
 	if m.applicationForm.editAppIdx >= 0 {
-		return m.saveEditedApplication(m.applicationForm.editAppIdx, name, description, filters, pkg)
+		return m.saveEditedApplication(m.applicationForm.editAppIdx, name, description, when, pkg)
 	}
 	return m.saveNewApplication(config.Application{
 		Name:        name,
 		Description: description,
-		Filters:     filters,
+		When:        when,
 		Package:     pkg,
 		Entries:     []config.SubEntry{}, // Empty entries initially
 	})
@@ -1314,8 +988,10 @@ func (m *Model) updateApplicationFormFocus() {
 		m.applicationForm.nameInput.Focus()
 	case appFieldDescription:
 		m.applicationForm.descriptionInput.Focus()
-	case appFieldPackages, appFieldFilters:
+	case appFieldPackages:
 		// List fields don't use textinput focus
+	case appFieldWhen:
+		// When field focus is handled separately
 	}
 }
 
@@ -1337,8 +1013,10 @@ func (m *Model) enterApplicationFieldEditMode() {
 		m.applicationForm.originalValue = m.applicationForm.descriptionInput.Value()
 		m.applicationForm.descriptionInput.Focus()
 		m.applicationForm.descriptionInput.SetCursor(len(m.applicationForm.descriptionInput.Value()))
-	case appFieldPackages, appFieldFilters:
+	case appFieldPackages:
 		// List fields don't use text input editing
+	case appFieldWhen:
+		// When field has its own edit mode
 	}
 }
 
@@ -1354,8 +1032,10 @@ func (m *Model) cancelApplicationFieldEdit() {
 		m.applicationForm.nameInput.SetValue(m.applicationForm.originalValue)
 	case appFieldDescription:
 		m.applicationForm.descriptionInput.SetValue(m.applicationForm.originalValue)
-	case appFieldPackages, appFieldFilters:
+	case appFieldPackages:
 		// List fields don't use text input restoration
+	case appFieldWhen:
+		// When field has its own cancel handling
 	}
 
 	m.applicationForm.editingField = false
@@ -1370,6 +1050,12 @@ func NewApplicationForm(app config.Application, isEdit bool) *ApplicationForm {
 
 	descriptionInput := textinput.New()
 	descriptionInput.SetValue(app.Description)
+
+	whenInput := textinput.New()
+	whenInput.Placeholder = PlaceholderWhen
+	whenInput.CharLimit = 512
+	whenInput.Width = 60
+	whenInput.SetValue(app.When)
 
 	editAppIdx := -1
 	if isEdit {
@@ -1414,6 +1100,7 @@ func NewApplicationForm(app config.Application, isEdit bool) *ApplicationForm {
 	return &ApplicationForm{
 		nameInput:        nameInput,
 		descriptionInput: descriptionInput,
+		whenInput:        whenInput,
 		packageManagers:  packageManagers,
 		editAppIdx:       editAppIdx,
 		gitURLInput:      gitURLInput,

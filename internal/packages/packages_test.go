@@ -2,6 +2,7 @@ package packages
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -645,188 +646,83 @@ func TestInstall_DryRun(t *testing.T) {
 	}
 }
 
+// mockRenderer implements config.PathRenderer for testing.
+type mockRenderer struct {
+	result string
+	err    error
+}
+
+func (m *mockRenderer) RenderString(_, _ string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+
+	return m.result, nil
+}
+
 func TestFilterPackages(t *testing.T) {
 	tests := []struct {
 		name     string
 		packages []Package
-		ctx      *config.FilterContext
+		renderer config.PathRenderer
 		want     []string // expected package names
 	}{
 		{
-			name: "no filters - all packages returned",
+			name: "no when - all packages returned",
 			packages: []Package{
 				{Name: "pkg1"},
 				{Name: "pkg2"},
 			},
-			ctx:  &config.FilterContext{OS: "linux"},
-			want: []string{"pkg1", "pkg2"},
+			renderer: &mockRenderer{result: "true"},
+			want:     []string{"pkg1", "pkg2"},
 		},
 		{
-			name: "filter by OS - include linux",
+			name: "with when - true renderer matches all",
 			packages: []Package{
-				{
-					Name: "linux-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"os": "linux"}},
-					},
-				},
-				{
-					Name: "windows-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"os": "windows"}},
-					},
-				},
+				{Name: "linux-pkg", When: `{{ eq .OS "linux" }}`},
+				{Name: "windows-pkg", When: `{{ eq .OS "windows" }}`},
 			},
-			ctx:  &config.FilterContext{OS: "linux"},
-			want: []string{"linux-pkg"},
+			renderer: &mockRenderer{result: "true"},
+			want:     []string{"linux-pkg", "windows-pkg"},
 		},
 		{
-			name: "filter by distro",
+			name: "with when - false renderer excludes when-bearing packages",
 			packages: []Package{
-				{
-					Name: "arch-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"distro": "arch"}},
-					},
-				},
-				{
-					Name: "ubuntu-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"distro": "ubuntu"}},
-					},
-				},
+				{Name: "linux-pkg", When: `{{ eq .OS "linux" }}`},
+				{Name: "no-when-pkg"},
 			},
-			ctx:  &config.FilterContext{OS: "linux", Distro: "arch"},
-			want: []string{"arch-pkg"},
+			renderer: &mockRenderer{result: "false"},
+			want:     []string{"no-when-pkg"},
 		},
 		{
-			name: "filter by hostname",
+			name: "nil renderer - only no-when packages match",
 			packages: []Package{
-				{
-					Name: "work-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"hostname": "work-laptop"}},
-					},
-				},
-				{
-					Name: "home-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"hostname": "home-desktop"}},
-					},
-				},
+				{Name: "filtered-pkg", When: `{{ eq .OS "linux" }}`},
+				{Name: "unfiltered-pkg"},
 			},
-			ctx:  &config.FilterContext{Hostname: "work-laptop"},
-			want: []string{"work-pkg"},
+			renderer: nil,
+			want:     []string{"unfiltered-pkg"},
 		},
 		{
-			name: "filter by user",
+			name: "render error - when-bearing packages excluded",
 			packages: []Package{
-				{
-					Name: "admin-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"user": "admin"}},
-					},
-				},
-				{
-					Name: "user-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"user": "user"}},
-					},
-				},
+				{Name: "error-pkg", When: `{{ invalid }}`},
+				{Name: "ok-pkg"},
 			},
-			ctx:  &config.FilterContext{User: "admin"},
-			want: []string{"admin-pkg"},
-		},
-		{
-			name: "exclude filter",
-			packages: []Package{
-				{
-					Name: "general-pkg",
-					Filters: []config.Filter{
-						{Exclude: map[string]string{"distro": "ubuntu"}},
-					},
-				},
-			},
-			ctx:  &config.FilterContext{OS: "linux", Distro: "arch"},
-			want: []string{"general-pkg"},
-		},
-		{
-			name: "exclude filter - matches exclusion",
-			packages: []Package{
-				{
-					Name: "general-pkg",
-					Filters: []config.Filter{
-						{Exclude: map[string]string{"distro": "ubuntu"}},
-					},
-				},
-			},
-			ctx:  &config.FilterContext{OS: "linux", Distro: "ubuntu"},
-			want: []string{},
-		},
-		{
-			name: "regex filter",
-			packages: []Package{
-				{
-					Name: "debian-family-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"distro": "ubuntu|debian|mint"}},
-					},
-				},
-			},
-			ctx:  &config.FilterContext{OS: "linux", Distro: "debian"},
-			want: []string{"debian-family-pkg"},
-		},
-		{
-			name: "multiple conditions AND logic",
-			packages: []Package{
-				{
-					Name: "specific-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"os": "linux", "distro": "arch"}},
-					},
-				},
-			},
-			ctx:  &config.FilterContext{OS: "linux", Distro: "arch"},
-			want: []string{"specific-pkg"},
-		},
-		{
-			name: "multiple conditions AND logic - partial match fails",
-			packages: []Package{
-				{
-					Name: "specific-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"os": "linux", "distro": "arch"}},
-					},
-				},
-			},
-			ctx:  &config.FilterContext{OS: "linux", Distro: "ubuntu"},
-			want: []string{},
-		},
-		{
-			name: "multiple filters OR logic",
-			packages: []Package{
-				{
-					Name: "multi-os-pkg",
-					Filters: []config.Filter{
-						{Include: map[string]string{"os": "linux"}},
-						{Include: map[string]string{"os": "darwin"}},
-					},
-				},
-			},
-			ctx:  &config.FilterContext{OS: "darwin"},
-			want: []string{"multi-os-pkg"},
+			renderer: &mockRenderer{err: fmt.Errorf("render error")},
+			want:     []string{"ok-pkg"},
 		},
 		{
 			name:     "empty packages list",
 			packages: []Package{},
-			ctx:      &config.FilterContext{OS: "linux"},
+			renderer: &mockRenderer{result: "true"},
 			want:     []string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FilterPackages(tt.packages, tt.ctx)
+			got := FilterPackages(tt.packages, tt.renderer)
 
 			if len(got) != len(tt.want) {
 				t.Errorf("FilterPackages() returned %d packages, want %d", len(got), len(tt.want))
@@ -898,12 +794,10 @@ func TestFromEntry(t *testing.T) {
 			wantName: "url-tool",
 		},
 		{
-			name: "entry with filters",
+			name: "entry with when expression",
 			entry: config.Entry{
 				Name: "filtered-pkg",
-				Filters: []config.Filter{
-					{Include: map[string]string{"os": "linux"}},
-				},
+				When: `{{ eq .OS "linux" }}`,
 				Package: &config.EntryPackage{
 					Managers: map[string]config.ManagerValue{"pacman": {PackageName: "filtered-pkg"}},
 				},

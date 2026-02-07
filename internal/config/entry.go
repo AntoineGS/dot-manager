@@ -14,7 +14,7 @@ type Entry struct {
 	Targets     map[string]string `yaml:"targets,omitempty"`
 	Package     *EntryPackage     `yaml:"package,omitempty"`
 	Backup      string            `yaml:"backup,omitempty"`
-	Filters     []Filter          `yaml:"filters,omitempty"`
+	When        string            `yaml:"when,omitempty"`
 	Files       []string          `yaml:"files,omitempty"`
 	Sudo        bool              `yaml:"sudo,omitempty"`
 }
@@ -162,13 +162,13 @@ func (e *Entry) GetTarget(osType string) string {
 }
 
 // Application represents a logical grouping of configuration entries
-// An application has a name, optional description, filters, and contains multiple sub-entries.
+// An application has a name, optional description, when condition, and contains multiple sub-entries.
 // It can also have an associated package for installation.
 type Application struct {
 	Package     *EntryPackage `yaml:"package,omitempty"`
 	Name        string        `yaml:"name"`
 	Description string        `yaml:"description,omitempty"`
-	Filters     []Filter      `yaml:"filters,omitempty"`
+	When        string        `yaml:"when,omitempty"`
 	Entries     []SubEntry    `yaml:"entries"`
 }
 

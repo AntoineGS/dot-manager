@@ -62,8 +62,8 @@ func TestGetPaths(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	ctx := &config.FilterContext{}
-	paths := mgr.Config.GetAllConfigSubEntries(ctx)
+	// Use nil renderer (no when expressions = all match)
+	paths := mgr.Config.GetAllConfigSubEntries(nil)
 
 	if len(paths) != 2 {
 		t.Fatalf("GetPaths() returned %d paths, want 2", len(paths))
@@ -417,8 +417,8 @@ func TestGetApplications(t *testing.T) {
 		Version: 3,
 		Applications: []config.Application{
 			{
-				Name:    "test-app",
-				Filters: []config.Filter{{Include: map[string]string{"os": "linux"}}},
+				Name: "test-app",
+				When: `{{ eq .OS "linux" }}`,
 				Entries: []config.SubEntry{
 					{Name: "config1", Backup: "./config1", Targets: map[string]string{"linux": "~/.config"}},
 				},
@@ -471,8 +471,8 @@ func TestGetPackageEntries(t *testing.T) {
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
 
-	ctx := &config.FilterContext{}
-	apps := mgr.Config.GetFilteredApplications(ctx)
+	// Use nil renderer - apps with no when expression always match
+	apps := mgr.Config.GetFilteredApplications(nil)
 
 	// Should return all applications, filter for those with packages
 	appsWithPkg := 0

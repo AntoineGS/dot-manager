@@ -33,7 +33,6 @@ type Manager struct {
 	ctx            context.Context
 	Config         *config.Config
 	Platform       *platform.Platform
-	FilterCtx      *config.FilterContext
 	logger         *slog.Logger
 	templateEngine *tmpl.Engine
 	stateStore     *state.Store
@@ -58,14 +57,8 @@ func New(cfg *config.Config, plat *platform.Platform) *Manager {
 	engine := tmpl.NewEngine(tmplCtx)
 
 	return &Manager{
-		Config:   cfg,
-		Platform: plat,
-		FilterCtx: &config.FilterContext{
-			OS:       plat.OS,
-			Distro:   plat.Distro,
-			Hostname: plat.Hostname,
-			User:     plat.User,
-		},
+		Config:         cfg,
+		Platform:       plat,
 		ctx:            context.Background(), // Default context
 		logger:         slog.New(handler),
 		templateEngine: engine,
@@ -141,7 +134,7 @@ func (m *Manager) checkContext() error {
 
 // GetApplications returns all filtered applications from the configuration.
 func (m *Manager) GetApplications() []config.Application {
-	return m.Config.GetFilteredApplications(m.FilterCtx)
+	return m.Config.GetFilteredApplications(m.templateEngine)
 }
 
 // resolvePath expands templates, ~ and environment variables in paths and resolves

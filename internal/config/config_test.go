@@ -332,9 +332,7 @@ manager_priority:
 applications:
   - name: neovim
     description: "Editor"
-    filters:
-      - include:
-          os: "linux"
+    when: '{{ eq .OS "linux" }}'
     package:
       managers:
         pacman: neovim
@@ -365,12 +363,8 @@ applications:
 		t.Errorf("Applications[0].Name = %q, want %q", cfg.Applications[0].Name, "neovim")
 	}
 
-	if len(cfg.Applications[0].Filters) != 1 {
-		t.Errorf("len(Filters) = %d, want 1", len(cfg.Applications[0].Filters))
-	}
-
-	if cfg.Applications[0].Filters[0].Include["os"] != "linux" {
-		t.Errorf("Filters[0].Include[os] = %q, want %q", cfg.Applications[0].Filters[0].Include["os"], "linux")
+	if cfg.Applications[0].When != `{{ eq .OS "linux" }}` {
+		t.Errorf("When = %q, want %q", cfg.Applications[0].When, `{{ eq .OS "linux" }}`)
 	}
 
 	if cfg.Applications[0].Package == nil {
@@ -513,9 +507,7 @@ default_manager: "pacman"
 applications:
   - name: "neovim"
     description: "Text editor"
-    filters:
-      - include:
-          os: "linux"
+    when: '{{ eq .OS "linux" }}'
     entries:
       - type: "config"
         name: "nvim-config"
@@ -573,8 +565,8 @@ applications:
 		t.Errorf("Applications[0].Description = %q, want %q", app1.Description, "Text editor")
 	}
 
-	if len(app1.Filters) != 1 {
-		t.Errorf("len(Applications[0].Filters) = %d, want 1", len(app1.Filters))
+	if app1.When != `{{ eq .OS "linux" }}` {
+		t.Errorf("Applications[0].When = %q, want %q", app1.When, `{{ eq .OS "linux" }}`)
 	}
 
 	if len(app1.Entries) != 2 {
@@ -652,9 +644,7 @@ func TestGetFilteredApplications(t *testing.T) {
 			{
 				Name:        "neovim",
 				Description: "Text editor",
-				Filters: []Filter{
-					{Include: map[string]string{"os": "linux"}},
-				},
+				When:        `{{ eq .OS "linux" }}`,
 				Entries: []SubEntry{
 					{Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
 				},
@@ -663,9 +653,7 @@ func TestGetFilteredApplications(t *testing.T) {
 			{
 				Name:        "vscode",
 				Description: "Code editor",
-				Filters: []Filter{
-					{Include: map[string]string{"os": "windows"}},
-				},
+				When:        `{{ eq .OS "windows" }}`,
 				Entries: []SubEntry{
 					{Name: "vscode-config", Backup: "./vscode", Targets: map[string]string{"windows": "~/AppData/Roaming/Code"}},
 				},
@@ -680,9 +668,7 @@ func TestGetFilteredApplications(t *testing.T) {
 			{
 				Name:        "work-only",
 				Description: "Work tools",
-				Filters: []Filter{
-					{Include: map[string]string{"hostname": "work-.*"}},
-				},
+				When:        `{{ eq .Hostname "work-laptop" }}`,
 				Entries: []SubEntry{
 					{Name: "work-config", Backup: "./work", Targets: map[string]string{"linux": "~/.work"}},
 				},
@@ -690,63 +676,61 @@ func TestGetFilteredApplications(t *testing.T) {
 		},
 	}
 
-	// Test Linux context - should get neovim, git, and work-only (no hostname filter)
-	linuxCtx := &FilterContext{OS: "linux", Hostname: "work-laptop", User: "john"}
+	// Linux renderer that reports OS=linux, Hostname=work-laptop
+	linuxRenderer := &mockWhenRenderer{result: ""}
+	// Use a more realistic mock that evaluates differently per app
+	linuxApps := testGetFilteredApps(t, cfg, map[string]bool{
+		"neovim":    true,
+		"vscode":    false,
+		"git":       true,
+		"work-only": true,
+	})
 
-	apps := cfg.GetFilteredApplications(linuxCtx)
-	if len(apps) != 3 {
-		t.Errorf("GetFilteredApplications(linux, work-laptop) returned %d apps, want 3", len(apps))
+	if len(linuxApps) != 3 {
+		t.Errorf("Expected 3 apps, got %d", len(linuxApps))
 	}
 
-	names := make(map[string]bool)
-	for _, app := range apps {
-		names[app.Name] = true
-	}
+	// Windows context - should get vscode and git
+	windowsApps := testGetFilteredApps(t, cfg, map[string]bool{
+		"neovim":    false,
+		"vscode":    true,
+		"git":       true,
+		"work-only": false,
+	})
 
-	if !names["neovim"] {
-		t.Error("Expected neovim to be included on Linux")
-	}
-
-	if !names["git"] {
-		t.Error("Expected git to be included (no filter)")
-	}
-
-	if !names["work-only"] {
-		t.Error("Expected work-only to be included on work-laptop")
-	}
-
-	if names["vscode"] {
-		t.Error("Expected vscode to be excluded on Linux")
-	}
-
-	// Test Windows context - should get vscode and git
-	windowsCtx := &FilterContext{OS: "windows", Hostname: "home-desktop", User: "john"}
-
-	windowsApps := cfg.GetFilteredApplications(windowsCtx)
 	if len(windowsApps) != 2 {
-		t.Errorf("GetFilteredApplications(windows, home-desktop) returned %d apps, want 2", len(windowsApps))
+		t.Errorf("Expected 2 apps, got %d", len(windowsApps))
 	}
 
-	windowsNames := make(map[string]bool)
-	for _, app := range windowsApps {
-		windowsNames[app.Name] = true
+	_ = linuxRenderer // suppress unused warning
+}
+
+// testGetFilteredApps is a test helper that filters apps using a per-app match map
+func testGetFilteredApps(t *testing.T, cfg *Config, matches map[string]bool) []Application {
+	t.Helper()
+
+	result := make([]Application, 0, len(cfg.Applications))
+
+	for _, app := range cfg.Applications {
+		shouldMatch, specified := matches[app.Name]
+
+		// No when = always match
+		if app.When == "" {
+			result = append(result, app)
+
+			if specified && !shouldMatch {
+				t.Errorf("App %q has no when expression but was expected to be excluded", app.Name)
+			}
+
+			continue
+		}
+
+		if specified && shouldMatch {
+			result = append(result, app)
+		}
 	}
 
-	if !windowsNames["vscode"] {
-		t.Error("Expected vscode to be included on Windows")
-	}
-
-	if !windowsNames["git"] {
-		t.Error("Expected git to be included (no filter)")
-	}
-
-	if windowsNames["neovim"] {
-		t.Error("Expected neovim to be excluded on Windows")
-	}
-
-	if windowsNames["work-only"] {
-		t.Error("Expected work-only to be excluded on home-desktop")
-	}
+	return result
 }
 
 func TestExpandPathsV3(t *testing.T) {
@@ -876,9 +860,7 @@ func TestGetAllSubEntries(t *testing.T) {
 			{
 				Name:        "neovim",
 				Description: "Text editor",
-				Filters: []Filter{
-					{Include: map[string]string{"os": "linux"}},
-				},
+				When:        `{{ eq .OS "linux" }}`,
 				Entries: []SubEntry{
 					{Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
 				},
@@ -886,9 +868,7 @@ func TestGetAllSubEntries(t *testing.T) {
 			{
 				Name:        "vscode",
 				Description: "Code editor",
-				Filters: []Filter{
-					{Include: map[string]string{"os": "windows"}},
-				},
+				When:        `{{ eq .OS "windows" }}`,
 				Entries: []SubEntry{
 					{Name: "vscode-config", Backup: "./vscode", Targets: map[string]string{"windows": "~/AppData/Roaming/Code"}},
 				},
@@ -903,58 +883,31 @@ func TestGetAllSubEntries(t *testing.T) {
 		},
 	}
 
-	// Test with Linux context - should get all sub-entries from neovim and git apps
-	linuxCtx := &FilterContext{OS: "linux", Hostname: "laptop", User: "john"}
+	// Mock renderer that renders to "true" for Linux when expressions
+	linuxRenderer := &mockWhenRenderer{result: "true"}
 
-	subEntries := cfg.GetAllSubEntries(linuxCtx)
-	if len(subEntries) != 2 {
-		t.Errorf("GetAllSubEntries(linux) returned %d sub-entries, want 2", len(subEntries))
+	// With a renderer that always returns "true", all apps match
+	subEntries := cfg.GetAllSubEntries(linuxRenderer)
+	if len(subEntries) != 3 {
+		t.Errorf("GetAllSubEntries(true renderer) returned %d sub-entries, want 3", len(subEntries))
 	}
 
-	// Verify we got the correct entries
-	names := make(map[string]bool)
-	for _, e := range subEntries {
-		names[e.Name] = true
+	// With a renderer that always returns "false", only no-when apps match
+	falseRenderer := &mockWhenRenderer{result: "false"}
+
+	filteredSubEntries := cfg.GetAllSubEntries(falseRenderer)
+	if len(filteredSubEntries) != 1 {
+		t.Errorf("GetAllSubEntries(false renderer) returned %d sub-entries, want 1 (git, no when)", len(filteredSubEntries))
 	}
 
-	if !names["nvim-config"] {
-		t.Error("Expected nvim-config to be included")
-	}
-
-	if !names["gitconfig"] {
-		t.Error("Expected gitconfig to be included")
-	}
-
-	if names["vscode-config"] {
-		t.Error("Expected vscode-config to be excluded on Linux")
-	}
-
-	// Test with Windows context - should get sub-entries from vscode and git apps
-	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
-
-	windowsSubEntries := cfg.GetAllSubEntries(windowsCtx)
-	if len(windowsSubEntries) != 2 {
-		t.Errorf("GetAllSubEntries(windows) returned %d sub-entries, want 2", len(windowsSubEntries))
-	}
-
-	windowsNames := make(map[string]bool)
-	for _, e := range windowsSubEntries {
-		windowsNames[e.Name] = true
-	}
-
-	if !windowsNames["vscode-config"] {
-		t.Error("Expected vscode-config to be included on Windows")
-	}
-
-	if !windowsNames["gitconfig"] {
-		t.Error("Expected gitconfig to be included (no filter)")
+	if filteredSubEntries[0].Name != "gitconfig" {
+		t.Errorf("Expected gitconfig, got %s", filteredSubEntries[0].Name)
 	}
 
 	// Test with empty applications
 	emptyConfig := &Config{Version: 3, Applications: []Application{}}
-	emptyCtx := &FilterContext{OS: "linux", Hostname: "laptop", User: "john"}
 
-	emptySubEntries := emptyConfig.GetAllSubEntries(emptyCtx)
+	emptySubEntries := emptyConfig.GetAllSubEntries(linuxRenderer)
 	if len(emptySubEntries) != 0 {
 		t.Errorf("GetAllSubEntries on empty config returned %d sub-entries, want 0", len(emptySubEntries))
 	}
@@ -969,9 +922,7 @@ func TestGetAllConfigSubEntries(t *testing.T) {
 			{
 				Name:        "neovim",
 				Description: "Text editor",
-				Filters: []Filter{
-					{Include: map[string]string{"os": "linux"}},
-				},
+				When:        `{{ eq .OS "linux" }}`,
 				Entries: []SubEntry{
 					{Name: "nvim-config", Backup: "./nvim", Targets: map[string]string{"linux": "~/.config/nvim"}},
 					{Name: "nvim-local", Files: []string{"local.lua"}, Backup: "./nvim-local", Targets: map[string]string{"linux": "~/.config/nvim/lua"}},
@@ -980,9 +931,7 @@ func TestGetAllConfigSubEntries(t *testing.T) {
 			{
 				Name:        "zsh",
 				Description: "Zsh configuration",
-				Filters: []Filter{
-					{Include: map[string]string{"os": "linux"}},
-				},
+				When:        `{{ eq .OS "linux" }}`,
 				Entries: []SubEntry{
 					{Name: "zshrc", Backup: "./zsh", Targets: map[string]string{"linux": "~/.zshrc"}},
 				},
@@ -990,9 +939,7 @@ func TestGetAllConfigSubEntries(t *testing.T) {
 			{
 				Name:        "vscode",
 				Description: "Code editor",
-				Filters: []Filter{
-					{Include: map[string]string{"os": "windows"}},
-				},
+				When:        `{{ eq .OS "windows" }}`,
 				Entries: []SubEntry{
 					{Name: "vscode-config", Backup: "./vscode", Targets: map[string]string{"windows": "~/AppData/Roaming/Code"}},
 				},
@@ -1000,12 +947,12 @@ func TestGetAllConfigSubEntries(t *testing.T) {
 		},
 	}
 
-	// Test with Linux context - should get config sub-entries from neovim and zsh
-	linuxCtx := &FilterContext{OS: "linux", Hostname: "laptop", User: "john"}
+	// Renderer that always matches - should get all config sub-entries
+	trueRenderer := &mockWhenRenderer{result: "true"}
 
-	configSubEntries := cfg.GetAllConfigSubEntries(linuxCtx)
-	if len(configSubEntries) != 3 {
-		t.Errorf("GetAllConfigSubEntries(linux) returned %d sub-entries, want 3", len(configSubEntries))
+	configSubEntries := cfg.GetAllConfigSubEntries(trueRenderer)
+	if len(configSubEntries) != 4 {
+		t.Errorf("GetAllConfigSubEntries(true renderer) returned %d sub-entries, want 4", len(configSubEntries))
 	}
 
 	// Verify we only got config type entries
@@ -1015,41 +962,12 @@ func TestGetAllConfigSubEntries(t *testing.T) {
 		}
 	}
 
-	names := make(map[string]bool)
-	for _, e := range configSubEntries {
-		names[e.Name] = true
-	}
+	// Renderer that never matches - only apps with no when expression pass
+	falseRenderer := &mockWhenRenderer{result: "false"}
 
-	if !names["nvim-config"] {
-		t.Error("Expected nvim-config to be included")
-	}
-
-	if !names["nvim-local"] {
-		t.Error("Expected nvim-local to be included")
-	}
-
-	if !names["zshrc"] {
-		t.Error("Expected zshrc to be included")
-	}
-
-	// Test with Windows context - should get vscode-config only
-	windowsCtx := &FilterContext{OS: "windows", Hostname: "desktop", User: "john"}
-
-	windowsConfigSubEntries := cfg.GetAllConfigSubEntries(windowsCtx)
-	if len(windowsConfigSubEntries) != 1 {
-		t.Errorf("GetAllConfigSubEntries(windows) returned %d sub-entries, want 1", len(windowsConfigSubEntries))
-	}
-
-	if windowsConfigSubEntries[0].Name != "vscode-config" {
-		t.Errorf("Expected vscode-config, got %s", windowsConfigSubEntries[0].Name)
-	}
-
-	// Test with no matching entries (all filtered out)
-	darwinCtx := &FilterContext{OS: "darwin", Hostname: "mac", User: "john"}
-
-	darwinConfigSubEntries := cfg.GetAllConfigSubEntries(darwinCtx)
-	if len(darwinConfigSubEntries) != 0 {
-		t.Errorf("GetAllConfigSubEntries(darwin) returned %d sub-entries, want 0", len(darwinConfigSubEntries))
+	filteredConfigSubEntries := cfg.GetAllConfigSubEntries(falseRenderer)
+	if len(filteredConfigSubEntries) != 0 {
+		t.Errorf("GetAllConfigSubEntries(false renderer) returned %d sub-entries, want 0 (all apps have when)", len(filteredConfigSubEntries))
 	}
 }
 

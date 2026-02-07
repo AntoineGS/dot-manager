@@ -75,15 +75,15 @@ func (v ManagerValue) IsGit() bool { return v.Git != nil }
 // A package can be installed via a package manager (Managers), a custom shell
 // command (Custom), or by downloading from a URL (URL). The installation method
 // is selected based on availability, with package managers tried first, then
-// custom commands, and finally URL-based installation. Filters can be used to
-// conditionally include the package based on OS, distro, hostname, or user.
+// custom commands, and finally URL-based installation. A `when` expression can
+// conditionally include the package based on template variables.
 type Package struct {
 	Name        string                          `yaml:"name"`
 	Description string                          `yaml:"description,omitempty"`
 	Managers    map[PackageManager]ManagerValue `yaml:"managers,omitempty"`
 	Custom      map[string]string               `yaml:"custom,omitempty"` // OS -> command
 	URL         map[string]URLInstall           `yaml:"url,omitempty"`    // OS -> URL install
-	Filters     []config.Filter                 `yaml:"filters,omitempty"`
+	When        string                          `yaml:"when,omitempty"`
 }
 
 // UnmarshalYAML implements custom YAML unmarshaling for Package.
@@ -97,7 +97,7 @@ func (p *Package) UnmarshalYAML(node *yaml.Node) error {
 		Managers    map[string]yaml.Node  `yaml:"managers,omitempty"`
 		Custom      map[string]string     `yaml:"custom,omitempty"`
 		URL         map[string]URLInstall `yaml:"url,omitempty"`
-		Filters     []config.Filter       `yaml:"filters,omitempty"`
+		When        string                `yaml:"when,omitempty"`
 	}
 
 	var alias packageAlias
@@ -110,7 +110,7 @@ func (p *Package) UnmarshalYAML(node *yaml.Node) error {
 	p.Description = alias.Description
 	p.Custom = alias.Custom
 	p.URL = alias.URL
-	p.Filters = alias.Filters
+	p.When = alias.When
 
 	// Process managers map
 	p.Managers = make(map[PackageManager]ManagerValue)
@@ -575,14 +575,13 @@ func (m *Manager) InstallAll(packages []Package) []InstallResult {
 	return results
 }
 
-// FilterPackages returns packages that match the given filter context.
-// It evaluates each package's Filters against the context (OS, distro,
-// hostname, user) and returns only those that match.
-func FilterPackages(packages []Package, ctx *config.FilterContext) []Package {
+// FilterPackages returns packages that match the given when expressions.
+// It evaluates each package's When expression and returns only those that match.
+func FilterPackages(packages []Package, renderer config.PathRenderer) []Package {
 	result := make([]Package, 0, len(packages))
 
 	for _, pkg := range packages {
-		if config.MatchesFilters(pkg.Filters, ctx) {
+		if config.EvaluateWhen(pkg.When, renderer) {
 			result = append(result, pkg)
 		}
 	}
@@ -708,7 +707,7 @@ func FromEntry(e config.Entry) *Package {
 		Managers:    managers,
 		Custom:      e.Package.Custom,
 		URL:         urlInstalls,
-		Filters:     e.Filters,
+		When:        e.When,
 	}
 }
 

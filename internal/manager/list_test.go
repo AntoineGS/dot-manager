@@ -17,9 +17,7 @@ func TestList_FiltersByOS(t *testing.T) {
 	m.Config.Applications = []config.Application{
 		{
 			Name: "linux-only",
-			Filters: []config.Filter{
-				{Include: map[string]string{"os": "linux"}},
-			},
+			When: `{{ eq .OS "linux" }}`,
 			Entries: []config.SubEntry{
 				{
 					Name:   "linux-only",
@@ -32,9 +30,7 @@ func TestList_FiltersByOS(t *testing.T) {
 		},
 		{
 			Name: "windows-only",
-			Filters: []config.Filter{
-				{Include: map[string]string{"os": "windows"}},
-			},
+			When: `{{ eq .OS "windows" }}`,
 			Entries: []config.SubEntry{
 				{
 					Name:   "windows-only",

@@ -55,7 +55,7 @@ func TestNewModel(t *testing.T) {
 						},
 					},
 				},
-				Filters: []config.Filter{{Include: map[string]string{"os": "windows"}}},
+				When: `{{ eq .OS "windows" }}`,
 			},
 		},
 	}
@@ -608,7 +608,7 @@ func TestFilterToggle(t *testing.T) {
 				Entries: []config.SubEntry{
 					{Name: "config", Backup: "./arch", Targets: map[string]string{"linux": "~/.config/arch"}},
 				},
-				Filters: []config.Filter{{Include: map[string]string{"distro": "arch"}}},
+				When: `{{ eq .Distro "arch" }}`,
 			},
 		},
 	}
@@ -665,7 +665,7 @@ func TestFilterToggleWithSelections(t *testing.T) {
 				Entries: []config.SubEntry{
 					{Name: "config", Backup: "./arch", Targets: map[string]string{"linux": "~/.config/arch"}},
 				},
-				Filters: []config.Filter{{Include: map[string]string{"distro": "arch"}}},
+				When: `{{ eq .Distro "arch" }}`,
 			},
 		},
 	}

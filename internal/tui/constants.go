@@ -17,6 +17,7 @@ const (
 
 // UI element constants
 const (
+	PlaceholderWhen       = `e.g., {{ eq .OS "linux" }}`
 	PlaceholderNeovim     = "e.g., neovim"
 	PlaceholderGitURL     = "e.g., https://github.com/user/repo.git"
 	PlaceholderGitBranch  = "e.g., main"

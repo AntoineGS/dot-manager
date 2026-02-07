@@ -70,12 +70,12 @@ func (c *Config) ExpandPaths(envVars map[string]string) {
 	}
 }
 
-// GetFilteredApplications returns applications filtered by filter context
-func (c *Config) GetFilteredApplications(ctx *FilterContext) []Application {
+// GetFilteredApplications returns applications filtered by when expressions
+func (c *Config) GetFilteredApplications(renderer PathRenderer) []Application {
 	result := make([]Application, 0, len(c.Applications))
 
 	for _, app := range c.Applications {
-		if MatchesFilters(app.Filters, ctx) {
+		if EvaluateWhen(app.When, renderer) {
 			result = append(result, app)
 		}
 	}
@@ -83,9 +83,9 @@ func (c *Config) GetFilteredApplications(ctx *FilterContext) []Application {
 	return result
 }
 
-// GetAllSubEntries returns all sub-entries from all applications filtered by context
-func (c *Config) GetAllSubEntries(ctx *FilterContext) []SubEntry {
-	apps := c.GetFilteredApplications(ctx)
+// GetAllSubEntries returns all sub-entries from all applications filtered by when expressions
+func (c *Config) GetAllSubEntries(renderer PathRenderer) []SubEntry {
+	apps := c.GetFilteredApplications(renderer)
 
 	// Count exact size to prevent slice growth
 	totalEntries := 0
@@ -102,8 +102,8 @@ func (c *Config) GetAllSubEntries(ctx *FilterContext) []SubEntry {
 }
 
 // GetAllConfigSubEntries returns only config type sub-entries from filtered applications
-func (c *Config) GetAllConfigSubEntries(ctx *FilterContext) []SubEntry {
-	apps := c.GetFilteredApplications(ctx)
+func (c *Config) GetAllConfigSubEntries(renderer PathRenderer) []SubEntry {
+	apps := c.GetFilteredApplications(renderer)
 	// Estimate capacity based on average entries per app
 	estimatedCap := len(apps) * 3
 	result := make([]SubEntry, 0, estimatedCap)
@@ -120,8 +120,8 @@ func (c *Config) GetAllConfigSubEntries(ctx *FilterContext) []SubEntry {
 }
 
 // GetFilteredPackages returns all packages from filtered applications as pseudo-Entry objects
-func (c *Config) GetFilteredPackages(ctx *FilterContext) []Entry {
-	apps := c.GetFilteredApplications(ctx)
+func (c *Config) GetFilteredPackages(renderer PathRenderer) []Entry {
+	apps := c.GetFilteredApplications(renderer)
 	result := make([]Entry, 0, len(apps))
 
 	for _, app := range apps {
@@ -131,7 +131,7 @@ func (c *Config) GetFilteredPackages(ctx *FilterContext) []Entry {
 				Name:        app.Name,
 				Description: app.Description,
 				Package:     app.Package,
-				Filters:     app.Filters,
+				When:        app.When,
 			}
 			result = append(result, entry)
 		}

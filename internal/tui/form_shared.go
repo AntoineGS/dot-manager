@@ -9,16 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 )
 
-// Filter add wizard step constants
-const (
-	filterStepType  = 0 // Select include/exclude
-	filterStepKey   = 1 // Select attribute key (os, distro, hostname, user)
-	filterStepValue = 2 // Enter value
-)
-
-// Filter attribute keys
-var filterKeys = []string{"os", "distro", "hostname", "user"}
-
 // displayPackageManagers is platform.KnownPackageManagers excluding "git"
 // (git is handled as a special case, not shown in the package manager form)
 var displayPackageManagers = func() []string {
@@ -179,202 +169,31 @@ func renderGitField(label string, input textinput.Model, onSubFields, isCurrent,
 	return fmt.Sprintf("%s%s%s\n", prefix, label, value)
 }
 
-// renderFiltersSection renders the filters list with add/edit UI
-// focused indicates if the filters section is currently focused
-// filters is the list of filter conditions
-// filtersCursor is the current cursor position
-// addingFilter indicates if currently adding a filter
-// editingFilter indicates if currently editing a filter
-func renderFiltersSection(
+// renderWhenField renders the when expression text field
+func renderWhenField(
 	focused bool,
-	filters []FilterCondition,
-	filtersCursor int,
-	addingFilter bool,
-	editingFilter bool,
-	filterAddStep int,
-	filterIsExclude bool,
-	filterKeyCursor int,
-	editingFilterValue bool,
-	filterValueInput textinput.Model,
+	editing bool,
+	whenInput textinput.Model,
 ) string {
-	var b strings.Builder
+	prefix := IndentSpaces
 
-	// Render filters based on state
-	if addingFilter || editingFilter {
-		// Show filter add/edit UI
-		b.WriteString(renderFilterAddUI(
-			addingFilter,
-			filterAddStep,
-			filterIsExclude,
-			filterKeyCursor,
-			editingFilterValue,
-			filterValueInput,
-		))
-	} else {
-		// Show filter list
-		if len(filters) == 0 {
-			b.WriteString(MutedTextStyle.Render("    (no filters)"))
-			b.WriteString("\n")
-		} else {
-			for i, fc := range filters {
-				prefix := IndentSpaces
+	if editing {
+		return fmt.Sprintf("%s%s\n", prefix, whenInput.View())
+	}
 
-				typeStr := "include"
-				if fc.IsExclude {
-					typeStr = "exclude"
-				}
-				condStr := fmt.Sprintf("%s: %s=%s", typeStr, fc.Key, fc.Value)
-
-				if focused && filtersCursor == i {
-					b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render("• "+condStr)))
-				} else {
-					b.WriteString(fmt.Sprintf("%s• %s\n", prefix, condStr))
-				}
-			}
+	value := whenInput.Value()
+	if value == "" {
+		if focused {
+			return fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render("(no condition)"))
 		}
-
-		// Add Filter button
-		addFilterText := "[+ Add Filter]"
-		if focused && filtersCursor == len(filters) {
-			b.WriteString(fmt.Sprintf("    %s\n", SelectedMenuItemStyle.Render(addFilterText)))
-		} else {
-			b.WriteString(fmt.Sprintf("    %s\n", MutedTextStyle.Render(addFilterText)))
-		}
+		return fmt.Sprintf("%s%s\n", prefix, MutedTextStyle.Render("(no condition)"))
 	}
 
-	return b.String()
-}
-
-// renderFilterAddUI renders the filter wizard UI for adding/editing a filter
-func renderFilterAddUI(
-	addingFilter bool,
-	filterAddStep int,
-	filterIsExclude bool,
-	filterKeyCursor int,
-	editingFilterValue bool,
-	filterValueInput textinput.Model,
-) string {
-	var b strings.Builder
-
-	actionText := "Add filter"
-	if !addingFilter {
-		actionText = "Edit filter"
+	if focused {
+		return fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(value))
 	}
 
-	b.WriteString(fmt.Sprintf("    %s:\n", MutedTextStyle.Render(actionText)))
-
-	// Type selection (include/exclude)
-	typeLabel := "    Type: "
-	includeCheck := CheckboxUnchecked
-	excludeCheck := CheckboxChecked
-
-	if !filterIsExclude {
-		includeCheck = CheckboxChecked
-		excludeCheck = CheckboxUnchecked
-	}
-
-	typeStr := fmt.Sprintf("%s include  %s exclude", includeCheck, excludeCheck)
-	if filterAddStep == filterStepType {
-		b.WriteString(typeLabel + SelectedMenuItemStyle.Render(typeStr) + "\n")
-	} else {
-		b.WriteString(typeLabel + typeStr + "\n")
-	}
-
-	// Key selection
-	keyLabel := "    Key:  "
-	var keyOptions []string
-
-	for i, k := range filterKeys {
-		if i == filterKeyCursor {
-			keyOptions = append(keyOptions, "["+k+"]")
-		} else {
-			keyOptions = append(keyOptions, " "+k+" ")
-		}
-	}
-
-	keyStr := strings.Join(keyOptions, " ")
-	if filterAddStep == filterStepKey {
-		b.WriteString(keyLabel + SelectedMenuItemStyle.Render(keyStr) + "\n")
-	} else {
-		b.WriteString(keyLabel + keyStr + "\n")
-	}
-
-	// Value input
-	valueLabel := "    Value: "
-	switch {
-	case filterAddStep == filterStepValue && editingFilterValue:
-		// Actively editing - show the text input
-		b.WriteString(valueLabel + filterValueInput.View() + "\n")
-	case filterAddStep == filterStepValue:
-		// Focused but not editing - show highlighted value
-		value := filterValueInput.Value()
-		if value == "" {
-			value = "(enter value)"
-		}
-
-		b.WriteString(valueLabel + SelectedMenuItemStyle.Render(value) + "\n")
-	default:
-		// Not focused
-		value := filterValueInput.Value()
-		if value == "" {
-			value = MutedTextStyle.Render("(enter value)")
-		}
-
-		b.WriteString(valueLabel + value + "\n")
-	}
-
-	return b.String()
-}
-
-// renderFormField renders a text input field with focus highlighting
-// fieldName is the label for the field
-// focused indicates if this field is currently focused
-// editing indicates if the field is in edit mode
-// input is the textinput.Model
-// placeholder is shown when the field is empty
-
-// buildFiltersFromConditions converts the flat FilterCondition list back to config.Filter format
-func buildFiltersFromConditions(conditions []FilterCondition) []config.Filter {
-	if len(conditions) == 0 {
-		return nil
-	}
-
-	// Group conditions by filter index
-	filterMap := make(map[int]*config.Filter)
-	maxIndex := 0
-
-	for _, fc := range conditions {
-		if fc.FilterIndex > maxIndex {
-			maxIndex = fc.FilterIndex
-		}
-
-		if _, ok := filterMap[fc.FilterIndex]; !ok {
-			filterMap[fc.FilterIndex] = &config.Filter{
-				Include: make(map[string]string),
-				Exclude: make(map[string]string),
-			}
-		}
-
-		if fc.IsExclude {
-			filterMap[fc.FilterIndex].Exclude[fc.Key] = fc.Value
-		} else {
-			filterMap[fc.FilterIndex].Include[fc.Key] = fc.Value
-		}
-	}
-
-	// Build result slice in order
-	var result []config.Filter
-
-	for i := 0; i <= maxIndex; i++ {
-		if f, ok := filterMap[i]; ok {
-			// Only include non-empty filters
-			if len(f.Include) > 0 || len(f.Exclude) > 0 {
-				result = append(result, *f)
-			}
-		}
-	}
-
-	return result
+	return fmt.Sprintf("%s%s\n", prefix, value)
 }
 
 // buildPackageSpec creates a config.EntryPackage from a managers map
@@ -461,7 +280,7 @@ func (m *Model) saveNewApplication(app config.Application) error {
 }
 
 // saveEditedApplication updates Application metadata only (no SubEntry changes)
-func (m *Model) saveEditedApplication(appIdx int, name, description string, filters []config.Filter, pkg *config.EntryPackage) error {
+func (m *Model) saveEditedApplication(appIdx int, name, description, when string, pkg *config.EntryPackage) error {
 	app := &m.Config.Applications[appIdx]
 
 	// Check for duplicate names (skip the one being edited)
@@ -474,7 +293,7 @@ func (m *Model) saveEditedApplication(appIdx int, name, description string, filt
 	// Update Application metadata
 	app.Name = name
 	app.Description = description
-	app.Filters = filters
+	app.When = when
 	app.Package = pkg
 
 	if err := config.Save(m.Config, m.ConfigPath); err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/manager"
 	"github.com/AntoineGS/dot-manager/internal/packages"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	tmpl "github.com/AntoineGS/dot-manager/internal/template"
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -96,14 +97,6 @@ func (s PathState) String() string {
 	return "Unknown"
 }
 
-// FilterCondition represents a single filter condition for the UI
-type FilterCondition struct {
-	Key         string
-	Value       string
-	FilterIndex int
-	IsExclude   bool
-}
-
 // FormType distinguishes between different form types
 type FormType int
 
@@ -119,28 +112,20 @@ const (
 
 // ApplicationForm holds state for editing Application metadata
 type ApplicationForm struct {
-	packageManagers    map[string]string
-	lastPackageName    string
-	err                string
-	originalValue      string
-	filters            []FilterCondition
-	filterValueInput   textinput.Model
-	descriptionInput   textinput.Model
-	packageNameInput   textinput.Model
-	nameInput          textinput.Model
-	filterKeyCursor    int
-	filtersCursor      int
-	editAppIdx         int
-	packagesCursor     int
-	editingFilterIndex int
-	filterAddStep      int
-	focusIndex         int
-	editingFilterValue bool
-	filterIsExclude    bool
-	editingField       bool
-	editingFilter      bool
-	addingFilter       bool
-	editingPackage     bool
+	packageManagers  map[string]string
+	lastPackageName  string
+	err              string
+	originalValue    string
+	descriptionInput textinput.Model
+	packageNameInput textinput.Model
+	nameInput        textinput.Model
+	whenInput        textinput.Model
+	editAppIdx       int
+	packagesCursor   int
+	focusIndex       int
+	editingField     bool
+	editingPackage   bool
+	editingWhen      bool
 
 	// Git package fields
 	gitURLInput     textinput.Model
@@ -190,7 +175,7 @@ type Model struct {
 	err                      error
 	Config                   *config.Config
 	Platform                 *platform.Platform
-	FilterCtx                *config.FilterContext
+	Renderer                 config.PathRenderer
 	Manager                  *manager.Manager
 	subEntryForm             *SubEntryForm
 	applicationForm          *ApplicationForm
@@ -311,18 +296,14 @@ type ResultItem struct {
 // platform information, and dry-run mode. It sets up the initial state including
 // loading entries, detecting path states, and initializing the UI.
 func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
-	// Create filter context from platform
-	filterCtx := &config.FilterContext{
-		OS:       plat.OS,
-		Distro:   plat.Distro,
-		Hostname: plat.Hostname,
-		User:     plat.User,
-	}
+	// Create template engine for when expression evaluation
+	tmplCtx := tmpl.NewContextFromPlatform(plat)
+	renderer := tmpl.NewEngine(tmplCtx)
 
 	items := make([]PathItem, 0)
 
 	// Flatten applications into PathItems
-	apps := cfg.GetFilteredApplications(filterCtx)
+	apps := cfg.GetFilteredApplications(renderer)
 	for _, app := range apps {
 		// Convert each SubEntry to a PathItem
 		for _, subEntry := range app.Entries {
@@ -331,7 +312,7 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 				Name:        app.Name + "/" + subEntry.Name, // Prefix with app name
 				Description: app.Description,                // Use app description
 				Sudo:        subEntry.Sudo,
-				Filters:     app.Filters, // Use app filters
+				When:        app.When, // Use app when expression
 				Files:       subEntry.Files,
 				Backup:      subEntry.Backup,
 				Targets:     subEntry.Targets,
@@ -398,7 +379,7 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		Operation:          OpList,        // Set operation to List (Manage)
 		Config:             cfg,
 		Platform:           plat,
-		FilterCtx:          filterCtx,
+		Renderer:           renderer,
 		Paths:              items,
 		Packages:           pkgItems,
 		DryRun:             dryRun,

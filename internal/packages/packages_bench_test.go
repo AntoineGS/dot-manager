@@ -6,6 +6,13 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/config"
 )
 
+// benchRenderer implements config.PathRenderer for benchmarking.
+type benchRenderer struct{}
+
+func (r *benchRenderer) RenderString(_, _ string) (string, error) {
+	return "true", nil
+}
+
 func BenchmarkFilterPackages(b *testing.B) {
 	packages := make([]Package, 100)
 	for i := range packages {
@@ -17,17 +24,12 @@ func BenchmarkFilterPackages(b *testing.B) {
 		}
 	}
 
-	ctx := &config.FilterContext{
-		OS:       "linux",
-		Distro:   "arch",
-		Hostname: "localhost",
-		User:     "user",
-	}
+	renderer := &benchRenderer{}
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = FilterPackages(packages, ctx)
+		_ = FilterPackages(packages, renderer)
 	}
 }
 

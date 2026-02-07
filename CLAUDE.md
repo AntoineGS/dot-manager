@@ -49,7 +49,7 @@ See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
 - **cmd/dot-manager/main.go** - Cobra CLI entry point defining all commands (init, restore, backup, list, install, list-packages)
 - **internal/config/** - Two-level YAML configuration: app config (`~/.config/dot-manager/config.yaml`) and repo config (`dot-manager.yaml`)
 - **internal/config/entry.go** - Entry type for config (symlinks) management
-- **internal/config/filter.go** - Filter system with include/exclude conditions for os, distro, hostname, user
+- **internal/config/when.go** - Template-based `when` expression evaluation for conditional inclusion
 - **internal/manager/** - Core operations (backup, restore, adopt, list) with platform-aware path selection
 - **internal/template/** - Template engine with sprout functions, 3-way merge algorithm
 - **internal/state/** - SQLite state store for template render history
@@ -61,7 +61,7 @@ See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
 
 - **Unified entries**: Single `entries` array with `sudo: true` flag for entries requiring elevated privileges
 - **Entry types**: Config entries (have `backup`) manage symlinks
-- **Filter-based selection**: Entries filtered by os, distro, hostname, user with regex support
+- **When-based selection**: Applications conditionally included via Go template `when` expressions (e.g., `{{ eq .OS "linux" }}`)
 - **Symlink-based restoration**: Configs are symlinked from the dotfiles repo rather than copied
 - **Dry-run mode**: All operations support `-n` flag for safe preview
 - **Table-driven tests**: Tests use `t.TempDir()` for filesystem isolation
@@ -105,21 +105,17 @@ applications:
               linux: "~/.local/share/nvim/site/pack/plugins/start/myplugins"
             sudo: false
 
-    filters:
-      - include:
-          os: "linux"
+    when: '{{ eq .OS "linux" }}'
 
   # System-level application with sudo
   - name: "system-config"
     sudo: true
+    when: '{{ eq .Distro "arch" }}'
     configs:
       - name: "hosts"
         backup: "./system/hosts"
         targets:
           linux: "/etc/hosts"
-    filters:
-      - include:
-          distro: "arch"
 ```
 
 ### Git as a Package Manager
@@ -224,7 +220,7 @@ All text inputs use a two-phase approach:
 1. **Navigation mode**: Field is focused but not editable. Use `↑/k` and `↓/j` to navigate between fields.
 2. **Edit mode**: Press `enter` or `e` to enter edit mode. The text input becomes active and accepts typing. Press `enter` to save or `esc` to cancel.
 
-This applies to: name, description, targets, backup path, repo URL, branch, file list items, and filter values.
+This applies to: name, description, targets, backup path, repo URL, branch, file list items, and when expressions.
 
 **Consistent Keybindings**
 - `↑/k`, `↓/j` - Navigate between fields/items (vim-style)
@@ -241,8 +237,8 @@ This applies to: name, description, targets, backup path, repo URL, branch, file
 - **Focused (not editing)**: `SelectedMenuItemStyle` highlight
 - **Editing**: Show the `textinput.Model.View()` with cursor
 
-**List Field Pattern** (files, filters)
-List fields have their own cursor (`filesCursor`, `filtersCursor`) separate from `focusIndex`:
+**List Field Pattern** (files)
+List fields have their own cursor (`filesCursor`) separate from `focusIndex`:
 - When focused on a list field, `↑/k` and `↓/j` navigate within the list
 - At list boundaries, navigation moves to adjacent form fields
 - `enter`/`e` on an item enters edit mode for that item

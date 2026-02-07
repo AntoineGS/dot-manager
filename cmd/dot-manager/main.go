@@ -14,6 +14,7 @@ import (
 	"github.com/AntoineGS/dot-manager/internal/manager"
 	"github.com/AntoineGS/dot-manager/internal/packages"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	tmpl "github.com/AntoineGS/dot-manager/internal/template"
 	"github.com/AntoineGS/dot-manager/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -344,16 +345,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Detected OS: %s\n", plat.OS)
 	fmt.Printf("Config directory: %s\n", cfg.BackupRoot)
 
-	// Create filter context from platform
-	filterCtx := &config.FilterContext{
-		OS:       plat.OS,
-		Distro:   plat.Distro,
-		Hostname: plat.Hostname,
-		User:     plat.User,
-	}
+	// Create template engine for when expression evaluation
+	tmplCtx := tmpl.NewContextFromPlatform(plat)
+	engine := tmpl.NewEngine(tmplCtx)
 
 	// Get filtered package entries
-	packageEntries := cfg.GetFilteredPackages(filterCtx)
+	packageEntries := cfg.GetFilteredPackages(engine)
 	if len(packageEntries) == 0 {
 		return fmt.Errorf("no matching packages configured in dot-manager.yaml")
 	}
@@ -420,16 +417,12 @@ func runListPackages(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Create filter context from platform
-	filterCtx := &config.FilterContext{
-		OS:       plat.OS,
-		Distro:   plat.Distro,
-		Hostname: plat.Hostname,
-		User:     plat.User,
-	}
+	// Create template engine for when expression evaluation
+	tmplCtx := tmpl.NewContextFromPlatform(plat)
+	engine := tmpl.NewEngine(tmplCtx)
 
 	// Get filtered package entries
-	packageEntries := cfg.GetFilteredPackages(filterCtx)
+	packageEntries := cfg.GetFilteredPackages(engine)
 	if len(packageEntries) == 0 {
 		fmt.Println("No matching packages configured in dot-manager.yaml")
 		return nil

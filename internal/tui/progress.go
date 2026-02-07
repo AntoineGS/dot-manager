@@ -134,8 +134,8 @@ func (m *Model) initApplicationItems() {
 	m.Applications = make([]ApplicationItem, 0, len(apps))
 
 	for _, app := range apps {
-		// Check if this app matches the filter
-		isFiltered := !config.MatchesFilters(app.Filters, m.FilterCtx)
+		// Check if this app matches the when expression
+		isFiltered := !config.EvaluateWhen(app.When, m.Renderer)
 
 		subItems := make([]SubEntryItem, 0, len(app.Entries))
 
