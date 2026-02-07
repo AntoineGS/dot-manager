@@ -486,6 +486,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
 
+	case tea.MouseMsg:
+		return m.handleMouseEvent(msg)
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -991,6 +994,113 @@ func (m *Model) moveToNextExpandedNode() {
 	if m.tableCursor >= len(m.tableRows) {
 		m.tableCursor = 0
 	}
+}
+
+// handleMouseEvent processes mouse events for the TUI.
+func (m Model) handleMouseEvent(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Only handle mouse events on the list table screen
+	if m.Screen != ScreenResults || m.Operation != OpList {
+		return m, nil
+	}
+
+	// Don't handle mouse during modal states
+	if m.searching || m.confirmingDeleteApp || m.confirmingDeleteSubEntry ||
+		m.confirmingFilterToggle || m.showingDetail {
+		return m, nil
+	}
+
+	switch {
+	case msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress:
+		return m.handleMouseClick(msg.Y, false)
+
+	case msg.Button == tea.MouseButtonRight && msg.Action == tea.MouseActionPress:
+		return m.handleMouseClick(msg.Y, true)
+
+	case msg.Button == tea.MouseButtonWheelUp:
+		if m.tableCursor > 0 {
+			m.tableCursor -= 3
+			if m.tableCursor < 0 {
+				m.tableCursor = 0
+			}
+			m.results = nil
+			m.updateScrollOffset()
+		}
+		return m, nil
+
+	case msg.Button == tea.MouseButtonWheelDown:
+		if m.tableCursor < len(m.tableRows)-1 {
+			m.tableCursor += 3
+			if m.tableCursor >= len(m.tableRows) {
+				m.tableCursor = len(m.tableRows) - 1
+			}
+			m.results = nil
+			m.updateScrollOffset()
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// handleMouseClick handles a mouse click on the table. Left click moves the
+// cursor, right click toggles selection (like tab/space).
+func (m Model) handleMouseClick(mouseY int, toggleSelect bool) (tea.Model, tea.Cmd) {
+	// Layout offset from top of screen to first data row in the lipgloss table:
+	// BaseStyle top padding (1) + filter banner (1) + table top border (1) +
+	// header row (1) + header separator (1) = 5
+	const tableDataStartY = 5
+
+	lipglossRow := mouseY - tableDataStartY
+	if lipglossRow < 0 {
+		return m, nil
+	}
+
+	tableRowIdx := lipglossRow + m.scrollOffset
+	if tableRowIdx < 0 || tableRowIdx >= len(m.tableRows) {
+		return m, nil
+	}
+
+	// Detect scroll indicator rows to avoid selecting hidden rows
+	maxVisibleRows := m.height - 12
+	if maxVisibleRows < 3 {
+		maxVisibleRows = 3
+	}
+
+	totalRows := len(m.tableRows)
+	visibleEnd := m.scrollOffset + maxVisibleRows
+	if visibleEnd > totalRows {
+		visibleEnd = totalRows
+	}
+
+	hasMoreAbove := m.scrollOffset > 0
+	hasMoreBelow := visibleEnd < totalRows
+
+	if hasMoreAbove && lipglossRow == 0 {
+		return m, nil
+	}
+
+	renderedRows := visibleEnd - m.scrollOffset
+	if hasMoreBelow && lipglossRow >= renderedRows-1 {
+		return m, nil
+	}
+
+	// Move cursor to clicked row
+	m.tableCursor = tableRowIdx
+	m.results = nil
+
+	// Right click toggles selection (like tab/space)
+	if toggleSelect {
+		appIdx, subIdx := m.getApplicationAtCursorFromTable()
+		if appIdx >= 0 {
+			if subIdx >= 0 {
+				m.toggleSubEntrySelection(appIdx, subIdx)
+			} else {
+				m.toggleAppSelection(appIdx)
+			}
+		}
+	}
+
+	return m, nil
 }
 
 // resolvePath resolves relative paths and expands ~ in paths

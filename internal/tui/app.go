@@ -28,7 +28,7 @@ func Run(cfg *config.Config, plat *platform.Platform, dryRun bool, configPath st
 func RunWithManager(cfg *config.Config, plat *platform.Platform, mgr *manager.Manager, configPath string) error {
 	model := NewModelWithManager(cfg, plat, mgr, configPath)
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	finalModel, err := p.Run()
 	if err != nil {
