@@ -9,10 +9,10 @@ import (
 // Entry is a unified configuration entry that manages symlink configuration.
 // Entries can optionally have a package field for installation.
 type Entry struct {
-	Targets     map[string]string `yaml:"targets,omitempty"`
-	Package     *EntryPackage     `yaml:"package,omitempty"`
 	Name        string            `yaml:"name"`
 	Description string            `yaml:"description,omitempty"`
+	Targets     map[string]string `yaml:"targets,omitempty"`
+	Package     *EntryPackage     `yaml:"package,omitempty"`
 	Backup      string            `yaml:"backup,omitempty"`
 	Filters     []Filter          `yaml:"filters,omitempty"`
 	Files       []string          `yaml:"files,omitempty"`
