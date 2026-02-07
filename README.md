@@ -10,6 +10,7 @@ A cross-platform dotfile management tool written in Go. Manage configuration fil
 - **Flexible filtering** - Filter entries by OS, distro, hostname, or user with regex support
 - **Interactive TUI** - Bubble Tea-based terminal UI for guided operations
 - **Package management** - Install packages across pacman, yay, paru, apt, dnf, brew, winget, scoop, choco
+- **Template rendering** - Conditional file content based on OS, distro, hostname, or user with Go templates
 - **Smart adoption** - Automatically backs up existing configs before symlinking
 - **Dry-run mode** - Preview all operations before making changes
 - **Root/sudo support** - Separate entries for system-level files with `root: true`
@@ -316,6 +317,49 @@ dot-manager list -o windows
 | Windows | winget, scoop, choco |
 
 ## How It Works
+
+### Templating
+
+Files with a `.tmpl` extension are rendered as Go templates during restore. This allows conditional content based on the current machine.
+
+**Template context variables:**
+- `.OS` - Operating system (`"linux"` or `"windows"`)
+- `.Distro` - Linux distribution ID (e.g., `"arch"`, `"ubuntu"`)
+- `.Hostname` - Machine hostname
+- `.User` - Current username
+- `.Env` - Environment variables map (e.g., `{{ index .Env "HOME" }}`)
+
+All [sprout](https://github.com/go-sprout/sprout) template functions are available (string manipulation, math, collections, etc.).
+
+**Example:** A `config.tmpl` file with host-specific content:
+
+```
+font-size = 11
+background-opacity = 0.8
+{{ if eq .Hostname "my-desktop" -}}
+custom-shader = shaders/fancy.glsl
+custom-shader-animation = always
+{{- end }}
+```
+
+On `my-desktop`, the shader lines are included. On other machines, they're omitted.
+
+**How it works:**
+1. `config.tmpl` is rendered to `config.tmpl.rendered` (sibling file in backup dir)
+2. A symlink is created: `~/.config/app/config` -> `config.tmpl.rendered`
+3. Non-template files in the same folder get normal symlinks
+4. If you edit the rendered file directly, a 3-way merge preserves your changes on re-render
+
+**Gitignore:** Add these patterns to your dotfiles repo's `.gitignore`:
+
+```
+*.tmpl.rendered
+*.tmpl.conflict
+.dot-manager.db
+```
+
+**Flags:**
+- `--force-render` - Skip 3-way merge and always overwrite rendered files
 
 ### Restore Process
 
