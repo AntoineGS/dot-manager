@@ -113,6 +113,13 @@ var (
 				Padding(0, 1).
 				MarginLeft(1)
 
+	// StateBadgeOutdatedStyle is the badge style for outdated state (amber background).
+	StateBadgeOutdatedStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#000")).
+				Background(accentColor). // Amber
+				Padding(0, 1).
+				MarginLeft(1)
+
 	// StateBadgeFilteredStyle is the badge style for filtered state (same as linked - muted).
 	StateBadgeFilteredStyle = lipgloss.NewStyle().
 				Foreground(mutedColor).

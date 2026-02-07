@@ -111,7 +111,11 @@ func (m Model) performRestoreSubEntry(subEntry config.SubEntry, target string) (
 
 	var err error
 	if subEntry.IsFolder() {
-		err = m.Manager.RestoreFolder(subEntry, backupPath, target)
+		if m.Manager.HasTemplateFiles(backupPath) {
+			err = m.Manager.RestoreFolderWithTemplates(subEntry, backupPath, target)
+		} else {
+			err = m.Manager.RestoreFolder(subEntry, backupPath, target)
+		}
 	} else {
 		err = m.Manager.RestoreFiles(subEntry, backupPath, target)
 	}

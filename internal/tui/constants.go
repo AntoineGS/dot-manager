@@ -39,6 +39,7 @@ const (
 	StatusInstalled = "Installed"
 	StatusMissing   = "Missing"
 	StatusFiltered  = "Filtered"
+	StatusOutdated  = "Outdated"
 )
 
 // Sort column constants

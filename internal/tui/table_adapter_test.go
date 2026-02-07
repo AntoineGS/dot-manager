@@ -387,3 +387,60 @@ func TestFlattenApplications_AppNameMapping(t *testing.T) {
 		t.Errorf("Expected AppName 'app-beta' for sub-entry, got %s", rows[3].AppName)
 	}
 }
+
+func TestGetApplicationStatus_Outdated(t *testing.T) {
+	t.Run("all linked but some outdated", func(t *testing.T) {
+		app := ApplicationItem{
+			SubItems: []SubEntryItem{
+				{State: StateLinked},
+				{State: StateOutdated},
+			},
+		}
+
+		status := getApplicationStatus(app)
+		if status != StatusOutdated {
+			t.Errorf("Expected StatusOutdated, got %s", status)
+		}
+	})
+
+	t.Run("some missing and some outdated", func(t *testing.T) {
+		app := ApplicationItem{
+			SubItems: []SubEntryItem{
+				{State: StateMissing},
+				{State: StateOutdated},
+			},
+		}
+
+		status := getApplicationStatus(app)
+		if status != StatusMissing {
+			t.Errorf("Expected StatusMissing (Missing takes priority), got %s", status)
+		}
+	})
+}
+
+func TestNeedsAttention_Outdated(t *testing.T) {
+	if !needsAttention(StatusOutdated) {
+		t.Error("StatusOutdated should need attention")
+	}
+	if !needsAttention(StateOutdated.String()) {
+		t.Error("StateOutdated.String() should need attention")
+	}
+}
+
+func TestAppInfoNeedsAttention_Outdated(t *testing.T) {
+	app := ApplicationItem{
+		SubItems: []SubEntryItem{
+			{State: StateLinked},
+			{State: StateOutdated},
+		},
+	}
+	if !appInfoNeedsAttention(app) {
+		t.Error("App with StateOutdated sub-entry should need attention")
+	}
+}
+
+func TestStateOutdated_String(t *testing.T) {
+	if StateOutdated.String() != "Outdated" {
+		t.Errorf("StateOutdated.String() = %q, want %q", StateOutdated.String(), "Outdated")
+	}
+}

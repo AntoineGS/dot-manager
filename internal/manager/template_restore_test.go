@@ -824,3 +824,151 @@ func TestRestoreFolderWithTemplates_RelativeSymlinkAlreadyCorrect(t *testing.T) 
 
 	verifyRelativeSymlink(t, symlinkPath, "file.tmpl.rendered")
 }
+
+func TestHasOutdatedTemplates(t *testing.T) {
+	t.Run("NoStateStore", func(t *testing.T) {
+		plat := &platform.Platform{
+			OS:       "linux",
+			Distro:   "arch",
+			Hostname: "testhost",
+			User:     "testuser",
+			EnvVars:  make(map[string]string),
+		}
+		cfg := &config.Config{BackupRoot: t.TempDir(), Version: 3}
+		mgr := New(cfg, plat)
+		// stateStore is nil by default
+
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "file.tmpl"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasOutdatedTemplates(dir) {
+			t.Error("should return false when stateStore is nil")
+		}
+	})
+
+	t.Run("NoTemplateFiles", func(t *testing.T) {
+		_, _, mgr, _ := setupTemplateTest(t)
+
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "regular.txt"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasOutdatedTemplates(dir) {
+			t.Error("should return false when no .tmpl files exist")
+		}
+	})
+
+	t.Run("NoRenderRecord", func(t *testing.T) {
+		_, _, mgr, _ := setupTemplateTest(t)
+
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "file.tmpl"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if !mgr.HasOutdatedTemplates(dir) {
+			t.Error("should return true when template has never been rendered")
+		}
+	})
+
+	t.Run("HashMatches", func(t *testing.T) {
+		backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+		backupDir := filepath.Join(backupRoot, "config")
+		if err := os.MkdirAll(backupDir, 0750); err != nil {
+			t.Fatal(err)
+		}
+
+		tmplContent := "Host={{ .Hostname }}"
+		if err := os.WriteFile(filepath.Join(backupDir, "file.tmpl"), []byte(tmplContent), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		subEntry := config.SubEntry{
+			Name:    "config",
+			Backup:  "./config",
+			Targets: map[string]string{"linux": targetDir},
+		}
+
+		if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasOutdatedTemplates(backupDir) {
+			t.Error("should return false when template hash matches stored hash")
+		}
+	})
+
+	t.Run("HashDiffers", func(t *testing.T) {
+		backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+		backupDir := filepath.Join(backupRoot, "config")
+		if err := os.MkdirAll(backupDir, 0750); err != nil {
+			t.Fatal(err)
+		}
+
+		tmplPath := filepath.Join(backupDir, "file.tmpl")
+		if err := os.WriteFile(tmplPath, []byte("version1"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		subEntry := config.SubEntry{
+			Name:    "config",
+			Backup:  "./config",
+			Targets: map[string]string{"linux": targetDir},
+		}
+
+		if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+			t.Fatal(err)
+		}
+
+		// Modify template after render
+		if err := os.WriteFile(tmplPath, []byte("version2"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if !mgr.HasOutdatedTemplates(backupDir) {
+			t.Error("should return true when template hash differs from stored hash")
+		}
+	})
+
+	t.Run("MultipleTemplates_OneOutdated", func(t *testing.T) {
+		backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+		backupDir := filepath.Join(backupRoot, "config")
+		if err := os.MkdirAll(backupDir, 0750); err != nil {
+			t.Fatal(err)
+		}
+
+		tmplPath1 := filepath.Join(backupDir, "file1.tmpl")
+		tmplPath2 := filepath.Join(backupDir, "file2.tmpl")
+		if err := os.WriteFile(tmplPath1, []byte("content1"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(tmplPath2, []byte("content2"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		subEntry := config.SubEntry{
+			Name:    "config",
+			Backup:  "./config",
+			Targets: map[string]string{"linux": targetDir},
+		}
+
+		if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+			t.Fatal(err)
+		}
+
+		// Modify only one template
+		if err := os.WriteFile(tmplPath1, []byte("modified"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if !mgr.HasOutdatedTemplates(backupDir) {
+			t.Error("should return true when at least one template is outdated")
+		}
+	})
+}

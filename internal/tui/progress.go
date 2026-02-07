@@ -511,25 +511,33 @@ func (m *Model) renderTable(availableHeight int) string {
 				return SelectedRowStyle
 			}
 
-			// Regular cell styling with attention colors
-			baseStyle := lipgloss.NewStyle().Padding(0, 1)
-
-			if col == 1 && tr.StatusAttention {
-				return baseStyle.Foreground(errorColor)
-			}
-			if col == 2 && tr.InfoAttention {
-				return baseStyle.Foreground(errorColor)
-			}
-
-			// Mute "0 entries" text in info column (col 2)
-			if col == 2 && tr.Data[2] == "0 entries" {
-				return baseStyle.Foreground(mutedColor)
-			}
-
-			return baseStyle
+			return cellAttentionStyle(tr, col)
 		})
 
 	return t.Render()
+}
+
+// cellAttentionStyle returns the appropriate style for a table cell based on
+// its attention state (status/info columns with outdated or error colors).
+func cellAttentionStyle(tr TableRow, col int) lipgloss.Style {
+	baseStyle := lipgloss.NewStyle().Padding(0, 1)
+
+	if col == 1 && tr.StatusAttention {
+		if tr.State == StateOutdated || tr.Data[1] == StatusOutdated {
+			return baseStyle.Foreground(accentColor)
+		}
+		return baseStyle.Foreground(errorColor)
+	}
+	if col == 2 && tr.InfoAttention {
+		return baseStyle.Foreground(errorColor)
+	}
+
+	// Mute "0 entries" text in info column (col 2)
+	if col == 2 && tr.Data[2] == "0 entries" {
+		return baseStyle.Foreground(mutedColor)
+	}
+
+	return baseStyle
 }
 
 // buildVisibleRowsWithIndicators builds the visible table rows with scroll
@@ -645,7 +653,15 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 	targetPath := config.ExpandPath(item.Target, m.Platform.EnvVars)
 	backupPath := m.resolvePath(item.SubEntry.Backup)
 
-	return detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files)
+	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files)
+
+	if st == StateLinked && item.SubEntry.IsConfig() && item.SubEntry.IsFolder() && m.Manager != nil {
+		if m.Manager.HasOutdatedTemplates(backupPath) {
+			return StateOutdated
+		}
+	}
+
+	return st
 }
 
 // getApplicationAtCursorFromTable returns the application and sub-entry indices from table cursor
@@ -1061,21 +1077,37 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Single-item restore (original behavior)
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 && subIdx >= 0 {
+				// Restore single sub-entry
 				subItem := &m.Applications[appIdx].SubItems[subIdx]
-				// Perform restore using SubEntry data
 				success, message := m.performRestoreSubEntry(subItem.SubEntry, subItem.Target)
-				// Update the state after restore
 				if success {
 					m.Applications[appIdx].SubItems[subIdx].State = m.detectSubEntryState(subItem)
-					// Rebuild table to reflect updated state
 					m.rebuildTable()
 				}
-				// Show result briefly in results
 				m.results = []ResultItem{{
 					Name:    subItem.SubEntry.Name,
 					Success: success,
 					Message: message,
 				}}
+			} else if appIdx >= 0 && subIdx < 0 {
+				// Restore all sub-entries for this application
+				m.results = nil
+				for i := range m.Applications[appIdx].SubItems {
+					subItem := &m.Applications[appIdx].SubItems[i]
+					if !subItem.SubEntry.IsConfig() {
+						continue
+					}
+					success, message := m.performRestoreSubEntry(subItem.SubEntry, subItem.Target)
+					if success {
+						m.Applications[appIdx].SubItems[i].State = m.detectSubEntryState(subItem)
+					}
+					m.results = append(m.results, ResultItem{
+						Name:    subItem.SubEntry.Name,
+						Success: success,
+						Message: message,
+					})
+				}
+				m.rebuildTable()
 			}
 		}
 

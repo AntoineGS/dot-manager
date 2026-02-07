@@ -15,6 +15,12 @@ func Run(cfg *config.Config, plat *platform.Platform, dryRun bool, configPath st
 	mgr := manager.New(cfg, plat)
 	mgr.DryRun = dryRun
 
+	if err := mgr.InitStateStore(); err != nil {
+		// Non-fatal: outdated detection won't work, but TUI is still usable
+		fmt.Fprintf(os.Stderr, "Warning: could not initialize state store: %v\n", err)
+	}
+	defer func() { _ = mgr.Close() }()
+
 	return RunWithManager(cfg, plat, mgr, configPath)
 }
 
@@ -47,6 +53,12 @@ func NewModelWithManager(cfg *config.Config, plat *platform.Platform, mgr *manag
 	m := NewModel(cfg, plat, mgr.DryRun)
 	m.Manager = mgr
 	m.ConfigPath = configPath
+
+	// Re-detect application states now that the Manager is available.
+	// NewModel() runs state detection before Manager is assigned, so features
+	// like outdated template detection (which require the state store) are missed.
+	m.refreshApplicationStates()
+	m.initTableModel()
 
 	return m
 }
