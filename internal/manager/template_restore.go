@@ -13,35 +13,32 @@ import (
 )
 
 // RestoreFolderWithTemplates handles folders that contain .tmpl files.
-// Non-template files get normal symlinks; template files get rendered and symlinked.
+// It delegates folder-level operations (adoption, merge, folder symlink) to RestoreFolder,
+// then renders templates and creates relative symlinks inside the backup directory.
 func (m *Manager) RestoreFolderWithTemplates(subEntry config.SubEntry, source, target string) error {
+	// Step 1: Delegate folder-level operations to RestoreFolder
+	// (handles adoption, merge, creates folder symlink target → source)
+	if err := m.RestoreFolder(subEntry, source, target); err != nil {
+		return err
+	}
+
+	// Step 2: Render templates and create relative symlinks in backup dir
 	if !pathExists(source) {
-		m.logger.Debug("source folder does not exist", slog.String("path", source))
 		return nil
 	}
 
-	// Create target directory if needed
-	if !pathExists(target) {
-		m.logger.Info("creating directory", slog.String("path", target))
-		if !m.DryRun {
-			if err := os.MkdirAll(target, DirPerms); err != nil {
-				return NewPathError("restore", target, fmt.Errorf("creating target directory: %w", err))
-			}
-		}
-	}
+	return m.renderTemplatesInBackup(source)
+}
 
-	return filepath.WalkDir(source, func(path string, d fs.DirEntry, err error) error {
+// renderTemplatesInBackup walks the backup directory for .tmpl files and
+// renders each one, creating a relative symlink in the backup dir.
+func (m *Manager) renderTemplatesInBackup(backupDir string) error {
+	return filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		relPath, relErr := filepath.Rel(source, path)
-		if relErr != nil {
-			return relErr
-		}
-
-		// Skip root directory
-		if relPath == "." {
+		if d.IsDir() {
 			return nil
 		}
 
@@ -50,30 +47,24 @@ func (m *Manager) RestoreFolderWithTemplates(subEntry config.SubEntry, source, t
 			return nil
 		}
 
-		targetPath := filepath.Join(target, relPath)
-
-		if d.IsDir() {
-			if !pathExists(targetPath) && !m.DryRun {
-				if err := os.MkdirAll(targetPath, DirPerms); err != nil {
-					return NewPathError("restore", targetPath, fmt.Errorf("creating directory: %w", err))
-				}
-			}
+		if !tmpl.IsTemplateFile(d.Name()) {
 			return nil
 		}
 
-		if tmpl.IsTemplateFile(d.Name()) {
-			return m.restoreTemplateFile(subEntry, path, relPath, target)
+		relPath, relErr := filepath.Rel(backupDir, path)
+		if relErr != nil {
+			return relErr
 		}
 
-		// Non-template file: create symlink
-		return m.restoreSingleFile(subEntry, path, targetPath)
+		return m.renderTemplateAndLink(path, relPath)
 	})
 }
 
-// restoreTemplateFile renders a .tmpl file and manages the symlink to the .rendered output.
+// renderTemplateAndLink renders a single .tmpl file and creates a relative symlink
+// in the backup directory pointing to the rendered output.
 //
 //nolint:gocyclo // complexity acceptable for template restore logic with merge paths
-func (m *Manager) restoreTemplateFile(subEntry config.SubEntry, tmplAbsPath, relPath, target string) error {
+func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 	// Read template source
 	tmplContent, err := os.ReadFile(tmplAbsPath) //nolint:gosec // path from config
 	if err != nil {
@@ -86,21 +77,16 @@ func (m *Manager) restoreTemplateFile(subEntry config.SubEntry, tmplAbsPath, rel
 	// The rendered output sits alongside the template as a sibling
 	renderedAbsPath := tmpl.RenderedPath(tmplAbsPath)
 
-	// The target symlink name strips .tmpl from the filename
-	targetFileName := tmpl.TargetName(filepath.Base(tmplAbsPath))
-	targetDir := filepath.Join(target, filepath.Dir(relPath))
-	targetFilePath := filepath.Join(targetDir, targetFileName)
-
 	// Quick check: if we have a state store, check if template is unchanged
 	if m.stateStore != nil && !m.ForceRender {
 		record, lookupErr := m.stateStore.GetLatestRender(relPath)
 		if lookupErr != nil {
 			m.logger.Warn("failed to query render history", slog.String("error", lookupErr.Error()))
 		} else if record != nil && record.TemplateHash == hash && pathExists(renderedAbsPath) {
-			// Template unchanged and rendered file exists - just ensure symlink
+			// Template unchanged and rendered file exists - just ensure relative symlink
 			m.logger.Debug("template unchanged, skipping re-render",
 				slog.String("template", relPath))
-			return m.ensureSymlink(subEntry, renderedAbsPath, targetFilePath)
+			return m.ensureRelativeSymlinkForTemplate(tmplAbsPath)
 		}
 	}
 
@@ -193,74 +179,51 @@ func (m *Manager) restoreTemplateFile(subEntry config.SubEntry, tmplAbsPath, rel
 		}
 	}
 
-	// Create/update symlink: target -> rendered file
-	return m.ensureSymlink(subEntry, renderedAbsPath, targetFilePath)
+	// Create relative symlink in backup dir: name → name.tmpl.rendered
+	return m.ensureRelativeSymlinkForTemplate(tmplAbsPath)
 }
 
-// restoreSingleFile creates a symlink from source to target for a single non-template file.
-func (m *Manager) restoreSingleFile(subEntry config.SubEntry, srcFile, dstFile string) error {
-	if symlinkPointsTo(dstFile, srcFile) {
-		m.logger.Debug("already a symlink", slog.String("path", dstFile))
-		return nil
-	}
+// ensureRelativeSymlinkForTemplate creates a relative symlink in the backup directory
+// for a template file: e.g., "config" → "config.tmpl.rendered".
+func (m *Manager) ensureRelativeSymlinkForTemplate(tmplAbsPath string) error {
+	targetFileName := tmpl.TargetName(filepath.Base(tmplAbsPath))
+	symlinkPath := filepath.Join(filepath.Dir(tmplAbsPath), targetFileName)
+	renderedFileName := filepath.Base(tmpl.RenderedPath(tmplAbsPath))
 
-	if isSymlink(dstFile) {
-		m.logger.Info("removing incorrect symlink", slog.String("path", dstFile))
-		if !m.DryRun {
-			if err := os.Remove(dstFile); err != nil {
-				return NewPathError("restore", dstFile, fmt.Errorf("removing incorrect symlink: %w", err))
-			}
-		}
-	}
-
-	if pathExists(dstFile) && !isSymlink(dstFile) {
-		m.logger.Info("removing existing file for symlink", slog.String("path", dstFile))
-		if !m.DryRun {
-			if err := os.Remove(dstFile); err != nil {
-				return NewPathError("restore", dstFile, fmt.Errorf("removing existing file: %w", err))
-			}
-		}
-	}
-
-	m.logger.Info("creating symlink",
-		slog.String("target", dstFile),
-		slog.String("source", srcFile))
-
-	if !m.DryRun {
-		return createSymlink(m.ctx, srcFile, dstFile, subEntry.Sudo)
-	}
-	return nil
+	return m.ensureRelativeSymlink(symlinkPath, renderedFileName)
 }
 
-// ensureSymlink creates or updates a symlink from source to target.
-func (m *Manager) ensureSymlink(subEntry config.SubEntry, source, target string) error {
-	if symlinkPointsTo(target, source) {
-		return nil
-	}
-
-	// Ensure parent directory exists
-	parentDir := filepath.Dir(target)
-	if !pathExists(parentDir) && !m.DryRun {
-		if err := os.MkdirAll(parentDir, DirPerms); err != nil {
-			return NewPathError("restore", parentDir, fmt.Errorf("creating parent: %w", err))
+// ensureRelativeSymlink is an idempotent helper that creates a relative symlink.
+// It checks if the symlink already points to the correct target, removes any
+// existing file/symlink if not, and creates a new relative symlink.
+// Uses os.Symlink directly (no sudo needed for same-directory relative links).
+func (m *Manager) ensureRelativeSymlink(symlinkPath, target string) error {
+	// Check if already a correct relative symlink
+	if isSymlink(symlinkPath) {
+		existing, err := os.Readlink(symlinkPath)
+		if err == nil && existing == target {
+			return nil
 		}
 	}
 
-	// Remove existing symlink/file
-	if pathExists(target) || isSymlink(target) {
+	// Remove existing file or incorrect symlink
+	if pathExists(symlinkPath) || isSymlink(symlinkPath) {
+		m.logger.Info("removing existing file/symlink for relative symlink",
+			slog.String("path", symlinkPath))
 		if !m.DryRun {
-			if err := os.Remove(target); err != nil {
-				return NewPathError("restore", target, fmt.Errorf("removing existing: %w", err))
+			if err := os.Remove(symlinkPath); err != nil {
+				return NewPathError("restore", symlinkPath, fmt.Errorf("removing existing: %w", err))
 			}
 		}
 	}
 
-	m.logger.Info("creating symlink",
-		slog.String("target", target),
-		slog.String("source", source))
+	m.logger.Info("creating relative symlink",
+		slog.String("link", symlinkPath),
+		slog.String("target", target))
 
 	if !m.DryRun {
-		return createSymlink(m.ctx, source, target, subEntry.Sudo)
+		return os.Symlink(target, symlinkPath)
 	}
+
 	return nil
 }
