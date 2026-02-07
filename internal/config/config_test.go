@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -1047,6 +1048,60 @@ func TestGetAllConfigSubEntries(t *testing.T) {
 	darwinConfigSubEntries := cfg.GetAllConfigSubEntries(darwinCtx)
 	if len(darwinConfigSubEntries) != 0 {
 		t.Errorf("GetAllConfigSubEntries(darwin) returned %d sub-entries, want 0", len(darwinConfigSubEntries))
+	}
+}
+
+// mockRenderer implements PathRenderer for testing.
+type mockRenderer struct {
+	values map[string]string
+}
+
+func (m *mockRenderer) RenderString(_, tmplStr string) (string, error) {
+	// Simple mock: replace known template expressions
+	result := tmplStr
+	for k, v := range m.values {
+		result = strings.ReplaceAll(result, k, v)
+	}
+	return result, nil
+}
+
+func TestExpandPathWithTemplate_NoTemplate(t *testing.T) {
+	t.Parallel()
+
+	renderer := &mockRenderer{}
+	result := ExpandPathWithTemplate("~/.config/nvim", nil, renderer)
+	home, _ := os.UserHomeDir()
+	want := filepath.Join(home, ".config/nvim")
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}
+
+func TestExpandPathWithTemplate_WithTemplate(t *testing.T) {
+	t.Parallel()
+
+	renderer := &mockRenderer{
+		values: map[string]string{
+			"{{ .Hostname }}": "myhost",
+		},
+	}
+	result := ExpandPathWithTemplate("~/.config/{{ .Hostname }}/nvim", nil, renderer)
+	home, _ := os.UserHomeDir()
+	want := filepath.Join(home, ".config/myhost/nvim")
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
+	}
+}
+
+func TestExpandPathWithTemplate_NilRenderer(t *testing.T) {
+	t.Parallel()
+
+	// With nil renderer, should fall back to ExpandPath
+	result := ExpandPathWithTemplate("~/.config/nvim", nil, nil)
+	home, _ := os.UserHomeDir()
+	want := filepath.Join(home, ".config/nvim")
+	if result != want {
+		t.Errorf("got %q, want %q", result, want)
 	}
 }
 

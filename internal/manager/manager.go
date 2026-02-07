@@ -10,6 +10,8 @@ import (
 
 	"github.com/AntoineGS/dot-manager/internal/config"
 	"github.com/AntoineGS/dot-manager/internal/platform"
+	"github.com/AntoineGS/dot-manager/internal/state"
+	tmpl "github.com/AntoineGS/dot-manager/internal/template"
 )
 
 // File permissions constants
@@ -26,15 +28,18 @@ const (
 // Manager handles dotfile operations including backup, restore, and listing of configuration entries.
 // It maintains references to the configuration, platform information, and operational settings.
 type Manager struct {
-	ctx         context.Context
-	Config      *config.Config
-	Platform    *platform.Platform
-	FilterCtx   *config.FilterContext
-	logger      *slog.Logger
-	DryRun      bool
-	Verbose     bool
-	NoMerge     bool
-	ForceDelete bool
+	ctx            context.Context
+	Config         *config.Config
+	Platform       *platform.Platform
+	FilterCtx      *config.FilterContext
+	logger         *slog.Logger
+	templateEngine *tmpl.Engine
+	stateStore     *state.Store
+	DryRun         bool
+	Verbose        bool
+	NoMerge        bool
+	ForceDelete    bool
+	ForceRender    bool
 }
 
 // New creates a new Manager instance with the given configuration and platform information.
@@ -46,6 +51,10 @@ func New(cfg *config.Config, plat *platform.Platform) *Manager {
 	}
 	handler := slog.NewTextHandler(os.Stdout, opts)
 
+	// Create template engine
+	tmplCtx := tmpl.NewContextFromPlatform(plat)
+	engine := tmpl.NewEngine(tmplCtx)
+
 	return &Manager{
 		Config:   cfg,
 		Platform: plat,
@@ -55,9 +64,33 @@ func New(cfg *config.Config, plat *platform.Platform) *Manager {
 			Hostname: plat.Hostname,
 			User:     plat.User,
 		},
-		ctx:    context.Background(), // Default context
-		logger: slog.New(handler),
+		ctx:            context.Background(), // Default context
+		logger:         slog.New(handler),
+		templateEngine: engine,
 	}
+}
+
+// InitStateStore initializes the SQLite state store for template render history.
+// The database is placed in the backup root directory.
+func (m *Manager) InitStateStore() error {
+	backupRoot := config.ExpandPath(m.Config.BackupRoot, m.Platform.EnvVars)
+	dbPath := filepath.Join(backupRoot, ".dot-manager.db")
+
+	store, err := state.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("opening state store: %w", err)
+	}
+
+	m.stateStore = store
+	return nil
+}
+
+// Close releases resources held by the Manager, including the state store.
+func (m *Manager) Close() error {
+	if m.stateStore != nil {
+		return m.stateStore.Close()
+	}
+	return nil
 }
 
 // WithContext returns a new Manager with the given context
@@ -109,11 +142,12 @@ func (m *Manager) GetApplications() []config.Application {
 	return m.Config.GetFilteredApplications(m.FilterCtx)
 }
 
-// resolvePath expands ~ and environment variables in paths and resolves relative paths
-// against BackupRoot. This ensures paths work correctly even when stored with ~ in config.
+// resolvePath expands templates, ~ and environment variables in paths and resolves
+// relative paths against BackupRoot. This ensures paths work correctly even when
+// stored with ~ in config.
 func (m *Manager) resolvePath(path string) string {
-	// Expand ~ and env vars in the path
-	expandedPath := config.ExpandPath(path, m.Platform.EnvVars)
+	// Expand templates, ~ and env vars in the path
+	expandedPath := config.ExpandPathWithTemplate(path, m.Platform.EnvVars, m.templateEngine)
 
 	// If it's already absolute after expansion, return it
 	if filepath.IsAbs(expandedPath) {
@@ -121,15 +155,15 @@ func (m *Manager) resolvePath(path string) string {
 	}
 
 	// Otherwise, resolve relative to BackupRoot (also expand BackupRoot)
-	expandedBackupRoot := config.ExpandPath(m.Config.BackupRoot, m.Platform.EnvVars)
+	expandedBackupRoot := config.ExpandPathWithTemplate(m.Config.BackupRoot, m.Platform.EnvVars, m.templateEngine)
 	return filepath.Join(expandedBackupRoot, expandedPath)
 }
 
-// expandTarget expands ~ and environment variables in a target path.
+// expandTarget expands templates, ~ and environment variables in a target path.
 // Target paths are typically absolute paths like ~/.config/nvim that need
 // expansion before use in file operations.
 func (m *Manager) expandTarget(target string) string {
-	return config.ExpandPath(target, m.Platform.EnvVars)
+	return config.ExpandPathWithTemplate(target, m.Platform.EnvVars, m.templateEngine)
 }
 
 func isSymlink(path string) bool {

@@ -51,6 +51,8 @@ See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
 - **internal/config/entry.go** - Entry type for config (symlinks) management
 - **internal/config/filter.go** - Filter system with include/exclude conditions for os, distro, hostname, user
 - **internal/manager/** - Core operations (backup, restore, adopt, list) with platform-aware path selection
+- **internal/template/** - Template engine with sprout functions, 3-way merge algorithm
+- **internal/state/** - SQLite state store for template render history
 - **internal/platform/** - OS/distro detection (Linux/Windows), hostname/user detection
 - **internal/tui/** - Bubble Tea-based interactive terminal UI with Lipgloss styling
 - **internal/packages/** - Multi-package-manager support (pacman, yay, paru, apt, dnf, brew, winget, scoop, choco, git)
@@ -155,6 +157,63 @@ packages:
 - `-n, --dry-run` - Preview without changes
 - `-v, --verbose` - Verbose output
 - `-i` - Interactive TUI mode (for restore, backup, install)
+- `--force-render` - Force re-render of templates, skipping 3-way merge (restore only)
+
+### Template System (`internal/template/`, `internal/state/`)
+
+dot-manager supports Go `text/template` processing for both file contents and config paths, with platform-aware context data.
+
+**Template Context Variables**
+Templates have access to a `TemplateContext` struct:
+- `.OS` - Operating system (`"linux"` or `"windows"`)
+- `.Distro` - Linux distribution ID (e.g., `"arch"`, `"ubuntu"`)
+- `.Hostname` - Machine hostname
+- `.User` - Current username
+- `.Env` - Map of environment variables (e.g., `{{ index .Env "HOME" }}`)
+
+**Template Functions**: All [sprout](https://github.com/go-sprout/sprout) functions are available (string manipulation, math, collections, etc.)
+
+**File Naming Convention**
+- `.tmpl` suffix identifies template files (e.g., `.zshrc.tmpl`)
+- `.tmpl.rendered` - Rendered output (generated, gitignored)
+- `.tmpl.conflict` - Conflict markers from merge (generated, gitignored)
+
+**How it Works**
+1. During restore, `.tmpl` files in backup directories are rendered using the template engine
+2. Output is written as a sibling `.tmpl.rendered` file in the backup directory
+3. A symlink is created from the target (with `.tmpl` stripped) to the `.tmpl.rendered` file
+4. Non-template files in the same directory get normal symlinks
+
+**3-Way Merge with SQLite State**
+- Pure render output is stored in `.dot-manager.db` (SQLite, in backup root)
+- On re-render, a 3-way merge preserves user edits to the rendered file:
+  - `base` = previous pure render from DB
+  - `theirs` = current `.tmpl.rendered` on disk (may have user edits)
+  - `ours` = newly rendered template output
+- Conflicts generate `<<<<<<< user-edits` / `=======` / `>>>>>>> template` markers
+- `--force-render` flag bypasses merge and always overwrites
+
+**Gitignore Patterns** (recommended in dotfiles repo):
+```
+*.tmpl.rendered
+*.tmpl.conflict
+.dot-manager.db
+```
+
+**Path Templating**
+Config paths (targets, backup) also support template expressions:
+```yaml
+targets:
+  linux: "~/.config/{{ .Hostname }}/nvim"
+```
+Paths without `{{` delimiters fall through to standard `ExpandPath` (backward compatible).
+
+**Key Files**
+- `internal/template/context.go` - TemplateContext struct and platform factory
+- `internal/template/engine.go` - Template engine with sprout functions
+- `internal/template/merge.go` - 3-way merge algorithm
+- `internal/state/store.go` - SQLite state store for render history
+- `internal/manager/template_restore.go` - Template-specific restore logic
 
 ### TUI Patterns (internal/tui/)
 

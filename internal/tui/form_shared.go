@@ -74,6 +74,86 @@ func renderPackagesSection(
 	return b.String()
 }
 
+// renderGitPackageSection renders the git package section within Packages
+// focused indicates if the packages section is currently focused
+// onGitItem indicates if the packagesCursor is on the git item (last position)
+func renderGitPackageSection(
+	focused bool,
+	onGitItem bool,
+	hasGitPackage bool,
+	gitFieldCursor int,
+	editingGitField bool,
+	gitURLInput textinput.Model,
+	gitBranchInput textinput.Model,
+	gitLinuxInput textinput.Model,
+	gitWindowsInput textinput.Model,
+	gitSudo bool,
+) string {
+	var b strings.Builder
+	prefix := IndentSpaces
+
+	if !hasGitPackage {
+		// Collapsed: show add button
+		addText := "[+ Add Git Package]"
+		if focused && onGitItem {
+			b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(addText)))
+		} else {
+			b.WriteString(fmt.Sprintf("%s%s\n", prefix, MutedTextStyle.Render(addText)))
+		}
+		return b.String()
+	}
+
+	// Expanded: show git label and sub-fields
+	gitLabel := "git:"
+	if focused && onGitItem && gitFieldCursor == -1 {
+		b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(gitLabel)))
+	} else {
+		b.WriteString(fmt.Sprintf("%s%s\n", prefix, gitLabel))
+	}
+
+	// Sub-fields with deeper indent
+	onSubFields := focused && onGitItem && gitFieldCursor >= 0
+
+	b.WriteString(renderGitField("URL:     ", gitURLInput, onSubFields, gitFieldCursor == GitFieldURL, editingGitField && gitFieldCursor == GitFieldURL))
+	b.WriteString(renderGitField("Branch:  ", gitBranchInput, onSubFields, gitFieldCursor == GitFieldBranch, editingGitField && gitFieldCursor == GitFieldBranch))
+	b.WriteString(renderGitField("Linux:   ", gitLinuxInput, onSubFields, gitFieldCursor == GitFieldLinux, editingGitField && gitFieldCursor == GitFieldLinux))
+	b.WriteString(renderGitField("Windows: ", gitWindowsInput, onSubFields, gitFieldCursor == GitFieldWindows, editingGitField && gitFieldCursor == GitFieldWindows))
+
+	// Sudo toggle
+	subPrefix := IndentSpaces + "  "
+	sudoText := CheckboxUnchecked + " No"
+	if gitSudo {
+		sudoText = CheckboxChecked + " Yes"
+	}
+	if onSubFields && gitFieldCursor == GitFieldSudo {
+		b.WriteString(fmt.Sprintf("%sSudo:    %s\n", subPrefix, SelectedMenuItemStyle.Render(sudoText)))
+	} else {
+		b.WriteString(fmt.Sprintf("%sSudo:    %s\n", subPrefix, sudoText))
+	}
+
+	return b.String()
+}
+
+// renderGitField renders a single git text field with appropriate styling
+func renderGitField(label string, input textinput.Model, onSubFields, isCurrent, isEditing bool) string {
+	prefix := IndentSpaces + "  "
+
+	if isEditing {
+		return fmt.Sprintf("%s%s%s\n", prefix, label, input.View())
+	}
+
+	value := input.Value()
+	if value == "" {
+		value = MutedTextStyle.Render("(not set)")
+	}
+
+	if onSubFields && isCurrent {
+		return fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(fmt.Sprintf("%s%s", label, value)))
+	}
+
+	return fmt.Sprintf("%s%s%s\n", prefix, label, value)
+}
+
 // renderFiltersSection renders the filters list with add/edit UI
 // focused indicates if the filters section is currently focused
 // filters is the list of filter conditions
@@ -286,6 +366,51 @@ func buildPackageSpec(managers map[string]string) *config.EntryPackage {
 	return &config.EntryPackage{
 		Managers: managersTyped,
 	}
+}
+
+// mergeGitPackage merges git package data into an existing EntryPackage
+func mergeGitPackage(
+	pkg *config.EntryPackage,
+	hasGit bool,
+	urlInput textinput.Model,
+	branchInput textinput.Model,
+	linuxInput textinput.Model,
+	windowsInput textinput.Model,
+	sudo bool,
+) *config.EntryPackage {
+	if !hasGit {
+		return pkg
+	}
+
+	url := strings.TrimSpace(urlInput.Value())
+	if url == "" {
+		return pkg
+	}
+
+	if pkg == nil {
+		pkg = &config.EntryPackage{
+			Managers: make(map[string]config.ManagerValue),
+		}
+	}
+
+	gitPkg := &config.GitPackage{
+		URL:     url,
+		Branch:  strings.TrimSpace(branchInput.Value()),
+		Targets: make(map[string]string),
+		Sudo:    sudo,
+	}
+
+	if linux := strings.TrimSpace(linuxInput.Value()); linux != "" {
+		gitPkg.Targets[OSLinux] = linux
+	}
+
+	if windows := strings.TrimSpace(windowsInput.Value()); windows != "" {
+		gitPkg.Targets[OSWindows] = windows
+	}
+
+	pkg.Managers[TypeGit] = config.ManagerValue{Git: gitPkg}
+
+	return pkg
 }
 
 // saveNewApplication saves a new Application to the config

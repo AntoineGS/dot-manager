@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
+	tmpl "github.com/AntoineGS/dot-manager/internal/template"
 )
 
 // BackupWithContext backs up configurations with context support
@@ -149,6 +150,12 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 		// Skip symlinks
 		if isSymlink(srcFile) {
 			m.logger.Debug("skipping symlink", slog.String("path", srcFile))
+			continue
+		}
+
+		// Skip template-generated artifacts
+		if tmpl.IsRenderedFile(file) || tmpl.IsConflictFile(file) {
+			m.logger.Debug("skipping template artifact", slog.String("path", srcFile))
 			continue
 		}
 

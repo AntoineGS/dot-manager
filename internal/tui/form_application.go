@@ -273,6 +273,11 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Handle editing a git text field
+	if m.applicationForm.editingGitField {
+		return m.updateApplicationGitFieldInput(msg)
+	}
+
 	// Handle editing a text field
 	if m.applicationForm.editingField {
 		return m.updateApplicationFieldInput(msg)
@@ -290,6 +295,9 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle packages list navigation
 	if m.getApplicationFieldType() == appFieldPackages {
+		if m.applicationForm.packagesCursor == len(displayPackageManagers) && m.applicationForm.gitFieldCursor >= 0 {
+			return m.updateApplicationGitFields(msg)
+		}
 		return m.updateApplicationPackagesList(msg)
 	}
 
@@ -415,7 +423,7 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 
-	maxCursor := len(displayPackageManagers) - 1
+	maxCursor := len(displayPackageManagers) // includes git item at the end
 
 	switch msg.String() {
 	case KeyCtrlC:
@@ -430,6 +438,8 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	case "up", "k":
 		if m.applicationForm.packagesCursor > 0 {
 			m.applicationForm.packagesCursor--
+			// Reset git field cursor when moving away from git item
+			m.applicationForm.gitFieldCursor = -1
 		} else {
 			// Move to previous field
 			m.applicationForm.focusIndex--
@@ -438,15 +448,20 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return m, nil
 
 	case KeyDown, "j":
-		if m.applicationForm.packagesCursor < maxCursor {
+		switch {
+		case m.applicationForm.packagesCursor < maxCursor:
 			m.applicationForm.packagesCursor++
-		} else {
+		case m.applicationForm.packagesCursor == maxCursor && m.applicationForm.hasGitPackage && m.applicationForm.gitFieldCursor == -1:
+			// On git label, enter sub-fields
+			m.applicationForm.gitFieldCursor = 0
+		default:
 			// Move to next field
 			m.applicationForm.focusIndex++
 			if m.applicationForm.focusIndex > 3 {
 				m.applicationForm.focusIndex = 0
 			}
 			m.applicationForm.packagesCursor = 0
+			m.applicationForm.gitFieldCursor = -1
 			m.updateApplicationFormFocus()
 		}
 		return m, nil
@@ -457,15 +472,26 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 			m.applicationForm.focusIndex = 0
 		}
 		m.applicationForm.packagesCursor = 0
+		m.applicationForm.gitFieldCursor = -1
 		m.updateApplicationFormFocus()
 		return m, nil
 
 	case KeyShiftTab:
 		m.applicationForm.focusIndex--
+		m.applicationForm.gitFieldCursor = -1
 		m.updateApplicationFormFocus()
 		return m, nil
 
 	case KeyEnter, "e", " ":
+		// Handle git item
+		if m.applicationForm.packagesCursor == len(displayPackageManagers) {
+			if !m.applicationForm.hasGitPackage {
+				// Add git package
+				m.applicationForm.hasGitPackage = true
+				m.applicationForm.gitFieldCursor = GitFieldURL
+			}
+			return m, nil
+		}
 		// Edit the selected package manager's package name
 		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
 			return m, nil
@@ -485,6 +511,18 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return m, nil
 
 	case "d", KeyBackspace, KeyDelete:
+		// Handle git item deletion
+		if m.applicationForm.packagesCursor == len(displayPackageManagers) && m.applicationForm.gitFieldCursor == -1 {
+			m.applicationForm.hasGitPackage = false
+			m.applicationForm.gitFieldCursor = -1
+			m.applicationForm.gitSudo = false
+			m.applicationForm.gitURLInput.SetValue("")
+			m.applicationForm.gitBranchInput.SetValue("")
+			m.applicationForm.gitLinuxInput.SetValue("")
+			m.applicationForm.gitWindowsInput.SetValue("")
+			m.applicationForm.err = ""
+			return m, nil
+		}
 		// Clear the package name for the selected manager
 		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
 			return m, nil
@@ -554,6 +592,154 @@ func (m Model) updateApplicationPackageInput(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	m.applicationForm.packageNameInput, cmd = m.applicationForm.packageNameInput.Update(msg)
 	m.applicationForm.err = ""
 	return m, cmd
+}
+
+// updateApplicationGitFields handles navigation within git sub-fields (gitFieldCursor >= 0)
+func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.applicationForm == nil {
+		return m, nil
+	}
+
+	switch msg.String() {
+	case KeyCtrlC:
+		return m, tea.Quit
+
+	case "q", KeyEsc:
+		m.activeForm = FormNone
+		m.applicationForm = nil
+		m.Screen = ScreenResults
+		return m, nil
+
+	case "up", "k":
+		if m.applicationForm.gitFieldCursor > 0 {
+			m.applicationForm.gitFieldCursor--
+		} else {
+			// Back to git label (will route to updateApplicationPackagesList on next keypress)
+			m.applicationForm.gitFieldCursor = -1
+		}
+		return m, nil
+
+	case KeyDown, "j":
+		if m.applicationForm.gitFieldCursor < GitFieldCount-1 {
+			m.applicationForm.gitFieldCursor++
+		} else {
+			// Move to Filters section
+			m.applicationForm.focusIndex++
+			if m.applicationForm.focusIndex > 3 {
+				m.applicationForm.focusIndex = 0
+			}
+			m.applicationForm.packagesCursor = 0
+			m.applicationForm.gitFieldCursor = -1
+			m.updateApplicationFormFocus()
+		}
+		return m, nil
+
+	case KeyEnter, "e":
+		if m.applicationForm.gitFieldCursor == GitFieldSudo {
+			m.applicationForm.gitSudo = !m.applicationForm.gitSudo
+			return m, nil
+		}
+		// Enter edit mode for text fields
+		input := m.getGitFieldInput()
+		if input != nil {
+			m.applicationForm.editingGitField = true
+			m.applicationForm.originalValue = input.Value()
+			input.Focus()
+			input.SetCursor(len(input.Value()))
+		}
+		return m, nil
+
+	case " ":
+		if m.applicationForm.gitFieldCursor == GitFieldSudo {
+			m.applicationForm.gitSudo = !m.applicationForm.gitSudo
+		}
+		return m, nil
+
+	case KeyTab:
+		m.applicationForm.focusIndex++
+		if m.applicationForm.focusIndex > 3 {
+			m.applicationForm.focusIndex = 0
+		}
+		m.applicationForm.packagesCursor = 0
+		m.applicationForm.gitFieldCursor = -1
+		m.updateApplicationFormFocus()
+		return m, nil
+
+	case KeyShiftTab:
+		m.applicationForm.focusIndex--
+		m.applicationForm.gitFieldCursor = -1
+		m.updateApplicationFormFocus()
+		return m, nil
+
+	case "s", KeyCtrlS:
+		if err := m.saveApplicationForm(); err != nil {
+			m.applicationForm.err = err.Error()
+			return m, nil
+		}
+		m.activeForm = FormNone
+		m.applicationForm = nil
+		m.Screen = ScreenResults
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// updateApplicationGitFieldInput handles text input when editing a git field
+func (m Model) updateApplicationGitFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.applicationForm == nil {
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case KeyCtrlC:
+		return m, tea.Quit
+
+	case KeyEsc:
+		// Restore original value and exit edit mode
+		input := m.getGitFieldInput()
+		if input != nil {
+			input.SetValue(m.applicationForm.originalValue)
+		}
+		m.applicationForm.editingGitField = false
+		return m, nil
+
+	case KeyEnter, KeyTab:
+		// Save current value and exit edit mode
+		m.applicationForm.editingGitField = false
+		return m, nil
+	}
+
+	// Pass to the focused text input
+	input := m.getGitFieldInput()
+	if input != nil {
+		*input, cmd = input.Update(msg)
+	}
+
+	m.applicationForm.err = ""
+	return m, cmd
+}
+
+// getGitFieldInput returns a pointer to the current git text input based on gitFieldCursor
+func (m *Model) getGitFieldInput() *textinput.Model {
+	if m.applicationForm == nil {
+		return nil
+	}
+
+	switch m.applicationForm.gitFieldCursor {
+	case GitFieldURL:
+		return &m.applicationForm.gitURLInput
+	case GitFieldBranch:
+		return &m.applicationForm.gitBranchInput
+	case GitFieldLinux:
+		return &m.applicationForm.gitLinuxInput
+	case GitFieldWindows:
+		return &m.applicationForm.gitWindowsInput
+	default:
+		return nil
+	}
 }
 
 // updateApplicationFiltersList handles key events when filters list is focused
@@ -895,6 +1081,19 @@ func (m Model) viewApplicationForm() string {
 		m.applicationForm.editingPackage,
 		m.applicationForm.packageNameInput,
 	))
+	onGitItem := ft == appFieldPackages && m.applicationForm.packagesCursor == len(displayPackageManagers)
+	b.WriteString(renderGitPackageSection(
+		ft == appFieldPackages,
+		onGitItem,
+		m.applicationForm.hasGitPackage,
+		m.applicationForm.gitFieldCursor,
+		m.applicationForm.editingGitField,
+		m.applicationForm.gitURLInput,
+		m.applicationForm.gitBranchInput,
+		m.applicationForm.gitLinuxInput,
+		m.applicationForm.gitWindowsInput,
+		m.applicationForm.gitSudo,
+	))
 	b.WriteString("\n")
 
 	// Filters section
@@ -974,6 +1173,13 @@ func (m Model) renderApplicationFormHelp() string {
 
 	ft := m.getApplicationFieldType()
 
+	if m.applicationForm.editingGitField {
+		return RenderHelpWithWidth(m.width,
+			"enter", "save",
+			"esc", "cancel",
+		)
+	}
+
 	if m.applicationForm.editingPackage {
 		return RenderHelpWithWidth(m.width,
 			"enter", "save",
@@ -1018,6 +1224,19 @@ func (m Model) renderApplicationFormHelp() string {
 	}
 
 	if ft == appFieldPackages {
+		// Git package states
+		if m.applicationForm.packagesCursor == len(displayPackageManagers) {
+			if !m.applicationForm.hasGitPackage {
+				return RenderHelpWithWidth(m.width, "enter", "add", "s", "save", "q", "back")
+			}
+			if m.applicationForm.gitFieldCursor == -1 {
+				return RenderHelpWithWidth(m.width, "d/del", "delete", "s", "save", "q", "back")
+			}
+			if m.applicationForm.gitFieldCursor == GitFieldSudo {
+				return RenderHelpWithWidth(m.width, "space", "toggle", "s", "save", "q", "back")
+			}
+			return RenderHelpWithWidth(m.width, "enter/e", "edit", "s", "save", "q", "back")
+		}
 		// Bounds check for packagesCursor
 		if m.applicationForm.packagesCursor >= 0 && m.applicationForm.packagesCursor < len(displayPackageManagers) {
 			manager := displayPackageManagers[m.applicationForm.packagesCursor]
@@ -1078,6 +1297,30 @@ func (m *Model) saveApplicationForm() error {
 	// Build filters and package
 	filters := buildFiltersFromConditions(m.applicationForm.filters)
 	pkg := buildPackageSpec(m.applicationForm.packageManagers)
+
+	// Merge git package data
+	pkg = mergeGitPackage(
+		pkg,
+		m.applicationForm.hasGitPackage,
+		m.applicationForm.gitURLInput,
+		m.applicationForm.gitBranchInput,
+		m.applicationForm.gitLinuxInput,
+		m.applicationForm.gitWindowsInput,
+		m.applicationForm.gitSudo,
+	)
+
+	// Validate git package if present
+	if m.applicationForm.hasGitPackage {
+		gitURL := strings.TrimSpace(m.applicationForm.gitURLInput.Value())
+		if gitURL == "" {
+			return errors.New("git package URL is required")
+		}
+		gitLinux := strings.TrimSpace(m.applicationForm.gitLinuxInput.Value())
+		gitWindows := strings.TrimSpace(m.applicationForm.gitWindowsInput.Value())
+		if gitLinux == "" && gitWindows == "" {
+			return errors.New("git package requires at least one target (Linux or Windows)")
+		}
+	}
 
 	// Save based on edit mode
 	if m.applicationForm.editAppIdx >= 0 {

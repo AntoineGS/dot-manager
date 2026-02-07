@@ -3,3 +3,4 @@
 - Maybe also Bubbles.Help
 - Also TextInput
 - Add support for templates, using the filtering system
+- Add UI for git packages
