@@ -111,15 +111,23 @@ func getApplicationStatus(app ApplicationItem) string {
 		return StatusFiltered
 	}
 
-	allLinked := true
+	allLinkedOrOutdated := true
+	anyOutdated := false
+
 	for _, sub := range app.SubItems {
-		if sub.State != StateLinked {
-			allLinked = false
+		if sub.State == StateOutdated {
+			anyOutdated = true
+		} else if sub.State != StateLinked {
+			allLinkedOrOutdated = false
 			break
 		}
 	}
 
-	if allLinked {
+	if allLinkedOrOutdated && anyOutdated {
+		return StatusOutdated
+	}
+
+	if allLinkedOrOutdated {
 		return StatusInstalled
 	}
 

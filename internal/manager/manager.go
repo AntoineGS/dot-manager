@@ -2,8 +2,10 @@ package manager
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -164,6 +166,77 @@ func (m *Manager) resolvePath(path string) string {
 // expansion before use in file operations.
 func (m *Manager) expandTarget(target string) string {
 	return config.ExpandPathWithTemplate(target, m.Platform.EnvVars, m.templateEngine)
+}
+
+// HasOutdatedTemplates returns true if the backup directory contains any .tmpl files
+// that need rendering. A template is considered outdated when:
+//   - It has never been rendered (no render record in state store)
+//   - Its current SHA256 hash differs from the hash stored at last render
+//
+// Returns false if the state store is nil, the directory doesn't exist, or has no templates.
+func (m *Manager) HasOutdatedTemplates(backupDir string) bool {
+	if m.stateStore == nil {
+		return false
+	}
+
+	if !hasTemplateFiles(backupDir) {
+		return false
+	}
+
+	outdated := false
+	_ = filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || outdated {
+			return filepath.SkipDir
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		if tmpl.IsRenderedFile(d.Name()) || tmpl.IsConflictFile(d.Name()) {
+			return nil
+		}
+
+		if !tmpl.IsTemplateFile(d.Name()) {
+			return nil
+		}
+
+		relPath, relErr := filepath.Rel(backupDir, path)
+		if relErr != nil {
+			return nil
+		}
+
+		record, lookupErr := m.stateStore.GetLatestRender(relPath)
+		if lookupErr != nil {
+			return nil
+		}
+
+		// No render record = template never rendered = outdated
+		if record == nil {
+			outdated = true
+			return filepath.SkipAll
+		}
+
+		content, readErr := os.ReadFile(path) //nolint:gosec // path from config
+		if readErr != nil {
+			return nil
+		}
+
+		hash := fmt.Sprintf("%x", sha256.Sum256(content))
+		if hash != record.TemplateHash {
+			outdated = true
+			return filepath.SkipAll
+		}
+
+		return nil
+	})
+
+	return outdated
+}
+
+// HasTemplateFiles returns true if the directory contains any .tmpl files.
+func (m *Manager) HasTemplateFiles(dir string) bool {
+	return hasTemplateFiles(dir)
 }
 
 func isSymlink(path string) bool {

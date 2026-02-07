@@ -75,6 +75,8 @@ const (
 	StateMissing // Neither backup nor target exists
 	// StateLinked indicates already symlinked
 	StateLinked // Already symlinked
+	// StateOutdated indicates linked but template source changed since last render
+	StateOutdated
 )
 
 func (s PathState) String() string {
@@ -87,6 +89,8 @@ func (s PathState) String() string {
 		return "Missing"
 	case StateLinked:
 		return "Linked"
+	case StateOutdated:
+		return "Outdated"
 	}
 
 	return "Unknown"
