@@ -44,8 +44,7 @@ var (
 	SelectedMenuItemStyle = lipgloss.NewStyle().
 				Foreground(textColor).
 				Background(primaryColor).
-				Bold(true).
-				Padding(0, 2)
+				Bold(true)
 
 	// ListItemStyle is the default list item style.
 	ListItemStyle = lipgloss.NewStyle()
