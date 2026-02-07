@@ -31,6 +31,31 @@ var displayPackageManagers = func() []string {
 	return managers
 }()
 
+// newGitTextInputs creates the four git text inputs with standard placeholders and char limits
+func newGitTextInputs() (gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput textinput.Model) {
+	gitURLInput = textinput.New()
+	gitURLInput.Placeholder = PlaceholderGitURL
+	gitURLInput.CharLimit = 256
+	gitURLInput.Width = 40
+
+	gitBranchInput = textinput.New()
+	gitBranchInput.Placeholder = PlaceholderGitBranch
+	gitBranchInput.CharLimit = 128
+	gitBranchInput.Width = 40
+
+	gitLinuxInput = textinput.New()
+	gitLinuxInput.Placeholder = PlaceholderGitLinux
+	gitLinuxInput.CharLimit = 256
+	gitLinuxInput.Width = 40
+
+	gitWindowsInput = textinput.New()
+	gitWindowsInput.Placeholder = PlaceholderGitWindows
+	gitWindowsInput.CharLimit = 256
+	gitWindowsInput.Width = 40
+
+	return gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput
+}
+
 // renderPackagesSection renders the packages list with editing state
 // focused indicates if the packages section is currently focused
 // packageManagers is the map of manager -> package name
