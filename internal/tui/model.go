@@ -144,7 +144,7 @@ type ApplicationForm struct {
 	gitLinuxInput   textinput.Model
 	gitWindowsInput textinput.Model
 	gitFieldCursor  int  // -1 = on git label/button, 0-4 = on sub-fields
-	editingGitField bool //nolint:unused // true when editing a git text field (used in upcoming navigation task)
+	editingGitField bool // true when editing a git text field
 	hasGitPackage   bool // true when git package is configured/expanded
 	gitSudo         bool // sudo toggle for git package
 }

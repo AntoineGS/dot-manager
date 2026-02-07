@@ -26,6 +26,7 @@ var (
 	interactive bool
 	noMerge     bool
 	forceDelete bool
+	forceRender bool
 )
 
 func main() {
@@ -70,6 +71,7 @@ The repo should contain a dot-manager.yaml file with your path definitions.`,
 	restoreCmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "Run in interactive mode")
 	restoreCmd.Flags().BoolVar(&noMerge, "no-merge", false, "Disable merge mode, return error if target exists")
 	restoreCmd.Flags().BoolVar(&forceDelete, "force", false, "When combined with --no-merge, delete existing files without prompting")
+	restoreCmd.Flags().BoolVar(&forceRender, "force-render", false, "Force re-render of templates, skipping 3-way merge")
 
 	backupCmd := &cobra.Command{
 		Use:   "backup",
@@ -228,6 +230,12 @@ func createManager() (*manager.Manager, error) {
 	mgr.Verbose = verbose
 	mgr.NoMerge = noMerge
 	mgr.ForceDelete = forceDelete
+	mgr.ForceRender = forceRender
+
+	// Initialize state store for template render tracking
+	if err := mgr.InitStateStore(); err != nil {
+		fmt.Printf("Warning: could not initialize template state store: %v\n", err)
+	}
 
 	return mgr, nil
 }
@@ -255,6 +263,7 @@ func runRestore(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer mgr.Close() //nolint:errcheck // best-effort cleanup
 
 	if dryRun {
 		fmt.Println("=== DRY RUN MODE ===")
@@ -276,6 +285,7 @@ func runBackup(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer mgr.Close() //nolint:errcheck // best-effort cleanup
 
 	if dryRun {
 		fmt.Println("=== DRY RUN MODE ===")
@@ -312,6 +322,7 @@ func runList(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	defer mgr.Close() //nolint:errcheck // best-effort cleanup
 
 	return runListWithManager(mgr)
 }

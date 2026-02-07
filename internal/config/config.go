@@ -139,6 +139,29 @@ func (c *Config) GetFilteredPackages(ctx *FilterContext) []Entry {
 	return result
 }
 
+// PathRenderer renders template strings. Used to inject the template engine
+// into config path expansion without creating a circular dependency.
+type PathRenderer interface {
+	RenderString(name, tmplStr string) (string, error)
+}
+
+// ExpandPathWithTemplate first renders any Go template expressions in the path,
+// then performs standard ~ and env var expansion. If the path contains no {{ delimiters,
+// it falls back directly to ExpandPath for backward compatibility.
+func ExpandPathWithTemplate(path string, envVars map[string]string, renderer PathRenderer) string {
+	if path == "" || renderer == nil || !strings.Contains(path, "{{") {
+		return ExpandPath(path, envVars)
+	}
+
+	rendered, err := renderer.RenderString("path", path)
+	if err != nil {
+		// Fall back to ExpandPath on template error
+		return ExpandPath(path, envVars)
+	}
+
+	return ExpandPath(rendered, envVars)
+}
+
 // ExpandPath expands ~ and environment variables in a single path.
 // This should be used when a path is needed for file operations.
 // The path is kept unexpanded in the config to maintain portability.

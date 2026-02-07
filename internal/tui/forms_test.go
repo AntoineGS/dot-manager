@@ -379,6 +379,86 @@ func TestApplicationForm_GitPackageLoad(t *testing.T) {
 	})
 }
 
+func TestSaveApplicationForm_GitPackageMerge(t *testing.T) {
+	t.Run("save_with_git_package", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "neovim"},
+					"git": {Git: &config.GitPackage{
+						URL:     "https://github.com/user/repo.git",
+						Branch:  "main",
+						Targets: map[string]string{"linux": "~/.local/share/app"},
+						Sudo:    false,
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+		if !form.hasGitPackage {
+			t.Fatal("form should have git package loaded")
+		}
+		pkg := buildPackageSpec(form.packageManagers)
+		pkg = mergeGitPackage(pkg, form.hasGitPackage, form.gitURLInput, form.gitBranchInput, form.gitLinuxInput, form.gitWindowsInput, form.gitSudo)
+		if pkg == nil {
+			t.Fatal("package spec should not be nil")
+		}
+		gitVal, ok := pkg.Managers["git"]
+		if !ok {
+			t.Fatal("package should have git manager")
+		}
+		if !gitVal.IsGit() {
+			t.Fatal("git manager value should be a git package")
+		}
+		if gitVal.Git.URL != "https://github.com/user/repo.git" {
+			t.Errorf("git URL = %q, want %q", gitVal.Git.URL, "https://github.com/user/repo.git")
+		}
+		if gitVal.Git.Branch != "main" {
+			t.Errorf("git Branch = %q, want %q", gitVal.Git.Branch, "main")
+		}
+		if gitVal.Git.Targets["linux"] != "~/.local/share/app" {
+			t.Errorf("git Linux target = %q, want %q", gitVal.Git.Targets["linux"], "~/.local/share/app")
+		}
+	})
+
+	t.Run("save_without_git_package", func(t *testing.T) {
+		app := config.Application{Name: "test"}
+		form := NewApplicationForm(app, false)
+		pkg := buildPackageSpec(form.packageManagers)
+		pkg = mergeGitPackage(pkg, form.hasGitPackage, form.gitURLInput, form.gitBranchInput, form.gitLinuxInput, form.gitWindowsInput, form.gitSudo)
+		if pkg != nil {
+			t.Errorf("package spec should be nil, got %v", pkg)
+		}
+	})
+
+	t.Run("save_git_only_no_regular_managers", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"git": {Git: &config.GitPackage{
+						URL:     "https://github.com/user/repo.git",
+						Targets: map[string]string{"linux": "~/.local"},
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+		pkg := buildPackageSpec(form.packageManagers)
+		pkg = mergeGitPackage(pkg, form.hasGitPackage, form.gitURLInput, form.gitBranchInput, form.gitLinuxInput, form.gitWindowsInput, form.gitSudo)
+		if pkg == nil {
+			t.Fatal("package spec should not be nil")
+		}
+		if len(pkg.Managers) != 1 {
+			t.Errorf("len(Managers) = %d, want 1", len(pkg.Managers))
+		}
+		if _, ok := pkg.Managers["git"]; !ok {
+			t.Error("should have git manager")
+		}
+	})
+}
+
 func TestBuildPackageSpec(t *testing.T) {
 	t.Run("empty_managers", func(t *testing.T) {
 		result := buildPackageSpec(map[string]string{})

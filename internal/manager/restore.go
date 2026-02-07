@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/AntoineGS/dot-manager/internal/config"
+	tmpl "github.com/AntoineGS/dot-manager/internal/template"
 )
 
 // RestoreWithContext restores configurations with context support
@@ -142,6 +143,10 @@ func (m *Manager) restoreSubEntry(_ string, subEntry config.SubEntry, target str
 	backupPath := m.resolvePath(subEntry.Backup)
 
 	if subEntry.IsFolder() {
+		// Check if folder contains template files
+		if hasTemplateFiles(backupPath) {
+			return m.RestoreFolderWithTemplates(subEntry, backupPath, target)
+		}
 		return m.RestoreFolder(subEntry, backupPath, target)
 	}
 
@@ -458,4 +463,26 @@ func (m *Manager) RestoreFiles(subEntry config.SubEntry, source, target string) 
 	}
 
 	return nil
+}
+
+// hasTemplateFiles returns true if the directory contains any .tmpl files.
+// It walks the directory tree and returns early on the first match.
+func hasTemplateFiles(dir string) bool {
+	if !pathExists(dir) {
+		return false
+	}
+
+	found := false
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || found {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && tmpl.IsTemplateFile(d.Name()) {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+
+	return found
 }
