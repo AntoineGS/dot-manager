@@ -136,6 +136,14 @@ type ApplicationForm struct {
 	editingGitField bool // true when editing a git text field
 	hasGitPackage   bool // true when git package is configured/expanded
 	gitSudo         bool // sudo toggle for git package
+
+	// Installer package fields
+	installerLinuxInput   textinput.Model
+	installerWindowsInput textinput.Model
+	installerBinaryInput  textinput.Model
+	installerFieldCursor  int  // -1 = on installer label/button, 0-2 = on sub-fields
+	editingInstallerField bool // true when editing an installer text field
+	hasInstallerPackage   bool // true when installer package is configured/expanded
 }
 
 // SubEntryForm holds state for editing SubEntry data
@@ -410,11 +418,19 @@ func isPackageInstalledFromPackage(pkg *config.EntryPackage, method, entryName s
 		return false
 	}
 
+	// Handle installer packages via binary PATH lookup
+	if method == TypeInstaller {
+		if val, ok := pkg.Managers[method]; ok && val.IsInstaller() {
+			return packages.IsInstallerInstalled(val.Installer.Binary)
+		}
+		return false
+	}
+
 	// Get the package name for the detected manager
 	pkgName := ""
 	if val, ok := pkg.Managers[method]; ok {
-		// Skip git packages
-		if !val.IsGit() {
+		// Skip git and installer packages
+		if !val.IsGit() && !val.IsInstaller() {
 			pkgName = val.PackageName
 		}
 	} else {
@@ -436,6 +452,12 @@ func getPackageInstallMethodFromPackage(pkg *config.EntryPackage, osType string)
 	for _, mgr := range availableManagers {
 		if _, ok := pkg.Managers[mgr]; ok {
 			return mgr
+		}
+	}
+	// Check installer (always available when configured with a command for current OS)
+	if val, ok := pkg.Managers[TypeInstaller]; ok && val.IsInstaller() {
+		if _, hasCmd := val.Installer.Command[osType]; hasCmd {
+			return TypeInstaller
 		}
 	}
 	// Check custom

@@ -17,22 +17,26 @@ const (
 
 // UI element constants
 const (
-	PlaceholderWhen       = `e.g., {{ eq .OS "linux" }}`
-	PlaceholderNeovim     = "e.g., neovim"
-	PlaceholderGitURL     = "e.g., https://github.com/user/repo.git"
-	PlaceholderGitBranch  = "e.g., main"
-	PlaceholderGitLinux   = "e.g., ~/.local/share/app"
-	PlaceholderGitWindows = "e.g., ~/AppData/Local/app"
-	IndentSpaces          = "    "
-	CheckboxUnchecked     = "[ ]"
-	CheckboxChecked       = "[✓]"
+	PlaceholderWhen             = `e.g., {{ eq .OS "linux" }}`
+	PlaceholderNeovim           = "e.g., neovim"
+	PlaceholderGitURL           = "e.g., https://github.com/user/repo.git"
+	PlaceholderGitBranch        = "e.g., main"
+	PlaceholderGitLinux         = "e.g., ~/.local/share/app"
+	PlaceholderGitWindows       = "e.g., ~/AppData/Local/app"
+	PlaceholderInstallerLinux   = "e.g., curl ... | sh"
+	PlaceholderInstallerWindows = "e.g., winget install ..."
+	PlaceholderInstallerBinary  = "e.g., cargo"
+	IndentSpaces                = "    "
+	CheckboxUnchecked           = "[ ]"
+	CheckboxChecked             = "[✓]"
 )
 
 // Entry type constants
 const (
-	TypeGit    = "git"
-	TypeFolder = "folder"
-	TypeNone   = "none"
+	TypeGit       = "git"
+	TypeInstaller = "installer"
+	TypeFolder    = "folder"
+	TypeNone      = "none"
 )
 
 // Application status constants for level 1 rows
@@ -72,4 +76,12 @@ const (
 	GitFieldWindows = 3
 	GitFieldSudo    = 4
 	GitFieldCount   = 5
+)
+
+// Installer package field indices within the installer sub-section
+const (
+	InstallerFieldLinux   = 0
+	InstallerFieldWindows = 1
+	InstallerFieldBinary  = 2
+	InstallerFieldCount   = 3
 )

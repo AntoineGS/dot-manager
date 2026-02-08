@@ -49,6 +49,8 @@ const (
 	Choco PackageManager = "choco"
 	// Git is the git package manager for repository clones
 	Git PackageManager = "git"
+	// Installer is the installer package manager for shell command-based installation
+	Installer PackageManager = "installer"
 )
 
 // GitConfig represents git-specific package configuration.
@@ -60,16 +62,27 @@ type GitConfig struct {
 	Sudo    bool              `yaml:"sudo,omitempty"`
 }
 
+// InstallerConfig represents installer-specific package configuration.
+// It contains OS-specific shell commands and an optional binary name for install checks.
+type InstallerConfig struct {
+	Command map[string]string `yaml:"command"`
+	Binary  string            `yaml:"binary,omitempty"`
+}
+
 // ManagerValue represents a typed value for a package manager entry.
-// It holds either a package name string (for traditional managers like pacman, apt)
-// or a GitConfig (for git repositories).
+// It holds either a package name string (for traditional managers like pacman, apt),
+// a GitConfig (for git repositories), or an InstallerConfig (for shell command-based installation).
 type ManagerValue struct {
 	PackageName string
 	Git         *GitConfig
+	Installer   *InstallerConfig
 }
 
 // IsGit returns true if this manager value represents a git package configuration.
 func (v ManagerValue) IsGit() bool { return v.Git != nil }
+
+// IsInstaller returns true if this manager value represents an installer package configuration.
+func (v ManagerValue) IsInstaller() bool { return v.Installer != nil }
 
 // Package represents a package to install with multiple installation methods.
 // A package can be installed via a package manager (Managers), a custom shell
@@ -117,14 +130,22 @@ func (p *Package) UnmarshalYAML(node *yaml.Node) error {
 	for key, valueNode := range alias.Managers {
 		pm := PackageManager(key)
 
-		// Special handling for git manager
-		if pm == Git {
+		switch pm { //nolint:exhaustive // default handles all traditional string-based managers
+		case Git:
 			var gitCfg GitConfig
 			if err := valueNode.Decode(&gitCfg); err != nil {
 				return fmt.Errorf("failed to decode git config: %w", err)
 			}
 			p.Managers[pm] = ManagerValue{Git: &gitCfg}
-		} else {
+
+		case Installer:
+			var installerCfg InstallerConfig
+			if err := valueNode.Decode(&installerCfg); err != nil {
+				return fmt.Errorf("failed to decode installer config: %w", err)
+			}
+			p.Managers[pm] = ManagerValue{Installer: &installerCfg}
+
+		default:
 			// Traditional managers are strings
 			var pkgName string
 			if err := valueNode.Decode(&pkgName); err != nil {
@@ -283,11 +304,20 @@ func (m *Manager) Install(pkg Package) InstallResult {
 		return result
 	}
 
+	// Check if this is an installer package
+	if installerValue, ok := pkg.Managers[Installer]; ok && installerValue.IsInstaller() {
+		result.Method = string(Installer)
+		success, msg := m.installInstallerPackage(*installerValue.Installer)
+		result.Success = success
+		result.Message = msg
+		return result
+	}
+
 	// Try package managers
 	if len(pkg.Managers) > 0 {
 		for _, mgr := range m.Available {
-			// Skip git manager (already handled above)
-			if mgr == Git {
+			// Skip git and installer managers (already handled above)
+			if mgr == Git || mgr == Installer {
 				continue
 			}
 
@@ -366,6 +396,10 @@ func (m *Manager) installWithManager(mgr PackageManager, pkgName string) (bool, 
 	if !ok {
 		if mgr == Git {
 			return false, "Git packages should be installed via installGitPackage"
+		}
+
+		if mgr == Installer {
+			return false, "Installer packages should be installed via installInstallerPackage"
 		}
 
 		return false, fmt.Sprintf("Unknown package manager: %s", mgr)
@@ -563,6 +597,38 @@ func (m *Manager) gitPull(repoPath string, sudo bool) (bool, string) {
 	return true, "Repository updated successfully"
 }
 
+// installInstallerPackage runs an OS-specific shell command to install a package.
+// SECURITY NOTE: This intentionally executes arbitrary shell commands from the
+// user's configuration file. Users should only use configurations they trust,
+// as malicious configs could execute harmful commands.
+func (m *Manager) installInstallerPackage(cfg InstallerConfig) (bool, string) {
+	command, ok := cfg.Command[m.OS]
+	if !ok {
+		return false, fmt.Sprintf("No installer command defined for OS: %s", m.OS)
+	}
+
+	if m.DryRun {
+		return true, fmt.Sprintf("Would run: %s", command)
+	}
+
+	var cmd *exec.Cmd
+	if m.OS == platform.OSWindows {
+		cmd = exec.CommandContext(m.ctx, "powershell", "-Command", command) //nolint:gosec // intentional install command from user config
+	} else {
+		cmd = exec.CommandContext(m.ctx, "sh", "-c", command) //nolint:gosec // intentional install command from user config
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		return false, fmt.Sprintf("Installer command failed: %v", err)
+	}
+
+	return true, "Installed via installer"
+}
+
 // InstallAll installs all packages in the provided slice sequentially.
 // It returns a slice of InstallResult, one for each package, indicating
 // the success or failure of each installation.
@@ -599,6 +665,12 @@ func (m *Manager) CanInstall(pkg Package) bool {
 			return true
 		}
 	}
+	// Check installer (always available when configured with a command for current OS)
+	if val, ok := pkg.Managers[Installer]; ok && val.IsInstaller() {
+		if _, hasCmd := val.Installer.Command[m.OS]; hasCmd {
+			return true
+		}
+	}
 	// Check custom
 	if _, ok := pkg.Custom[m.OS]; ok {
 		return true
@@ -627,13 +699,20 @@ func (m *Manager) GetInstallablePackages() []Package {
 }
 
 // GetInstallMethod returns the method that would be used to install a package.
-// It returns the name of the first available package manager, "custom" if a
-// custom command is available, "url" for URL-based installation, or "none"
-// if no installation method is available.
+// It returns the name of the first available package manager, "installer" for
+// installer packages, "custom" if a custom command is available, "url" for
+// URL-based installation, or "none" if no installation method is available.
 func (m *Manager) GetInstallMethod(pkg Package) string {
 	for _, mgr := range m.Available {
 		if _, ok := pkg.Managers[mgr]; ok {
 			return string(mgr)
+		}
+	}
+
+	// Check installer (always available when configured with a command for current OS)
+	if val, ok := pkg.Managers[Installer]; ok && val.IsInstaller() {
+		if _, hasCmd := val.Installer.Command[m.OS]; hasCmd {
+			return string(Installer)
 		}
 	}
 
@@ -669,6 +748,16 @@ func IsInstalled(ctx context.Context, pkgName string, manager string) bool {
 	return err == nil
 }
 
+// IsInstallerInstalled checks if an installer package is installed by looking up
+// the binary name in PATH. Returns false if no binary name is configured.
+func IsInstallerInstalled(binary string) bool {
+	if binary == "" {
+		return false
+	}
+
+	return platform.IsCommandAvailable(binary)
+}
+
 // FromEntry creates a Package from a config.Entry.
 // It converts the entry's package configuration into a Package struct,
 // mapping managers and URL install configurations. Returns nil if the
@@ -687,6 +776,14 @@ func FromEntry(e config.Entry) *Package {
 				Branch:  v.Git.Branch,
 				Targets: v.Git.Targets,
 				Sudo:    v.Git.Sudo,
+			}}
+			continue
+		}
+		// Convert config.InstallerPackage to packages.InstallerConfig
+		if k == "installer" && v.IsInstaller() {
+			managers[Installer] = ManagerValue{Installer: &InstallerConfig{
+				Command: v.Installer.Command,
+				Binary:  v.Installer.Binary,
 			}}
 			continue
 		}

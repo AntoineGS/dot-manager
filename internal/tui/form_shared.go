@@ -46,6 +46,26 @@ func newGitTextInputs() (gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsI
 	return gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput
 }
 
+// newInstallerTextInputs creates the three installer text inputs with standard placeholders and char limits
+func newInstallerTextInputs() (installerLinuxInput, installerWindowsInput, installerBinaryInput textinput.Model) {
+	installerLinuxInput = textinput.New()
+	installerLinuxInput.Placeholder = PlaceholderInstallerLinux
+	installerLinuxInput.CharLimit = 512
+	installerLinuxInput.Width = 40
+
+	installerWindowsInput = textinput.New()
+	installerWindowsInput.Placeholder = PlaceholderInstallerWindows
+	installerWindowsInput.CharLimit = 512
+	installerWindowsInput.Width = 40
+
+	installerBinaryInput = textinput.New()
+	installerBinaryInput.Placeholder = PlaceholderInstallerBinary
+	installerBinaryInput.CharLimit = 128
+	installerBinaryInput.Width = 40
+
+	return installerLinuxInput, installerWindowsInput, installerBinaryInput
+}
+
 // renderPackagesSection renders the packages list with editing state
 // focused indicates if the packages section is currently focused
 // packageManagers is the map of manager -> package name
@@ -169,6 +189,51 @@ func renderGitField(label string, input textinput.Model, onSubFields, isCurrent,
 	return fmt.Sprintf("%s%s%s\n", prefix, label, value)
 }
 
+// renderInstallerPackageSection renders the installer package section within Packages
+// focused indicates if the packages section is currently focused
+// onInstallerItem indicates if the packagesCursor is on the installer item
+func renderInstallerPackageSection(
+	focused bool,
+	onInstallerItem bool,
+	hasInstallerPackage bool,
+	installerFieldCursor int,
+	editingInstallerField bool,
+	installerLinuxInput textinput.Model,
+	installerWindowsInput textinput.Model,
+	installerBinaryInput textinput.Model,
+) string {
+	var b strings.Builder
+	prefix := IndentSpaces
+
+	if !hasInstallerPackage {
+		// Collapsed: show add button
+		addText := "[+ Add Installer Package]"
+		if focused && onInstallerItem {
+			b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(addText)))
+		} else {
+			b.WriteString(fmt.Sprintf("%s%s\n", prefix, MutedTextStyle.Render(addText)))
+		}
+		return b.String()
+	}
+
+	// Expanded: show installer label and sub-fields
+	installerLabel := "installer:"
+	if focused && onInstallerItem && installerFieldCursor == -1 {
+		b.WriteString(fmt.Sprintf("%s%s\n", prefix, SelectedMenuItemStyle.Render(installerLabel)))
+	} else {
+		b.WriteString(fmt.Sprintf("%s%s\n", prefix, installerLabel))
+	}
+
+	// Sub-fields with deeper indent
+	onSubFields := focused && onInstallerItem && installerFieldCursor >= 0
+
+	b.WriteString(renderGitField("Linux:   ", installerLinuxInput, onSubFields, installerFieldCursor == InstallerFieldLinux, editingInstallerField && installerFieldCursor == InstallerFieldLinux))
+	b.WriteString(renderGitField("Windows: ", installerWindowsInput, onSubFields, installerFieldCursor == InstallerFieldWindows, editingInstallerField && installerFieldCursor == InstallerFieldWindows))
+	b.WriteString(renderGitField("Binary:  ", installerBinaryInput, onSubFields, installerFieldCursor == InstallerFieldBinary, editingInstallerField && installerFieldCursor == InstallerFieldBinary))
+
+	return b.String()
+}
+
 // renderWhenField renders the when expression text field
 func renderWhenField(
 	focused bool,
@@ -253,6 +318,49 @@ func mergeGitPackage(
 	}
 
 	pkg.Managers[TypeGit] = config.ManagerValue{Git: gitPkg}
+
+	return pkg
+}
+
+// mergeInstallerPackage merges installer package data into an existing EntryPackage
+func mergeInstallerPackage(
+	pkg *config.EntryPackage,
+	hasInstaller bool,
+	linuxInput textinput.Model,
+	windowsInput textinput.Model,
+	binaryInput textinput.Model,
+) *config.EntryPackage {
+	if !hasInstaller {
+		return pkg
+	}
+
+	linux := strings.TrimSpace(linuxInput.Value())
+	windows := strings.TrimSpace(windowsInput.Value())
+
+	if linux == "" && windows == "" {
+		return pkg
+	}
+
+	if pkg == nil {
+		pkg = &config.EntryPackage{
+			Managers: make(map[string]config.ManagerValue),
+		}
+	}
+
+	installerPkg := &config.InstallerPackage{
+		Command: make(map[string]string),
+		Binary:  strings.TrimSpace(binaryInput.Value()),
+	}
+
+	if linux != "" {
+		installerPkg.Command[OSLinux] = linux
+	}
+
+	if windows != "" {
+		installerPkg.Command[OSWindows] = windows
+	}
+
+	pkg.Managers[TypeInstaller] = config.ManagerValue{Installer: installerPkg}
 
 	return pkg
 }

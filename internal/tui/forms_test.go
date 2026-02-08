@@ -372,6 +372,204 @@ func TestSaveApplicationForm_GitPackageMerge(t *testing.T) {
 	})
 }
 
+func TestApplicationForm_InstallerPackageLoad(t *testing.T) {
+	t.Run("new_form_has_no_installer_package", func(t *testing.T) {
+		form := NewApplicationForm(config.Application{Name: "test"}, false)
+		if form.hasInstallerPackage {
+			t.Error("new form should not have installer package")
+		}
+		if form.installerFieldCursor != -1 {
+			t.Errorf("installerFieldCursor = %d, want -1", form.installerFieldCursor)
+		}
+	})
+
+	t.Run("edit_form_loads_installer_package", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "neovim"},
+					"installer": {Installer: &config.InstallerPackage{
+						Command: map[string]string{
+							"linux":   "curl -fsSL https://example.com/install.sh | sh",
+							"windows": "iwr https://example.com/install.ps1 | iex",
+						},
+						Binary: "mytool",
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+
+		if !form.hasInstallerPackage {
+			t.Error("form should have installer package")
+		}
+		if form.installerLinuxInput.Value() != "curl -fsSL https://example.com/install.sh | sh" {
+			t.Errorf("installerLinuxInput = %q, want %q", form.installerLinuxInput.Value(), "curl -fsSL https://example.com/install.sh | sh")
+		}
+		if form.installerWindowsInput.Value() != "iwr https://example.com/install.ps1 | iex" {
+			t.Errorf("installerWindowsInput = %q, want %q", form.installerWindowsInput.Value(), "iwr https://example.com/install.ps1 | iex")
+		}
+		if form.installerBinaryInput.Value() != "mytool" {
+			t.Errorf("installerBinaryInput = %q, want %q", form.installerBinaryInput.Value(), "mytool")
+		}
+	})
+
+	t.Run("edit_form_without_installer_package", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "neovim"},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+
+		if form.hasInstallerPackage {
+			t.Error("form should not have installer package")
+		}
+		if form.installerLinuxInput.Value() != "" {
+			t.Errorf("installerLinuxInput = %q, want empty", form.installerLinuxInput.Value())
+		}
+	})
+
+	t.Run("edit_form_loads_installer_without_binary", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"installer": {Installer: &config.InstallerPackage{
+						Command: map[string]string{
+							"linux": "make install",
+						},
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+
+		if !form.hasInstallerPackage {
+			t.Error("form should have installer package")
+		}
+		if form.installerLinuxInput.Value() != "make install" {
+			t.Errorf("installerLinuxInput = %q, want %q", form.installerLinuxInput.Value(), "make install")
+		}
+		if form.installerBinaryInput.Value() != "" {
+			t.Errorf("installerBinaryInput = %q, want empty", form.installerBinaryInput.Value())
+		}
+	})
+}
+
+func TestSaveApplicationForm_InstallerPackageMerge(t *testing.T) {
+	t.Run("save_with_installer_package", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"pacman": {PackageName: "neovim"},
+					"installer": {Installer: &config.InstallerPackage{
+						Command: map[string]string{"linux": "curl -fsSL example.com | sh"},
+						Binary:  "mytool",
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+		if !form.hasInstallerPackage {
+			t.Fatal("form should have installer package loaded")
+		}
+		pkg := buildPackageSpec(form.packageManagers)
+		pkg = mergeGitPackage(pkg, form.hasGitPackage, form.gitURLInput, form.gitBranchInput, form.gitLinuxInput, form.gitWindowsInput, form.gitSudo)
+		pkg = mergeInstallerPackage(pkg, form.hasInstallerPackage, form.installerLinuxInput, form.installerWindowsInput, form.installerBinaryInput)
+		if pkg == nil {
+			t.Fatal("package spec should not be nil")
+		}
+		installerVal, ok := pkg.Managers["installer"]
+		if !ok {
+			t.Fatal("package should have installer manager")
+		}
+		if !installerVal.IsInstaller() {
+			t.Fatal("installer manager value should be an installer package")
+		}
+		if installerVal.Installer.Command["linux"] != "curl -fsSL example.com | sh" {
+			t.Errorf("installer Command[linux] = %q, want %q", installerVal.Installer.Command["linux"], "curl -fsSL example.com | sh")
+		}
+		if installerVal.Installer.Binary != "mytool" {
+			t.Errorf("installer Binary = %q, want %q", installerVal.Installer.Binary, "mytool")
+		}
+	})
+
+	t.Run("save_without_installer_package", func(t *testing.T) {
+		app := config.Application{Name: "test"}
+		form := NewApplicationForm(app, false)
+		pkg := buildPackageSpec(form.packageManagers)
+		pkg = mergeInstallerPackage(pkg, form.hasInstallerPackage, form.installerLinuxInput, form.installerWindowsInput, form.installerBinaryInput)
+		if pkg != nil {
+			t.Errorf("package spec should be nil, got %v", pkg)
+		}
+	})
+
+	t.Run("save_installer_only_no_regular_managers", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"installer": {Installer: &config.InstallerPackage{
+						Command: map[string]string{"linux": "make install"},
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+		pkg := buildPackageSpec(form.packageManagers)
+		pkg = mergeInstallerPackage(pkg, form.hasInstallerPackage, form.installerLinuxInput, form.installerWindowsInput, form.installerBinaryInput)
+		if pkg == nil {
+			t.Fatal("package spec should not be nil")
+		}
+		if len(pkg.Managers) != 1 {
+			t.Errorf("len(Managers) = %d, want 1", len(pkg.Managers))
+		}
+		if _, ok := pkg.Managers["installer"]; !ok {
+			t.Error("should have installer manager")
+		}
+	})
+
+	t.Run("save_with_both_git_and_installer", func(t *testing.T) {
+		app := config.Application{
+			Name: "test",
+			Package: &config.EntryPackage{
+				Managers: map[string]config.ManagerValue{
+					"git": {Git: &config.GitPackage{
+						URL:     "https://github.com/user/repo.git",
+						Targets: map[string]string{"linux": "~/.local"},
+					}},
+					"installer": {Installer: &config.InstallerPackage{
+						Command: map[string]string{"linux": "make install"},
+						Binary:  "mytool",
+					}},
+				},
+			},
+		}
+		form := NewApplicationForm(app, true)
+		pkg := buildPackageSpec(form.packageManagers)
+		pkg = mergeGitPackage(pkg, form.hasGitPackage, form.gitURLInput, form.gitBranchInput, form.gitLinuxInput, form.gitWindowsInput, form.gitSudo)
+		pkg = mergeInstallerPackage(pkg, form.hasInstallerPackage, form.installerLinuxInput, form.installerWindowsInput, form.installerBinaryInput)
+		if pkg == nil {
+			t.Fatal("package spec should not be nil")
+		}
+		if len(pkg.Managers) != 2 {
+			t.Errorf("len(Managers) = %d, want 2", len(pkg.Managers))
+		}
+		if _, ok := pkg.Managers["git"]; !ok {
+			t.Error("should have git manager")
+		}
+		if _, ok := pkg.Managers["installer"]; !ok {
+			t.Error("should have installer manager")
+		}
+	})
+}
+
 func TestBuildPackageSpec(t *testing.T) {
 	t.Run("empty_managers", func(t *testing.T) {
 		result := buildPackageSpec(map[string]string{})

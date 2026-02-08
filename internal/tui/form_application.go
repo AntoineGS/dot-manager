@@ -44,28 +44,34 @@ func (m *Model) initApplicationFormNew() {
 	whenInput.Width = 60
 
 	gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput := newGitTextInputs()
+	installerLinuxInput, installerWindowsInput, installerBinaryInput := newInstallerTextInputs()
 
 	m.applicationForm = &ApplicationForm{
-		nameInput:        nameInput,
-		descriptionInput: descriptionInput,
-		packageManagers:  make(map[string]string),
-		packagesCursor:   0,
-		editingPackage:   false,
-		packageNameInput: packageNameInput,
-		lastPackageName:  "",
-		whenInput:        whenInput,
-		focusIndex:       0,
-		editingField:     false,
-		originalValue:    "",
-		editAppIdx:       -1,
-		err:              "",
-		gitURLInput:      gitURLInput,
-		gitBranchInput:   gitBranchInput,
-		gitLinuxInput:    gitLinuxInput,
-		gitWindowsInput:  gitWindowsInput,
-		gitFieldCursor:   -1,
-		hasGitPackage:    false,
-		gitSudo:          false,
+		nameInput:             nameInput,
+		descriptionInput:      descriptionInput,
+		packageManagers:       make(map[string]string),
+		packagesCursor:        0,
+		editingPackage:        false,
+		packageNameInput:      packageNameInput,
+		lastPackageName:       "",
+		whenInput:             whenInput,
+		focusIndex:            0,
+		editingField:          false,
+		originalValue:         "",
+		editAppIdx:            -1,
+		err:                   "",
+		gitURLInput:           gitURLInput,
+		gitBranchInput:        gitBranchInput,
+		gitLinuxInput:         gitLinuxInput,
+		gitWindowsInput:       gitWindowsInput,
+		gitFieldCursor:        -1,
+		hasGitPackage:         false,
+		gitSudo:               false,
+		installerLinuxInput:   installerLinuxInput,
+		installerWindowsInput: installerWindowsInput,
+		installerBinaryInput:  installerBinaryInput,
+		installerFieldCursor:  -1,
+		hasInstallerPackage:   false,
 	}
 
 	m.activeForm = FormApplication
@@ -113,16 +119,16 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 	whenInput.SetValue(app.When)
 
 	gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput := newGitTextInputs()
+	installerLinuxInput, installerWindowsInput, installerBinaryInput := newInstallerTextInputs()
 
-	// Load package managers (only string-based managers, skip git)
+	// Load package managers (only string-based managers, skip git and installer)
 	packageManagers := make(map[string]string)
 	if app.Package != nil && len(app.Package.Managers) > 0 {
 		for k, v := range app.Package.Managers {
-			// Skip git packages as they require special handling
-			if k == TypeGit {
+			if k == TypeGit || k == TypeInstaller {
 				continue
 			}
-			if !v.IsGit() {
+			if !v.IsGit() && !v.IsInstaller() {
 				packageManagers[k] = v.PackageName
 			}
 		}
@@ -148,27 +154,48 @@ func (m *Model) initApplicationFormEdit(appIdx int) {
 		}
 	}
 
+	// Load installer package if present
+	hasInstallerPackage := false
+
+	if app.Package != nil {
+		if installerVal, ok := app.Package.Managers[TypeInstaller]; ok && installerVal.IsInstaller() {
+			hasInstallerPackage = true
+			if cmd, ok := installerVal.Installer.Command[OSLinux]; ok {
+				installerLinuxInput.SetValue(cmd)
+			}
+			if cmd, ok := installerVal.Installer.Command[OSWindows]; ok {
+				installerWindowsInput.SetValue(cmd)
+			}
+			installerBinaryInput.SetValue(installerVal.Installer.Binary)
+		}
+	}
+
 	m.applicationForm = &ApplicationForm{
-		nameInput:        nameInput,
-		descriptionInput: descriptionInput,
-		packageManagers:  packageManagers,
-		packagesCursor:   0,
-		editingPackage:   false,
-		packageNameInput: packageNameInput,
-		lastPackageName:  "",
-		whenInput:        whenInput,
-		focusIndex:       0,
-		editingField:     false,
-		originalValue:    "",
-		editAppIdx:       configAppIdx,
-		err:              "",
-		gitURLInput:      gitURLInput,
-		gitBranchInput:   gitBranchInput,
-		gitLinuxInput:    gitLinuxInput,
-		gitWindowsInput:  gitWindowsInput,
-		gitFieldCursor:   -1,
-		hasGitPackage:    hasGitPackage,
-		gitSudo:          gitSudo,
+		nameInput:             nameInput,
+		descriptionInput:      descriptionInput,
+		packageManagers:       packageManagers,
+		packagesCursor:        0,
+		editingPackage:        false,
+		packageNameInput:      packageNameInput,
+		lastPackageName:       "",
+		whenInput:             whenInput,
+		focusIndex:            0,
+		editingField:          false,
+		originalValue:         "",
+		editAppIdx:            configAppIdx,
+		err:                   "",
+		gitURLInput:           gitURLInput,
+		gitBranchInput:        gitBranchInput,
+		gitLinuxInput:         gitLinuxInput,
+		gitWindowsInput:       gitWindowsInput,
+		gitFieldCursor:        -1,
+		hasGitPackage:         hasGitPackage,
+		gitSudo:               gitSudo,
+		installerLinuxInput:   installerLinuxInput,
+		installerWindowsInput: installerWindowsInput,
+		installerBinaryInput:  installerBinaryInput,
+		installerFieldCursor:  -1,
+		hasInstallerPackage:   hasInstallerPackage,
 	}
 
 	m.activeForm = FormApplication
@@ -206,6 +233,11 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateApplicationGitFieldInput(msg)
 	}
 
+	// Handle editing an installer text field
+	if m.applicationForm.editingInstallerField {
+		return m.updateApplicationInstallerFieldInput(msg)
+	}
+
 	// Handle editing a text field
 	if m.applicationForm.editingField {
 		return m.updateApplicationFieldInput(msg)
@@ -225,6 +257,9 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.getApplicationFieldType() == appFieldPackages {
 		if m.applicationForm.packagesCursor == len(displayPackageManagers) && m.applicationForm.gitFieldCursor >= 0 {
 			return m.updateApplicationGitFields(msg)
+		}
+		if m.applicationForm.packagesCursor == len(displayPackageManagers)+1 && m.applicationForm.installerFieldCursor >= 0 {
+			return m.updateApplicationInstallerFields(msg)
 		}
 		return m.updateApplicationPackagesList(msg)
 	}
@@ -353,7 +388,9 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 
-	maxCursor := len(displayPackageManagers) // includes git item at the end
+	gitItemIdx := len(displayPackageManagers)
+	installerItemIdx := len(displayPackageManagers) + 1
+	maxCursor := installerItemIdx // includes git and installer items at the end
 
 	switch msg.String() {
 	case KeyCtrlC:
@@ -368,8 +405,9 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	case "up", "k":
 		if m.applicationForm.packagesCursor > 0 {
 			m.applicationForm.packagesCursor--
-			// Reset git field cursor when moving away from git item
+			// Reset field cursors when moving between items
 			m.applicationForm.gitFieldCursor = -1
+			m.applicationForm.installerFieldCursor = -1
 		} else {
 			// Move to previous field
 			m.applicationForm.focusIndex--
@@ -380,10 +418,19 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	case KeyDown, "j":
 		switch {
 		case m.applicationForm.packagesCursor < maxCursor:
+			// Moving to next item - handle git sub-field entry
+			if m.applicationForm.packagesCursor == gitItemIdx && m.applicationForm.hasGitPackage && m.applicationForm.gitFieldCursor == -1 {
+				m.applicationForm.gitFieldCursor = 0
+				return m, nil
+			}
+			// Moving to next item - handle installer sub-field entry
+			if m.applicationForm.packagesCursor == installerItemIdx && m.applicationForm.hasInstallerPackage && m.applicationForm.installerFieldCursor == -1 {
+				m.applicationForm.installerFieldCursor = 0
+				return m, nil
+			}
 			m.applicationForm.packagesCursor++
-		case m.applicationForm.packagesCursor == maxCursor && m.applicationForm.hasGitPackage && m.applicationForm.gitFieldCursor == -1:
-			// On git label, enter sub-fields
-			m.applicationForm.gitFieldCursor = 0
+			m.applicationForm.gitFieldCursor = -1
+			m.applicationForm.installerFieldCursor = -1
 		default:
 			// Move to next field
 			m.applicationForm.focusIndex++
@@ -392,6 +439,7 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 			}
 			m.applicationForm.packagesCursor = 0
 			m.applicationForm.gitFieldCursor = -1
+			m.applicationForm.installerFieldCursor = -1
 			m.updateApplicationFormFocus()
 		}
 		return m, nil
@@ -403,64 +451,22 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		}
 		m.applicationForm.packagesCursor = 0
 		m.applicationForm.gitFieldCursor = -1
+		m.applicationForm.installerFieldCursor = -1
 		m.updateApplicationFormFocus()
 		return m, nil
 
 	case KeyShiftTab:
 		m.applicationForm.focusIndex--
 		m.applicationForm.gitFieldCursor = -1
+		m.applicationForm.installerFieldCursor = -1
 		m.updateApplicationFormFocus()
 		return m, nil
 
 	case KeyEnter, "e", " ":
-		// Handle git item
-		if m.applicationForm.packagesCursor == len(displayPackageManagers) {
-			if !m.applicationForm.hasGitPackage {
-				// Add git package
-				m.applicationForm.hasGitPackage = true
-				m.applicationForm.gitFieldCursor = GitFieldURL
-			}
-			return m, nil
-		}
-		// Edit the selected package manager's package name
-		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
-			return m, nil
-		}
-		manager := displayPackageManagers[m.applicationForm.packagesCursor]
-		currentValue := m.applicationForm.packageManagers[manager]
-
-		// Auto-populate with last package name if empty
-		if currentValue == "" && m.applicationForm.lastPackageName != "" {
-			currentValue = m.applicationForm.lastPackageName
-		}
-
-		m.applicationForm.editingPackage = true
-		m.applicationForm.packageNameInput.SetValue(currentValue)
-		m.applicationForm.packageNameInput.Focus()
-		m.applicationForm.packageNameInput.SetCursor(len(currentValue))
-		return m, nil
+		return m.handlePackagesListActivate(gitItemIdx, installerItemIdx)
 
 	case "d", KeyBackspace, KeyDelete:
-		// Handle git item deletion
-		if m.applicationForm.packagesCursor == len(displayPackageManagers) && m.applicationForm.gitFieldCursor == -1 {
-			m.applicationForm.hasGitPackage = false
-			m.applicationForm.gitFieldCursor = -1
-			m.applicationForm.gitSudo = false
-			m.applicationForm.gitURLInput.SetValue("")
-			m.applicationForm.gitBranchInput.SetValue("")
-			m.applicationForm.gitLinuxInput.SetValue("")
-			m.applicationForm.gitWindowsInput.SetValue("")
-			m.applicationForm.err = ""
-			return m, nil
-		}
-		// Clear the package name for the selected manager
-		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
-			return m, nil
-		}
-		manager := displayPackageManagers[m.applicationForm.packagesCursor]
-		delete(m.applicationForm.packageManagers, manager)
-		m.applicationForm.err = ""
-		return m, nil
+		return m.handlePackagesListDelete(gitItemIdx, installerItemIdx)
 
 	case "s", KeyCtrlS:
 		// Save the form
@@ -474,6 +480,77 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 
+	return m, nil
+}
+
+// handlePackagesListActivate handles enter/space on the packages list
+func (m Model) handlePackagesListActivate(gitItemIdx, installerItemIdx int) (tea.Model, tea.Cmd) {
+	// Handle git item
+	if m.applicationForm.packagesCursor == gitItemIdx {
+		if !m.applicationForm.hasGitPackage {
+			m.applicationForm.hasGitPackage = true
+			m.applicationForm.gitFieldCursor = GitFieldURL
+		}
+		return m, nil
+	}
+	// Handle installer item
+	if m.applicationForm.packagesCursor == installerItemIdx {
+		if !m.applicationForm.hasInstallerPackage {
+			m.applicationForm.hasInstallerPackage = true
+			m.applicationForm.installerFieldCursor = InstallerFieldLinux
+		}
+		return m, nil
+	}
+	// Edit the selected package manager's package name
+	if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
+		return m, nil
+	}
+	manager := displayPackageManagers[m.applicationForm.packagesCursor]
+	currentValue := m.applicationForm.packageManagers[manager]
+
+	// Auto-populate with last package name if empty
+	if currentValue == "" && m.applicationForm.lastPackageName != "" {
+		currentValue = m.applicationForm.lastPackageName
+	}
+
+	m.applicationForm.editingPackage = true
+	m.applicationForm.packageNameInput.SetValue(currentValue)
+	m.applicationForm.packageNameInput.Focus()
+	m.applicationForm.packageNameInput.SetCursor(len(currentValue))
+	return m, nil
+}
+
+// handlePackagesListDelete handles delete/backspace on the packages list
+func (m Model) handlePackagesListDelete(gitItemIdx, installerItemIdx int) (tea.Model, tea.Cmd) {
+	// Handle git item deletion
+	if m.applicationForm.packagesCursor == gitItemIdx && m.applicationForm.gitFieldCursor == -1 {
+		m.applicationForm.hasGitPackage = false
+		m.applicationForm.gitFieldCursor = -1
+		m.applicationForm.gitSudo = false
+		m.applicationForm.gitURLInput.SetValue("")
+		m.applicationForm.gitBranchInput.SetValue("")
+		m.applicationForm.gitLinuxInput.SetValue("")
+		m.applicationForm.gitWindowsInput.SetValue("")
+		m.applicationForm.err = ""
+		return m, nil
+	}
+	// Handle installer item deletion
+	if m.applicationForm.packagesCursor == installerItemIdx && m.applicationForm.installerFieldCursor == -1 {
+		m.applicationForm.hasInstallerPackage = false
+		m.applicationForm.installerFieldCursor = -1
+		m.applicationForm.installerLinuxInput.SetValue("")
+		m.applicationForm.installerWindowsInput.SetValue("")
+		m.applicationForm.installerBinaryInput.SetValue("")
+		m.applicationForm.err = ""
+		return m, nil
+	}
+	// Clear the package name for the selected manager
+	if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
+		return m, nil
+	}
+	manager := displayPackageManagers[m.applicationForm.packagesCursor]
+	delete(m.applicationForm.packageManagers, manager)
+	m.applicationForm.err = ""
 	return m, nil
 }
 
@@ -553,14 +630,10 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.applicationForm.gitFieldCursor < GitFieldCount-1 {
 			m.applicationForm.gitFieldCursor++
 		} else {
-			// Move to When section
-			m.applicationForm.focusIndex++
-			if m.applicationForm.focusIndex > 3 {
-				m.applicationForm.focusIndex = 0
-			}
-			m.applicationForm.packagesCursor = 0
+			// Move to installer item (next in packages list)
+			m.applicationForm.packagesCursor = len(displayPackageManagers) + 1
 			m.applicationForm.gitFieldCursor = -1
-			m.updateApplicationFormFocus()
+			m.applicationForm.installerFieldCursor = -1
 		}
 		return m, nil
 
@@ -672,6 +745,142 @@ func (m *Model) getGitFieldInput() *textinput.Model {
 	}
 }
 
+// updateApplicationInstallerFields handles navigation within installer sub-fields (installerFieldCursor >= 0)
+func (m Model) updateApplicationInstallerFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.applicationForm == nil {
+		return m, nil
+	}
+
+	switch msg.String() {
+	case KeyCtrlC:
+		return m, tea.Quit
+
+	case "q", KeyEsc:
+		m.activeForm = FormNone
+		m.applicationForm = nil
+		m.Screen = ScreenResults
+		return m, nil
+
+	case "up", "k":
+		if m.applicationForm.installerFieldCursor > 0 {
+			m.applicationForm.installerFieldCursor--
+		} else {
+			// Back to installer label (will route to updateApplicationPackagesList on next keypress)
+			m.applicationForm.installerFieldCursor = -1
+		}
+		return m, nil
+
+	case KeyDown, "j":
+		if m.applicationForm.installerFieldCursor < InstallerFieldCount-1 {
+			m.applicationForm.installerFieldCursor++
+		} else {
+			// Move to When section
+			m.applicationForm.focusIndex++
+			if m.applicationForm.focusIndex > 3 {
+				m.applicationForm.focusIndex = 0
+			}
+			m.applicationForm.packagesCursor = 0
+			m.applicationForm.installerFieldCursor = -1
+			m.updateApplicationFormFocus()
+		}
+		return m, nil
+
+	case KeyEnter, "e":
+		// Enter edit mode for text fields
+		input := m.getInstallerFieldInput()
+		if input != nil {
+			m.applicationForm.editingInstallerField = true
+			m.applicationForm.originalValue = input.Value()
+			input.Focus()
+			input.SetCursor(len(input.Value()))
+		}
+		return m, nil
+
+	case KeyTab:
+		m.applicationForm.focusIndex++
+		if m.applicationForm.focusIndex > 3 {
+			m.applicationForm.focusIndex = 0
+		}
+		m.applicationForm.packagesCursor = 0
+		m.applicationForm.installerFieldCursor = -1
+		m.updateApplicationFormFocus()
+		return m, nil
+
+	case KeyShiftTab:
+		m.applicationForm.focusIndex--
+		m.applicationForm.installerFieldCursor = -1
+		m.updateApplicationFormFocus()
+		return m, nil
+
+	case "s", KeyCtrlS:
+		if err := m.saveApplicationForm(); err != nil {
+			m.applicationForm.err = err.Error()
+			return m, nil
+		}
+		m.activeForm = FormNone
+		m.applicationForm = nil
+		m.Screen = ScreenResults
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// updateApplicationInstallerFieldInput handles text input when editing an installer field
+func (m Model) updateApplicationInstallerFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.applicationForm == nil {
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case KeyCtrlC:
+		return m, tea.Quit
+
+	case KeyEsc:
+		// Restore original value and exit edit mode
+		input := m.getInstallerFieldInput()
+		if input != nil {
+			input.SetValue(m.applicationForm.originalValue)
+		}
+		m.applicationForm.editingInstallerField = false
+		return m, nil
+
+	case KeyEnter, KeyTab:
+		// Save current value and exit edit mode
+		m.applicationForm.editingInstallerField = false
+		return m, nil
+	}
+
+	// Pass to the focused text input
+	input := m.getInstallerFieldInput()
+	if input != nil {
+		*input, cmd = input.Update(msg)
+	}
+
+	m.applicationForm.err = ""
+	return m, cmd
+}
+
+// getInstallerFieldInput returns a pointer to the current installer text input based on installerFieldCursor
+func (m *Model) getInstallerFieldInput() *textinput.Model {
+	if m.applicationForm == nil {
+		return nil
+	}
+
+	switch m.applicationForm.installerFieldCursor {
+	case InstallerFieldLinux:
+		return &m.applicationForm.installerLinuxInput
+	case InstallerFieldWindows:
+		return &m.applicationForm.installerWindowsInput
+	case InstallerFieldBinary:
+		return &m.applicationForm.installerBinaryInput
+	default:
+		return nil
+	}
+}
+
 // updateApplicationWhenInput handles key events when editing the when expression
 func (m Model) updateApplicationWhenInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.applicationForm == nil {
@@ -769,6 +978,17 @@ func (m Model) viewApplicationForm() string {
 		m.applicationForm.gitWindowsInput,
 		m.applicationForm.gitSudo,
 	))
+	onInstallerItem := ft == appFieldPackages && m.applicationForm.packagesCursor == len(displayPackageManagers)+1
+	b.WriteString(renderInstallerPackageSection(
+		ft == appFieldPackages,
+		onInstallerItem,
+		m.applicationForm.hasInstallerPackage,
+		m.applicationForm.installerFieldCursor,
+		m.applicationForm.editingInstallerField,
+		m.applicationForm.installerLinuxInput,
+		m.applicationForm.installerWindowsInput,
+		m.applicationForm.installerBinaryInput,
+	))
 	b.WriteString("\n")
 
 	// When section
@@ -841,7 +1061,7 @@ func (m Model) renderApplicationFormHelp() string {
 
 	ft := m.getApplicationFieldType()
 
-	if m.applicationForm.editingGitField {
+	if m.applicationForm.editingGitField || m.applicationForm.editingInstallerField {
 		return RenderHelpWithWidth(m.width,
 			"enter", "save",
 			"esc", "cancel",
@@ -880,6 +1100,16 @@ func (m Model) renderApplicationFormHelp() string {
 			}
 			if m.applicationForm.gitFieldCursor == GitFieldSudo {
 				return RenderHelpWithWidth(m.width, "space", "toggle", "s", "save", "q", "back")
+			}
+			return RenderHelpWithWidth(m.width, "enter/e", "edit", "s", "save", "q", "back")
+		}
+		// Installer package states
+		if m.applicationForm.packagesCursor == len(displayPackageManagers)+1 {
+			if !m.applicationForm.hasInstallerPackage {
+				return RenderHelpWithWidth(m.width, "enter", "add", "s", "save", "q", "back")
+			}
+			if m.applicationForm.installerFieldCursor == -1 {
+				return RenderHelpWithWidth(m.width, "d/del", "delete", "s", "save", "q", "back")
 			}
 			return RenderHelpWithWidth(m.width, "enter/e", "edit", "s", "save", "q", "back")
 		}
@@ -957,6 +1187,24 @@ func (m *Model) saveApplicationForm() error {
 		gitWindows := strings.TrimSpace(m.applicationForm.gitWindowsInput.Value())
 		if gitLinux == "" && gitWindows == "" {
 			return errors.New("git package requires at least one target (Linux or Windows)")
+		}
+	}
+
+	// Merge installer package data
+	pkg = mergeInstallerPackage(
+		pkg,
+		m.applicationForm.hasInstallerPackage,
+		m.applicationForm.installerLinuxInput,
+		m.applicationForm.installerWindowsInput,
+		m.applicationForm.installerBinaryInput,
+	)
+
+	// Validate installer package if present
+	if m.applicationForm.hasInstallerPackage {
+		installerLinux := strings.TrimSpace(m.applicationForm.installerLinuxInput.Value())
+		installerWindows := strings.TrimSpace(m.applicationForm.installerWindowsInput.Value())
+		if installerLinux == "" && installerWindows == "" {
+			return errors.New("installer package requires at least one command (Linux or Windows)")
 		}
 	}
 
@@ -1063,15 +1311,16 @@ func NewApplicationForm(app config.Application, isEdit bool) *ApplicationForm {
 	}
 
 	gitURLInput, gitBranchInput, gitLinuxInput, gitWindowsInput := newGitTextInputs()
+	installerLinuxInput, installerWindowsInput, installerBinaryInput := newInstallerTextInputs()
 
-	// Load package managers (only string-based managers, skip git)
+	// Load package managers (only string-based managers, skip git and installer)
 	packageManagers := make(map[string]string)
 	if app.Package != nil && len(app.Package.Managers) > 0 {
 		for k, v := range app.Package.Managers {
-			if k == TypeGit {
+			if k == TypeGit || k == TypeInstaller {
 				continue
 			}
-			if !v.IsGit() {
+			if !v.IsGit() && !v.IsInstaller() {
 				packageManagers[k] = v.PackageName
 			}
 		}
@@ -1097,19 +1346,40 @@ func NewApplicationForm(app config.Application, isEdit bool) *ApplicationForm {
 		}
 	}
 
+	// Load installer package if present
+	hasInstallerPackage := false
+
+	if app.Package != nil {
+		if installerVal, ok := app.Package.Managers[TypeInstaller]; ok && installerVal.IsInstaller() {
+			hasInstallerPackage = true
+			if cmd, ok := installerVal.Installer.Command[OSLinux]; ok {
+				installerLinuxInput.SetValue(cmd)
+			}
+			if cmd, ok := installerVal.Installer.Command[OSWindows]; ok {
+				installerWindowsInput.SetValue(cmd)
+			}
+			installerBinaryInput.SetValue(installerVal.Installer.Binary)
+		}
+	}
+
 	return &ApplicationForm{
-		nameInput:        nameInput,
-		descriptionInput: descriptionInput,
-		whenInput:        whenInput,
-		packageManagers:  packageManagers,
-		editAppIdx:       editAppIdx,
-		gitURLInput:      gitURLInput,
-		gitBranchInput:   gitBranchInput,
-		gitLinuxInput:    gitLinuxInput,
-		gitWindowsInput:  gitWindowsInput,
-		gitFieldCursor:   -1,
-		hasGitPackage:    hasGitPackage,
-		gitSudo:          gitSudo,
+		nameInput:             nameInput,
+		descriptionInput:      descriptionInput,
+		whenInput:             whenInput,
+		packageManagers:       packageManagers,
+		editAppIdx:            editAppIdx,
+		gitURLInput:           gitURLInput,
+		gitBranchInput:        gitBranchInput,
+		gitLinuxInput:         gitLinuxInput,
+		gitWindowsInput:       gitWindowsInput,
+		gitFieldCursor:        -1,
+		hasGitPackage:         hasGitPackage,
+		gitSudo:               gitSudo,
+		installerLinuxInput:   installerLinuxInput,
+		installerWindowsInput: installerWindowsInput,
+		installerBinaryInput:  installerBinaryInput,
+		installerFieldCursor:  -1,
+		hasInstallerPackage:   hasInstallerPackage,
 	}
 }
 

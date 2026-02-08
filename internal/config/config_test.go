@@ -1025,6 +1025,107 @@ func TestExpandPathWithTemplate_NilRenderer(t *testing.T) {
 	}
 }
 
+func TestLoadWithInstallerPackage(t *testing.T) {
+	t.Parallel()
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+
+	configContent := `
+version: 3
+backup_root: "~/dotfiles"
+
+applications:
+  - name: custom-tool
+    description: "Custom tool with installer"
+    package:
+      managers:
+        pacman: custom-tool
+        installer:
+          command:
+            linux: "curl -fsSL https://example.com/install.sh | sh"
+            windows: "iwr https://example.com/install.ps1 | iex"
+          binary: "mytool"
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if len(cfg.Applications) != 1 {
+		t.Fatalf("len(Applications) = %d, want 1", len(cfg.Applications))
+	}
+
+	if cfg.Applications[0].Package == nil {
+		t.Fatal("Package is nil")
+	}
+
+	// Check pacman manager
+	pacmanVal, ok := cfg.Applications[0].Package.GetManagerString("pacman")
+	if !ok || pacmanVal != "custom-tool" {
+		t.Errorf("GetManagerString(pacman) = %q, %v, want %q, true", pacmanVal, ok, "custom-tool")
+	}
+
+	// Check installer manager
+	installerPkg, ok := cfg.Applications[0].Package.GetInstallerPackage()
+	if !ok {
+		t.Fatal("GetInstallerPackage() returned false, want true")
+	}
+
+	if installerPkg.Command["linux"] != "curl -fsSL https://example.com/install.sh | sh" {
+		t.Errorf("Installer.Command[linux] = %q", installerPkg.Command["linux"])
+	}
+
+	if installerPkg.Command["windows"] != "iwr https://example.com/install.ps1 | iex" {
+		t.Errorf("Installer.Command[windows] = %q", installerPkg.Command["windows"])
+	}
+
+	if installerPkg.Binary != "mytool" {
+		t.Errorf("Installer.Binary = %q, want %q", installerPkg.Binary, "mytool")
+	}
+
+	// GetManagerString should return false for installer
+	_, ok = cfg.Applications[0].Package.GetManagerString("installer")
+	if ok {
+		t.Error("GetManagerString(installer) should return false for installer managers")
+	}
+}
+
+func TestGetInstallerPackage_NotPresent(t *testing.T) {
+	t.Parallel()
+
+	ep := &EntryPackage{
+		Managers: map[string]ManagerValue{
+			"pacman": {PackageName: "neovim"},
+		},
+	}
+
+	pkg, ok := ep.GetInstallerPackage()
+	if ok {
+		t.Error("GetInstallerPackage() returned true, want false")
+	}
+	if pkg != nil {
+		t.Errorf("GetInstallerPackage() = %v, want nil", pkg)
+	}
+}
+
+func TestGetInstallerPackage_NilManagers(t *testing.T) {
+	t.Parallel()
+
+	ep := &EntryPackage{}
+
+	pkg, ok := ep.GetInstallerPackage()
+	if ok {
+		t.Error("GetInstallerPackage() returned true, want false")
+	}
+	if pkg != nil {
+		t.Errorf("GetInstallerPackage() = %v, want nil", pkg)
+	}
+}
+
 func TestLoad_FileHandleClosed(t *testing.T) {
 	// Create temp config file
 	tmpDir := t.TempDir()
@@ -1080,6 +1181,47 @@ func TestManagerValueMarshalYAML(t *testing.T) {
 		output := string(out)
 		if strings.Contains(output, "packagename") {
 			t.Errorf("String manager should marshal as plain string, got:\n%s", output)
+		}
+	})
+
+	t.Run("installer manager marshals as object", func(t *testing.T) {
+		t.Parallel()
+		ep := EntryPackage{
+			Managers: map[string]ManagerValue{
+				"installer": {Installer: &InstallerPackage{
+					Command: map[string]string{"linux": "curl -fsSL example.com | sh"},
+					Binary:  "mytool",
+				}},
+			},
+		}
+
+		out, err := yaml.Marshal(&ep)
+		if err != nil {
+			t.Fatalf("Marshal error: %v", err)
+		}
+
+		output := string(out)
+		if strings.Contains(output, "packagename") {
+			t.Errorf("Installer manager should not contain packagename, got:\n%s", output)
+		}
+
+		// Verify round-trip
+		var ep2 EntryPackage
+		if err := yaml.Unmarshal(out, &ep2); err != nil {
+			t.Fatalf("Unmarshal error: %v", err)
+		}
+
+		installerVal, ok := ep2.Managers["installer"]
+		if !ok || installerVal.Installer == nil {
+			t.Fatal("Round-trip lost installer manager")
+		}
+
+		if installerVal.Installer.Command["linux"] != "curl -fsSL example.com | sh" {
+			t.Errorf("Round-trip Command[linux] = %q, want %q", installerVal.Installer.Command["linux"], "curl -fsSL example.com | sh")
+		}
+
+		if installerVal.Installer.Binary != "mytool" {
+			t.Errorf("Round-trip Binary = %q, want %q", installerVal.Installer.Binary, "mytool")
 		}
 	})
 

@@ -1136,7 +1136,7 @@ func TestPackage_GitConfigInManagers(t *testing.T) {
 	}
 
 	// Check traditional manager (string)
-	if pkg.Managers[Pacman].PackageName != "neovim" {
+	if pkg.Managers[Pacman].PackageName != "neovim" { //nolint:goconst // test data
 		t.Errorf("Expected pacman package name, got %v", pkg.Managers[Pacman].PackageName)
 	}
 
@@ -1368,6 +1368,402 @@ managers:
 
 	if !gitValue.Git.Sudo {
 		t.Error("Expected sudo to be true")
+	}
+}
+
+func TestPackage_InstallerConfigInManagers(t *testing.T) {
+	pkg := Package{
+		Name:        "my-tool",
+		Description: "Custom tool installed via script",
+		Managers: map[PackageManager]ManagerValue{
+			Pacman: {PackageName: "mytool"},
+			Installer: {Installer: &InstallerConfig{
+				Command: map[string]string{
+					"linux":   "curl -fsSL https://example.com/install.sh | sh",
+					"windows": "iwr https://example.com/install.ps1 | iex",
+				},
+				Binary: "mytool",
+			}},
+		},
+	}
+
+	// Check traditional manager (string)
+	if pkg.Managers[Pacman].PackageName != "mytool" { //nolint:goconst // test data
+		t.Errorf("Expected pacman package name 'mytool', got %v", pkg.Managers[Pacman].PackageName)
+	}
+
+	// Check installer manager (InstallerConfig)
+	installerValue := pkg.Managers[Installer]
+	if !installerValue.IsInstaller() {
+		t.Fatal("Expected installer manager to be InstallerConfig")
+	}
+
+	installerCfg := installerValue.Installer
+	if installerCfg.Command["linux"] != "curl -fsSL https://example.com/install.sh | sh" { //nolint:goconst // test data
+		t.Errorf("Expected linux command, got %s", installerCfg.Command["linux"])
+	}
+
+	if installerCfg.Command["windows"] != "iwr https://example.com/install.ps1 | iex" {
+		t.Errorf("Expected windows command, got %s", installerCfg.Command["windows"])
+	}
+
+	if installerCfg.Binary != "mytool" {
+		t.Errorf("Expected binary 'mytool', got %s", installerCfg.Binary)
+	}
+}
+
+func TestManager_InstallInstallerPackage_DryRun(t *testing.T) {
+	cfg := &Config{Packages: []Package{}}
+	mgr := NewManager(cfg, platform.OSLinux, true, false) // dry-run = true
+
+	pkg := Package{
+		Name: "installer-tool",
+		Managers: map[PackageManager]ManagerValue{
+			Installer: {Installer: &InstallerConfig{
+				Command: map[string]string{
+					"linux": "curl -fsSL https://example.com/install.sh | sh",
+				},
+				Binary: "mytool",
+			}},
+		},
+	}
+
+	result := mgr.Install(pkg)
+
+	if !result.Success {
+		t.Errorf("Expected success in dry-run, got: %s", result.Message)
+	}
+
+	if result.Method != "installer" {
+		t.Errorf("Expected method 'installer', got: %s", result.Method)
+	}
+
+	if !strings.Contains(result.Message, "Would run") {
+		t.Errorf("Expected 'Would run' in dry-run message, got: %s", result.Message)
+	}
+}
+
+func TestManager_InstallInstallerPackage_NoCommandForOS(t *testing.T) {
+	cfg := &Config{Packages: []Package{}}
+	mgr := NewManager(cfg, platform.OSLinux, false, false)
+
+	pkg := Package{
+		Name: "windows-only-tool",
+		Managers: map[PackageManager]ManagerValue{
+			Installer: {Installer: &InstallerConfig{
+				Command: map[string]string{
+					"windows": "iwr https://example.com/install.ps1 | iex",
+				},
+				Binary: "mytool",
+			}},
+		},
+	}
+
+	result := mgr.Install(pkg)
+
+	if result.Success {
+		t.Error("Expected failure when no command for current OS")
+	}
+
+	if !strings.Contains(result.Message, "No installer command defined for OS") {
+		t.Errorf("Expected 'No installer command defined for OS' message, got: %s", result.Message)
+	}
+}
+
+func TestPackage_UnmarshalYAML_Installer(t *testing.T) {
+	yamlData := `
+name: "test-installer-pkg"
+managers:
+  pacman: "neovim"
+  installer:
+    command:
+      linux: "curl -fsSL https://example.com/install.sh | sh"
+      windows: "iwr https://example.com/install.ps1 | iex"
+    binary: "mytool"
+`
+
+	var pkg Package
+	err := yaml.Unmarshal([]byte(yamlData), &pkg)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	// Verify pacman manager (string)
+	pacmanValue := pkg.Managers[Pacman]
+	if pacmanValue.PackageName != "neovim" {
+		t.Errorf("Expected 'neovim', got %s", pacmanValue.PackageName)
+	}
+
+	// Verify installer manager (InstallerConfig)
+	installerValue := pkg.Managers[Installer]
+	if !installerValue.IsInstaller() {
+		t.Fatal("Expected installer to be InstallerConfig")
+	}
+
+	if installerValue.Installer.Command["linux"] != "curl -fsSL https://example.com/install.sh | sh" {
+		t.Errorf("Expected linux command, got %s", installerValue.Installer.Command["linux"])
+	}
+
+	if installerValue.Installer.Command["windows"] != "iwr https://example.com/install.ps1 | iex" {
+		t.Errorf("Expected windows command, got %s", installerValue.Installer.Command["windows"])
+	}
+
+	if installerValue.Installer.Binary != "mytool" {
+		t.Errorf("Expected binary 'mytool', got %s", installerValue.Installer.Binary)
+	}
+}
+
+func TestPackage_UnmarshalYAML_InstallerWithoutBinary(t *testing.T) {
+	yamlData := `
+name: "no-binary-pkg"
+managers:
+  installer:
+    command:
+      linux: "make install"
+`
+
+	var pkg Package
+	err := yaml.Unmarshal([]byte(yamlData), &pkg)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	installerValue := pkg.Managers[Installer]
+	if !installerValue.IsInstaller() {
+		t.Fatal("Expected installer to be InstallerConfig")
+	}
+
+	if installerValue.Installer.Binary != "" {
+		t.Errorf("Expected empty binary, got %q", installerValue.Installer.Binary)
+	}
+
+	if installerValue.Installer.Command["linux"] != "make install" {
+		t.Errorf("Expected linux command 'make install', got %s", installerValue.Installer.Command["linux"])
+	}
+}
+
+func TestIsInstallerInstalled(t *testing.T) {
+	tests := []struct {
+		name   string
+		binary string
+		want   bool
+	}{
+		{
+			name:   "empty binary returns false",
+			binary: "",
+			want:   false,
+		},
+		{
+			name:   "nonexistent binary returns false",
+			binary: "definitely-not-a-real-binary-xyz123",
+			want:   false,
+		},
+		{
+			name:   "existing binary returns true",
+			binary: "sh",
+			want:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsInstallerInstalled(tt.binary)
+			if got != tt.want {
+				t.Errorf("IsInstallerInstalled(%q) = %v, want %v", tt.binary, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCanInstall_Installer(t *testing.T) {
+	tests := []struct {
+		name      string
+		available []PackageManager
+		osType    string
+		pkg       Package
+		want      bool
+	}{
+		{
+			name:      "installer with command for current OS",
+			available: []PackageManager{},
+			osType:    "linux",
+			pkg: Package{
+				Name: "installer-tool",
+				Managers: map[PackageManager]ManagerValue{
+					Installer: {Installer: &InstallerConfig{
+						Command: map[string]string{"linux": "make install"},
+						Binary:  "mytool",
+					}},
+				},
+			},
+			want: true,
+		},
+		{
+			name:      "installer without command for current OS",
+			available: []PackageManager{},
+			osType:    "linux",
+			pkg: Package{
+				Name: "installer-tool",
+				Managers: map[PackageManager]ManagerValue{
+					Installer: {Installer: &InstallerConfig{
+						Command: map[string]string{"windows": "install.bat"},
+						Binary:  "mytool",
+					}},
+				},
+			},
+			want: false,
+		},
+		{
+			name:      "installer with no binary still installable",
+			available: []PackageManager{},
+			osType:    "linux",
+			pkg: Package{
+				Name: "installer-tool",
+				Managers: map[PackageManager]ManagerValue{
+					Installer: {Installer: &InstallerConfig{
+						Command: map[string]string{"linux": "make install"},
+					}},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manager{
+				ctx:       context.Background(),
+				Config:    &Config{},
+				OS:        tt.osType,
+				Available: tt.available,
+			}
+
+			got := m.CanInstall(tt.pkg)
+			if got != tt.want {
+				t.Errorf("CanInstall() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetInstallMethod_Installer(t *testing.T) {
+	tests := []struct {
+		name      string
+		osType    string
+		want      string
+		pkg       Package
+		available []PackageManager
+	}{
+		{
+			name:      "installer with command for current OS",
+			available: []PackageManager{},
+			osType:    "linux",
+			pkg: Package{
+				Name: "installer-tool",
+				Managers: map[PackageManager]ManagerValue{
+					Installer: {Installer: &InstallerConfig{
+						Command: map[string]string{"linux": "make install"},
+					}},
+				},
+			},
+			want: "installer",
+		},
+		{
+			name:      "installer without command for current OS falls through",
+			available: []PackageManager{},
+			osType:    "linux",
+			pkg: Package{
+				Name: "installer-tool",
+				Managers: map[PackageManager]ManagerValue{
+					Installer: {Installer: &InstallerConfig{
+						Command: map[string]string{"windows": "install.bat"},
+					}},
+				},
+			},
+			want: "none",
+		},
+		{
+			name:      "regular manager takes priority over installer",
+			available: []PackageManager{Pacman},
+			osType:    "linux",
+			pkg: Package{
+				Name: "tool",
+				Managers: map[PackageManager]ManagerValue{
+					Pacman: {PackageName: "tool"},
+					Installer: {Installer: &InstallerConfig{
+						Command: map[string]string{"linux": "make install"},
+					}},
+				},
+			},
+			want: "pacman",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manager{
+				ctx:       context.Background(),
+				Config:    &Config{},
+				OS:        tt.osType,
+				Available: tt.available,
+			}
+
+			got := m.GetInstallMethod(tt.pkg)
+			if got != tt.want {
+				t.Errorf("GetInstallMethod() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFromEntry_Installer(t *testing.T) {
+	entry := config.Entry{
+		Name:        "installer-tool",
+		Description: "A tool installed via script",
+		Package: &config.EntryPackage{
+			Managers: map[string]config.ManagerValue{
+				"pacman": {PackageName: "mytool"},
+				"installer": {Installer: &config.InstallerPackage{
+					Command: map[string]string{
+						"linux":   "curl -fsSL https://example.com/install.sh | sh",
+						"windows": "iwr https://example.com/install.ps1 | iex",
+					},
+					Binary: "mytool",
+				}},
+			},
+		},
+	}
+
+	got := FromEntry(entry)
+	if got == nil {
+		t.Fatal("FromEntry() = nil, want non-nil")
+	}
+
+	if got.Name != "installer-tool" {
+		t.Errorf("Name = %q, want %q", got.Name, "installer-tool")
+	}
+
+	if len(got.Managers) != 2 {
+		t.Errorf("len(Managers) = %d, want 2", len(got.Managers))
+	}
+
+	// Check pacman
+	if got.Managers[Pacman].PackageName != "mytool" {
+		t.Errorf("Managers[pacman] = %q, want %q", got.Managers[Pacman].PackageName, "mytool")
+	}
+
+	// Check installer
+	installerVal := got.Managers[Installer]
+	if !installerVal.IsInstaller() {
+		t.Fatal("Expected installer manager")
+	}
+
+	if installerVal.Installer.Command["linux"] != "curl -fsSL https://example.com/install.sh | sh" {
+		t.Errorf("Installer.Command[linux] = %q", installerVal.Installer.Command["linux"])
+	}
+
+	if installerVal.Installer.Binary != "mytool" {
+		t.Errorf("Installer.Binary = %q, want %q", installerVal.Installer.Binary, "mytool")
 	}
 }
 
