@@ -9,7 +9,7 @@ An **Application** is the top-level grouping unit in tidydots. Each application 
 | `name` | string | yes | Unique application identifier |
 | `description` | string | no | Human-readable description |
 | `when` | string | no | Go template expression for conditional inclusion |
-| `entries` | []SubEntry | yes | Configuration entries (symlinks, files) |
+| `entries` | []SubEntry | no | Configuration entries (omit for package-only apps) |
 | `package` | EntryPackage | no | App-level package definition for installation |
 
 ### Minimal Example

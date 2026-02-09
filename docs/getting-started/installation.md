@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-tidydots is written in Go. You need **Go 1.21 or later** installed on your system.
+tidydots is written in Go. You need **Go 1.25 or later** installed on your system.
 
 To check your Go version:
 

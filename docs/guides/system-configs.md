@@ -1,39 +1,10 @@
 # System Configs
 
-Some configuration files live outside your home directory and require root/sudo access to manage. tidydots handles this through the `sudo` flag, letting you manage system-level files like `/etc/hosts`, pacman hooks, and systemd units alongside your regular dotfiles.
+Some configuration files live outside your home directory and require root/sudo access to manage. tidydots handles this through the `sudo` flag on individual entries, letting you manage system-level files like `/etc/hosts`, pacman hooks, and systemd units alongside your regular dotfiles.
 
 ## The `sudo` flag
 
-The `sudo` flag tells tidydots to run symlink and file operations with elevated privileges. It can be set at two levels:
-
-### Application-level sudo
-
-Set `sudo: true` on the application to apply elevated privileges to **all entries** within it:
-
-```yaml
-applications:
-  - name: "system-config"
-    description: "System-level configuration files"
-    sudo: true
-    when: '{{ eq .OS "linux" }}'
-    entries:
-      - name: "hosts"
-        backup: "./system/hosts"
-        targets:
-          linux: "/etc/hosts"
-
-      - name: "resolv-conf"
-        files: ["resolv.conf"]
-        backup: "./system/network"
-        targets:
-          linux: "/etc"
-```
-
-Both entries inherit `sudo: true` from the application.
-
-### Entry-level sudo
-
-Set `sudo: true` on individual entries when only some entries in an application need elevated privileges:
+The `sudo` flag tells tidydots to run symlink and file operations with elevated privileges. Set `sudo: true` on individual entries that need elevated access:
 
 ```yaml
 applications:
@@ -55,7 +26,7 @@ applications:
 In this example, `user-dns-settings` is managed with normal permissions while `system-resolv` uses sudo.
 
 !!! tip
-    Prefer entry-level `sudo: true` over application-level when possible. This gives you finer control and makes it clear exactly which files require elevated access.
+    Use `sudo: true` only on entries that actually need it. This gives you fine-grained control and makes it clear exactly which files require elevated access.
 
 ## Common examples
 
@@ -67,12 +38,12 @@ Manage a custom hosts file for ad blocking or local development domains:
 applications:
   - name: "hosts-file"
     description: "Custom hosts file"
-    sudo: true
     when: '{{ eq .OS "linux" }}'
     entries:
       - name: "hosts"
         files: ["hosts"]
         backup: "./system"
+        sudo: true
         targets:
           linux: "/etc"
 ```
@@ -87,12 +58,12 @@ On Arch Linux, custom pacman hooks live in `/usr/share/libalpm/hooks/`:
 applications:
   - name: "pacman-hooks"
     description: "Custom pacman hooks"
-    sudo: true
     when: '{{ eq .Distro "arch" }}'
     entries:
       - name: "hooks"
         files: ["cleanup.hook", "update-grub.hook"]
         backup: "./pacman/hooks"
+        sudo: true
         targets:
           linux: "/usr/share/libalpm/hooks"
 ```
@@ -103,18 +74,19 @@ applications:
 applications:
   - name: "pacman-config"
     description: "Pacman configuration"
-    sudo: true
     when: '{{ eq .Distro "arch" }}'
     entries:
       - name: "pacman-conf"
         files: ["pacman.conf"]
         backup: "./pacman"
+        sudo: true
         targets:
           linux: "/etc"
 
       - name: "makepkg-conf"
         files: ["makepkg.conf"]
         backup: "./pacman"
+        sudo: true
         targets:
           linux: "/etc"
 ```
@@ -127,12 +99,12 @@ Manage custom systemd service files:
 applications:
   - name: "systemd-services"
     description: "Custom systemd service units"
-    sudo: true
     when: '{{ eq .OS "linux" }}'
     entries:
       - name: "backup-timer"
         files: ["backup.service", "backup.timer"]
         backup: "./systemd"
+        sudo: true
         targets:
           linux: "/etc/systemd/system"
 ```
@@ -168,12 +140,12 @@ applications:
 applications:
   - name: "sshd-config"
     description: "SSH server configuration"
-    sudo: true
     when: '{{ eq .OS "linux" }}'
     entries:
       - name: "sshd"
         files: ["sshd_config"]
         backup: "./ssh"
+        sudo: true
         targets:
           linux: "/etc/ssh"
 ```
@@ -187,41 +159,42 @@ applications:
   # Arch-specific system configs
   - name: "arch-system"
     description: "Arch Linux system configuration"
-    sudo: true
     when: '{{ eq .Distro "arch" }}'
     entries:
       - name: "pacman-conf"
         files: ["pacman.conf"]
         backup: "./arch/pacman"
+        sudo: true
         targets:
           linux: "/etc"
 
       - name: "mkinitcpio"
         files: ["mkinitcpio.conf"]
         backup: "./arch"
+        sudo: true
         targets:
           linux: "/etc"
 
   # Ubuntu-specific system configs
   - name: "ubuntu-system"
     description: "Ubuntu system configuration"
-    sudo: true
     when: '{{ eq .Distro "ubuntu" }}'
     entries:
       - name: "apt-sources"
         backup: "./ubuntu/apt"
+        sudo: true
         targets:
           linux: "/etc/apt/sources.list.d"
 
   # Fedora-specific system configs
   - name: "fedora-system"
     description: "Fedora system configuration"
-    sudo: true
     when: '{{ eq .Distro "fedora" }}'
     entries:
       - name: "dnf-conf"
         files: ["dnf.conf"]
         backup: "./fedora"
+        sudo: true
         targets:
           linux: "/etc/dnf"
 ```
@@ -234,16 +207,17 @@ For machine-specific system configs, combine `when` with hostname checks:
 applications:
   - name: "server-config"
     description: "Server-specific system configuration"
-    sudo: true
     when: '{{ and (eq .OS "linux") (eq .Hostname "my-server") }}'
     entries:
       - name: "nginx-conf"
         backup: "./server/nginx"
+        sudo: true
         targets:
           linux: "/etc/nginx"
 
       - name: "fail2ban"
         backup: "./server/fail2ban"
+        sudo: true
         targets:
           linux: "/etc/fail2ban"
 ```
@@ -275,6 +249,7 @@ Managing system files through dotfiles is powerful but requires care.
       - name: "hooks"
         files: ["cleanup.hook", "update-grub.hook"]
         backup: "./pacman/hooks"
+        sudo: true
         targets:
           linux: "/usr/share/libalpm/hooks"
 
@@ -282,6 +257,7 @@ Managing system files through dotfiles is powerful but requires care.
     entries:
       - name: "hooks"
         backup: "./pacman/hooks"
+        sudo: true
         targets:
           linux: "/usr/share/libalpm/hooks"
     ```
@@ -300,12 +276,12 @@ Managing system files through dotfiles is powerful but requires care.
 
       # --- System configs below ---
       - name: "system-hosts"
-        sudo: true
         when: '{{ eq .OS "linux" }}'
         entries:
           - name: "hosts"
             files: ["hosts"]
             backup: "./system"
+            sudo: true
             targets:
               linux: "/etc"
     ```
@@ -338,34 +314,34 @@ applications:
   # --- System-level configs ---
   - name: "hosts"
     description: "Custom hosts file"
-    sudo: true
     when: '{{ eq .OS "linux" }}'
     entries:
       - name: "hosts-file"
         files: ["hosts"]
         backup: "./system"
+        sudo: true
         targets:
           linux: "/etc"
 
   - name: "pacman-hooks"
     description: "Custom pacman hooks"
-    sudo: true
     when: '{{ eq .Distro "arch" }}'
     entries:
       - name: "hooks"
         files: ["cleanup.hook", "orphan-check.hook"]
         backup: "./pacman/hooks"
+        sudo: true
         targets:
           linux: "/usr/share/libalpm/hooks"
 
   - name: "systemd-services"
     description: "System-level services"
-    sudo: true
     when: '{{ and (eq .OS "linux") (eq .Hostname "my-server") }}'
     entries:
       - name: "services"
         files: ["backup.service", "backup.timer"]
         backup: "./systemd"
+        sudo: true
         targets:
           linux: "/etc/systemd/system"
 ```

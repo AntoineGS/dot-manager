@@ -45,7 +45,6 @@ Here is a simple example that manages a Neovim configuration:
 
 ```yaml title="~/dotfiles/tidydots.yaml"
 version: 3
-backup_root: "."
 
 applications:
   - name: "neovim"
@@ -163,7 +162,6 @@ You can add as many applications as you need. Here is a more complete example wi
 
 ```yaml title="~/dotfiles/tidydots.yaml"
 version: 3
-backup_root: "."
 
 applications:
   - name: "neovim"
