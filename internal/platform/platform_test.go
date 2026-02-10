@@ -123,6 +123,59 @@ func TestDetectDistro(t *testing.T) {
 	}
 }
 
+func TestDetectDisplay(t *testing.T) {
+	tests := []struct {
+		name           string
+		osType         string
+		display        string
+		waylandDisplay string
+		want           bool
+	}{
+		{
+			name:   "windows always true",
+			osType: OSWindows,
+			want:   true,
+		},
+		{
+			name:    "linux with DISPLAY set",
+			osType:  OSLinux,
+			display: ":0",
+			want:    true,
+		},
+		{
+			name:           "linux with WAYLAND_DISPLAY set",
+			osType:         OSLinux,
+			waylandDisplay: "wayland-0",
+			want:           true,
+		},
+		{
+			name:           "linux with both set",
+			osType:         OSLinux,
+			display:        ":0",
+			waylandDisplay: "wayland-0",
+			want:           true,
+		},
+		{
+			name:   "linux with neither set",
+			osType: OSLinux,
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear both env vars first
+			t.Setenv("DISPLAY", tt.display)
+			t.Setenv("WAYLAND_DISPLAY", tt.waylandDisplay)
+
+			got := detectDisplay(tt.osType)
+			if got != tt.want {
+				t.Errorf("detectDisplay(%q) = %v, want %v", tt.osType, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDetectAvailableManagers_Git(t *testing.T) {
 	if !IsCommandAvailable("git") {
 		t.Skip("git not available for testing")

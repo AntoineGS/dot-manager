@@ -10,11 +10,12 @@ import (
 
 // Context holds platform-aware data available to all templates.
 type Context struct {
-	OS       string
-	Distro   string
-	Hostname string
-	User     string
-	Env      map[string]string
+	OS         string
+	Distro     string
+	Hostname   string
+	User       string
+	HasDisplay bool
+	Env        map[string]string
 }
 
 // NewContextFromPlatform creates a Context from platform detection results,
@@ -35,10 +36,11 @@ func NewContextFromPlatform(p *platform.Platform) *Context {
 	}
 
 	return &Context{
-		OS:       p.OS,
-		Distro:   p.Distro,
-		Hostname: p.Hostname,
-		User:     p.User,
-		Env:      env,
+		OS:         p.OS,
+		Distro:     p.Distro,
+		Hostname:   p.Hostname,
+		User:       p.User,
+		HasDisplay: p.HasDisplay,
+		Env:        env,
 	}
 }

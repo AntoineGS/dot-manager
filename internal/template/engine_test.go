@@ -6,10 +6,11 @@ import (
 
 func TestRenderString(t *testing.T) {
 	ctx := &Context{
-		OS:       "linux",
-		Distro:   "arch",
-		Hostname: "myhost",
-		User:     "testuser",
+		OS:         "linux",
+		Distro:     "arch",
+		Hostname:   "myhost",
+		User:       "testuser",
+		HasDisplay: true,
 		Env: map[string]string{
 			"HOME":   "/home/testuser",
 			"EDITOR": "nvim",
@@ -79,6 +80,11 @@ func TestRenderString(t *testing.T) {
 			want:     "user=testuser",
 		},
 		{
+			name:     "HasDisplay true",
+			template: `{{ if .HasDisplay }}gui{{ else }}headless{{ end }}`,
+			want:     "gui",
+		},
+		{
 			name:     "invalid template",
 			template: "{{ .Invalid",
 			wantErr:  true,
@@ -107,6 +113,24 @@ func TestRenderString(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRenderString_HasDisplayFalse(t *testing.T) {
+	ctx := &Context{
+		OS:         "linux",
+		HasDisplay: false,
+		Env:        map[string]string{},
+	}
+	engine := NewEngine(ctx)
+
+	got, err := engine.RenderString("hasdisplay-false", `{{ if .HasDisplay }}gui{{ else }}headless{{ end }}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got != "headless" {
+		t.Errorf("got %q, want %q", got, "headless")
 	}
 }
 

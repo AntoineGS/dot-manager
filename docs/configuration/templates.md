@@ -25,6 +25,7 @@ Templates have access to the following context struct:
 | `.Distro` | string | Linux distribution ID | `"arch"`, `"ubuntu"`, `"fedora"` |
 | `.Hostname` | string | Machine hostname | `"desktop"`, `"work-laptop"` |
 | `.User` | string | Current username | `"alice"` |
+| `.HasDisplay` | bool | Whether a display server is available | `true` (X11/Wayland/Windows), `false` (headless) |
 | `.Env` | map[string]string | All environment variables | See below |
 
 ### Accessing Environment Variables
@@ -94,6 +95,31 @@ dpi = 96
 ```
 editor = "{{ default "vim" (index .Env "EDITOR") }}"
 ```
+
+**GUI vs headless conditional:**
+
+```
+{{ if .HasDisplay }}
+# GUI applications
+exec alacritty
+{{ else }}
+# Terminal-only setup
+export TERM=xterm-256color
+{{ end }}
+```
+
+This is also useful in `when` expressions to conditionally include entire applications:
+
+```yaml
+applications:
+  - name: "alacritty"
+    when: '{{ .HasDisplay }}'
+
+  - name: "tmux-heavy-config"
+    when: '{{ not .HasDisplay }}'
+```
+
+On Linux, `.HasDisplay` is `true` when `DISPLAY` (X11) or `WAYLAND_DISPLAY` (Wayland) is set. On Windows, it is always `true`.
 
 ## How Template Restore Works
 

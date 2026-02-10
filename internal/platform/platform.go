@@ -24,11 +24,12 @@ const (
 // Platform holds detected platform information including the operating system,
 // Linux distribution, hostname, current user, and privilege status.
 type Platform struct {
-	EnvVars  map[string]string
-	OS       string
-	Distro   string
-	Hostname string
-	User     string
+	EnvVars    map[string]string
+	OS         string
+	Distro     string
+	Hostname   string
+	User       string
+	HasDisplay bool
 }
 
 // Detect detects the current platform characteristics including OS type,
@@ -40,6 +41,8 @@ func Detect() *Platform {
 		User:     detectUser(),
 		EnvVars:  make(map[string]string),
 	}
+
+	p.HasDisplay = detectDisplay(p.OS)
 
 	if p.OS == OSLinux {
 		p.Distro = detectDistro()
@@ -113,6 +116,25 @@ func detectOS() string {
 	}
 
 	return OSLinux
+}
+
+// detectDisplay checks whether a display server is available.
+// On Linux, it checks for DISPLAY (X11) or WAYLAND_DISPLAY (Wayland).
+// On Windows, it always returns true.
+func detectDisplay(osType string) bool {
+	if osType == OSWindows {
+		return true
+	}
+
+	if os.Getenv("DISPLAY") != "" {
+		return true
+	}
+
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		return true
+	}
+
+	return false
 }
 
 func (p *Platform) detectPowerShellProfile() {
