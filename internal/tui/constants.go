@@ -45,6 +45,7 @@ const (
 	StatusMissing   = "Missing"
 	StatusFiltered  = "Filtered"
 	StatusOutdated  = "Outdated"
+	StatusModified  = "Modified"
 	StatusUnknown   = "Unknown"
 )
 

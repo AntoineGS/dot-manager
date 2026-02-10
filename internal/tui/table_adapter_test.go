@@ -454,3 +454,27 @@ func TestStateOutdated_String(t *testing.T) {
 		t.Errorf("StateOutdated.String() = %q, want %q", StateOutdated.String(), "Outdated")
 	}
 }
+
+func TestStateModified_String(t *testing.T) {
+	if StateModified.String() != "Modified" {
+		t.Errorf("StateModified.String() = %q, want %q", StateModified.String(), "Modified")
+	}
+}
+
+func TestStateModified_NeedsAttention(t *testing.T) {
+	if !needsAttention(StateModified.String()) {
+		t.Error("StateModified should need attention")
+	}
+}
+
+func TestAppInfoNeedsAttention_Modified(t *testing.T) {
+	app := ApplicationItem{
+		SubItems: []SubEntryItem{
+			{State: StateLinked},
+			{State: StateModified},
+		},
+	}
+	if !appInfoNeedsAttention(app) {
+		t.Error("App with StateModified sub-entry should need attention")
+	}
+}

@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
@@ -225,6 +226,66 @@ func (m *Manager) HasOutdatedTemplates(backupDir string) bool {
 	})
 
 	return outdated
+}
+
+// HasModifiedRenderedFiles returns true if the backup directory contains any
+// .tmpl.rendered files whose content differs from the pure render baseline
+// stored in the state store. This indicates the user has manually edited
+// a rendered template file.
+//
+// Returns false if the state store is nil, the directory doesn't exist, or has no templates.
+func (m *Manager) HasModifiedRenderedFiles(backupDir string) bool {
+	if m.stateStore == nil {
+		return false
+	}
+
+	if !hasTemplateFiles(backupDir) {
+		return false
+	}
+
+	modified := false
+	_ = filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || modified {
+			return filepath.SkipDir
+		}
+
+		if d.IsDir() {
+			return nil
+		}
+
+		if tmpl.IsRenderedFile(d.Name()) || tmpl.IsConflictFile(d.Name()) {
+			return nil
+		}
+
+		if !tmpl.IsTemplateFile(d.Name()) {
+			return nil
+		}
+
+		relPath, relErr := filepath.Rel(backupDir, path)
+		if relErr != nil {
+			return nil
+		}
+
+		record, lookupErr := m.stateStore.GetLatestRender(relPath)
+		if lookupErr != nil || record == nil {
+			return nil
+		}
+
+		renderedPath := tmpl.RenderedPath(path)
+		renderedContent, readErr := os.ReadFile(renderedPath) //nolint:gosec // path from config
+		if readErr != nil {
+			return nil
+		}
+
+		if !bytes.Equal(renderedContent, record.PureRender) {
+			modified = true
+			return filepath.SkipAll
+		}
+
+		return nil
+	})
+
+	return modified
 }
 
 // HasTemplateFiles returns true if the directory contains any .tmpl files.

@@ -526,6 +526,9 @@ func cellAttentionStyle(tr TableRow, col int) lipgloss.Style {
 		if tr.State == StateOutdated || tr.Data[1] == StatusOutdated {
 			return baseStyle.Foreground(accentColor)
 		}
+		if tr.State == StateModified || tr.Data[1] == StatusModified {
+			return baseStyle.Foreground(lipgloss.Color("#3B82F6"))
+		}
 		return baseStyle.Foreground(errorColor)
 	}
 	if col == 2 && tr.InfoAttention {
@@ -661,6 +664,9 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 	if st == StateLinked && item.SubEntry.IsConfig() && item.SubEntry.IsFolder() && m.Manager != nil {
 		if m.Manager.HasOutdatedTemplates(backupPath) {
 			return StateOutdated
+		}
+		if m.Manager.HasModifiedRenderedFiles(backupPath) {
+			return StateModified
 		}
 	}
 

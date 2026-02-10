@@ -78,6 +78,8 @@ const (
 	StateLinked // Already symlinked
 	// StateOutdated indicates linked but template source changed since last render
 	StateOutdated
+	// StateModified indicates linked but rendered file has user edits
+	StateModified
 )
 
 func (s PathState) String() string {
@@ -92,6 +94,8 @@ func (s PathState) String() string {
 		return "Linked"
 	case StateOutdated:
 		return "Outdated"
+	case StateModified:
+		return "Modified"
 	}
 
 	return "Unknown"

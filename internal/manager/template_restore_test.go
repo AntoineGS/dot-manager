@@ -972,3 +972,145 @@ func TestHasOutdatedTemplates(t *testing.T) {
 		}
 	})
 }
+
+func TestHasModifiedRenderedFiles(t *testing.T) {
+	t.Run("NoStateStore", func(t *testing.T) {
+		plat := &platform.Platform{
+			OS:       "linux",
+			Distro:   "arch",
+			Hostname: "testhost",
+			User:     "testuser",
+			EnvVars:  make(map[string]string),
+		}
+		cfg := &config.Config{BackupRoot: t.TempDir(), Version: 3}
+		mgr := New(cfg, plat)
+
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "file.tmpl"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasModifiedRenderedFiles(dir) {
+			t.Error("should return false when stateStore is nil")
+		}
+	})
+
+	t.Run("NoTemplateFiles", func(t *testing.T) {
+		_, _, mgr, _ := setupTemplateTest(t)
+
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "regular.txt"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasModifiedRenderedFiles(dir) {
+			t.Error("should return false when no .tmpl files exist")
+		}
+	})
+
+	t.Run("NoRenderRecord", func(t *testing.T) {
+		_, _, mgr, _ := setupTemplateTest(t)
+
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "file.tmpl"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasModifiedRenderedFiles(dir) {
+			t.Error("should return false when no render record exists")
+		}
+	})
+
+	t.Run("NoRenderedFile", func(t *testing.T) {
+		backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+		backupDir := filepath.Join(backupRoot, "config")
+		if err := os.MkdirAll(backupDir, 0750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(backupDir, "file.tmpl"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		subEntry := config.SubEntry{
+			Name:    "config",
+			Backup:  "./config",
+			Targets: map[string]string{"linux": targetDir},
+		}
+
+		if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+			t.Fatal(err)
+		}
+
+		// Remove the rendered file
+		renderedPath := filepath.Join(backupDir, "file.tmpl.rendered")
+		if err := os.Remove(renderedPath); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasModifiedRenderedFiles(backupDir) {
+			t.Error("should return false when rendered file doesn't exist")
+		}
+	})
+
+	t.Run("ContentMatchesBaseline", func(t *testing.T) {
+		backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+		backupDir := filepath.Join(backupRoot, "config")
+		if err := os.MkdirAll(backupDir, 0750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(backupDir, "file.tmpl"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		subEntry := config.SubEntry{
+			Name:    "config",
+			Backup:  "./config",
+			Targets: map[string]string{"linux": targetDir},
+		}
+
+		if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+			t.Fatal(err)
+		}
+
+		if mgr.HasModifiedRenderedFiles(backupDir) {
+			t.Error("should return false when rendered file matches pure render baseline")
+		}
+	})
+
+	t.Run("ContentDiffersFromBaseline", func(t *testing.T) {
+		backupRoot, targetDir, mgr, _ := setupTemplateTest(t)
+
+		backupDir := filepath.Join(backupRoot, "config")
+		if err := os.MkdirAll(backupDir, 0750); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(backupDir, "file.tmpl"), []byte("content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		subEntry := config.SubEntry{
+			Name:    "config",
+			Backup:  "./config",
+			Targets: map[string]string{"linux": targetDir},
+		}
+
+		if err := mgr.RestoreFolderWithTemplates(subEntry, backupDir, targetDir); err != nil {
+			t.Fatal(err)
+		}
+
+		// User edits the rendered file
+		renderedPath := filepath.Join(backupDir, "file.tmpl.rendered")
+		if err := os.WriteFile(renderedPath, []byte("user-edited-content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		if !mgr.HasModifiedRenderedFiles(backupDir) {
+			t.Error("should return true when rendered file differs from pure render baseline")
+		}
+	})
+}
