@@ -195,3 +195,50 @@ func TestDetectAvailableManagers_Git(t *testing.T) {
 		t.Error("Expected git to be in available managers, but it was not found")
 	}
 }
+
+func TestIsUnderWindowsDrive(t *testing.T) {
+	t.Parallel()
+
+	mounts := []string{"/mnt/c", "/mnt/d"}
+
+	tests := []struct {
+		dir  string
+		want bool
+	}{
+		// Paths under detected Windows drives — should be skipped
+		{"/mnt/c", true},
+		{"/mnt/c/", true},
+		{"/mnt/c/Windows/System32", true},
+		{"/mnt/d", true},
+		{"/mnt/d/Users/foo/bin", true},
+
+		// Not a detected drive — should NOT be skipped
+		{"/mnt/e", false},
+		{"/mnt/data", false},
+		{"/mnt/nfs-share", false},
+		{"/mnt/backup/scripts", false},
+		{"/usr/bin", false},
+		{"/home/user", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.dir, func(t *testing.T) {
+			t.Parallel()
+			got := isUnderWindowsDrive(tt.dir, mounts)
+			if got != tt.want {
+				t.Errorf("isUnderWindowsDrive(%q, %v) = %v, want %v", tt.dir, mounts, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectWindowsDriveMounts(t *testing.T) {
+	t.Parallel()
+	// This reads the real /proc/mounts — just verify it doesn't panic.
+	// On WSL it should find drvfs mounts; on non-WSL it returns nil.
+	mounts := detectWindowsDriveMounts()
+	if detectWSL() && len(mounts) == 0 {
+		t.Error("Expected Windows drive mounts on WSL, but got none")
+	}
+}

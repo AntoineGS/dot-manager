@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/manager"
@@ -16,27 +15,18 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 )
 
-// pkgCheckResult holds the result of a single package install check.
-type pkgCheckResult struct {
+// pkgCheckResultMsg is sent when a single package install check completes.
+type pkgCheckResultMsg struct {
 	appIndex  int
+	method    string
 	installed bool
 }
 
-// pkgCheckCompleteMsg is sent when all package install checks are done.
-type pkgCheckCompleteMsg struct {
-	results []pkgCheckResult
-}
-
-// stateCheckResult holds the result of a single sub-entry state check.
-type stateCheckResult struct {
+// stateCheckResultMsg is sent when a single sub-entry state check completes.
+type stateCheckResultMsg struct {
 	appIndex int
 	subIndex int
 	state    PathState
-}
-
-// stateCheckCompleteMsg is sent when all state checks are done.
-type stateCheckCompleteMsg struct {
-	results []stateCheckResult
 }
 
 // sortTableRows sorts the table rows based on the current sort column and direction.
@@ -197,10 +187,7 @@ func (m *Model) initApplicationItems() {
 			IsFiltered:  isFiltered,
 		}
 
-		// Add package info (install check deferred to async)
-		if app.HasPackage() {
-			appItem.PkgMethod = getPackageInstallMethodFromPackage(app.Package, m.Platform.OS)
-		}
+		// Package method and install check deferred to async
 
 		m.Applications = append(m.Applications, appItem)
 	}
@@ -948,8 +935,15 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 
 			// Toggle filter (no confirmation needed or toggling OFF)
+			wasEnabled := m.filterEnabled
 			m.filterEnabled = !m.filterEnabled
 			m.rebuildTable()
+
+			// When turning filter OFF, scan any filtered apps that haven't been checked yet
+			if wasEnabled {
+				return m, m.checkFilteredStatesCmd()
+			}
+
 			return m, nil
 		}
 	case "q":
@@ -1645,71 +1639,104 @@ func (m Model) buildInstallCommand(pkg PackageItem) *exec.Cmd {
 	return packages.BuildCommand(*converted, pkg.Method, m.Platform.OS)
 }
 
-// checkPackageStatesCmd returns a tea.Cmd that checks all package install statuses in parallel.
+// checkPackageStatesCmd returns a tea.Cmd that detects package methods and checks install statuses.
+// Each package gets its own concurrent command so results stream in individually.
 func (m Model) checkPackageStatesCmd() tea.Cmd {
-	type pkgWork struct {
-		appIndex int
-		pkg      *config.EntryPackage
-		method   string
-		name     string
-	}
+	var cmds []tea.Cmd
+	osType := m.Platform.OS
 
-	var work []pkgWork
 	for i, app := range m.Applications {
-		if app.PkgMethod != "" && app.PkgMethod != TypeNone {
-			work = append(work, pkgWork{i, app.Application.Package, app.PkgMethod, app.Application.Name})
+		if app.IsFiltered || !app.Application.HasPackage() {
+			continue
 		}
+		appIndex := i
+		pkg := app.Application.Package
+		name := app.Application.Name
+		cmds = append(cmds, func() tea.Msg {
+			method := getPackageInstallMethodFromPackage(pkg, osType)
+			installed := false
+			if method != TypeNone {
+				installed = isPackageInstalledFromPackage(pkg, method, name)
+			}
+			return pkgCheckResultMsg{appIndex: appIndex, method: method, installed: installed}
+		})
 	}
 
-	return func() tea.Msg {
-		results := make([]pkgCheckResult, len(work))
-		var wg sync.WaitGroup
-		for idx, w := range work {
-			wg.Add(1)
-			go func(idx int, w pkgWork) {
-				defer wg.Done()
-				installed := isPackageInstalledFromPackage(w.pkg, w.method, w.name)
-				results[idx] = pkgCheckResult{appIndex: w.appIndex, installed: installed}
-			}(idx, w)
-		}
-		wg.Wait()
-		return pkgCheckCompleteMsg{results: results}
-	}
+	return tea.Batch(cmds...)
 }
 
-// checkSubEntryStatesCmd returns a tea.Cmd that checks all sub-entry states in parallel.
+// checkSubEntryStatesCmd returns a tea.Cmd that checks all sub-entry states.
+// Each sub-entry gets its own concurrent command so results stream in individually.
+// Filtered apps are skipped; use checkFilteredStatesCmd when the filter is toggled off.
 func (m Model) checkSubEntryStatesCmd() tea.Cmd {
-	type stateWork struct {
-		appIndex int
-		subIndex int
-		subItem  SubEntryItem
-	}
-
-	var work []stateWork
-	for i, app := range m.Applications {
-		for j, sub := range app.SubItems {
-			work = append(work, stateWork{i, j, sub})
-		}
-	}
-
+	var cmds []tea.Cmd
 	plat := m.Platform
 	cfg := m.Config
 	mgr := m.Manager
 
-	return func() tea.Msg {
-		results := make([]stateCheckResult, len(work))
-		var wg sync.WaitGroup
-		for idx, w := range work {
-			wg.Add(1)
-			go func(idx int, w stateWork) {
-				defer wg.Done()
-				state := detectSubEntryStateStatic(w.subItem, plat, cfg, mgr)
-				results[idx] = stateCheckResult{appIndex: w.appIndex, subIndex: w.subIndex, state: state}
-			}(idx, w)
+	for i, app := range m.Applications {
+		if app.IsFiltered {
+			continue
 		}
-		wg.Wait()
-		return stateCheckCompleteMsg{results: results}
+		for j, sub := range app.SubItems {
+			appIndex := i
+			subIndex := j
+			subItem := sub
+			cmds = append(cmds, func() tea.Msg {
+				state := detectSubEntryStateStatic(subItem, plat, cfg, mgr)
+				return stateCheckResultMsg{appIndex: appIndex, subIndex: subIndex, state: state}
+			})
+		}
 	}
+
+	return tea.Batch(cmds...)
+}
+
+// checkFilteredStatesCmd triggers async checks for filtered apps that haven't been scanned yet.
+// Called when the user toggles the filter off, revealing previously-hidden apps.
+func (m Model) checkFilteredStatesCmd() tea.Cmd {
+	var cmds []tea.Cmd
+	osType := m.Platform.OS
+	plat := m.Platform
+	cfg := m.Config
+	mgr := m.Manager
+
+	for i, app := range m.Applications {
+		if !app.IsFiltered {
+			continue
+		}
+
+		// Package check (only if not already resolved)
+		if app.Application.HasPackage() && app.PkgInstalled == nil {
+			appIndex := i
+			pkg := app.Application.Package
+			name := app.Application.Name
+			cmds = append(cmds, func() tea.Msg {
+				method := getPackageInstallMethodFromPackage(pkg, osType)
+				installed := false
+				if method != TypeNone {
+					installed = isPackageInstalledFromPackage(pkg, method, name)
+				}
+				return pkgCheckResultMsg{appIndex: appIndex, method: method, installed: installed}
+			})
+		}
+
+		// Sub-entry state checks (only if still at StateLoading)
+		for j, sub := range app.SubItems {
+			if sub.State != StateLoading {
+				continue
+			}
+			appIndex := i
+			subIndex := j
+			subItem := sub
+			cmds = append(cmds, func() tea.Msg {
+				state := detectSubEntryStateStatic(subItem, plat, cfg, mgr)
+				return stateCheckResultMsg{appIndex: appIndex, subIndex: subIndex, state: state}
+			})
+		}
+	}
+
+	return tea.Batch(cmds...)
 }
 
 // detectSubEntryStateStatic determines the state of a sub-entry item without using Model receiver.

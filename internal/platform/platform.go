@@ -54,6 +54,9 @@ func Detect() *Platform {
 		p.detectPowerShellProfile()
 	}
 
+	// Provide OS/WSL hints so DetectAvailableManagers can skip slow Windows drive mounts
+	SetDetectionHints(p.OS, p.IsWSL)
+
 	return p
 }
 
@@ -237,21 +240,102 @@ var KnownPackageManagers = []string{
 	"git", // Git for repository cloning
 }
 
+// detectWindowsDriveMounts reads /proc/mounts and returns the mount points of
+// Windows drive filesystems (9p/drvfs). Returns nil on error or if none found.
+func detectWindowsDriveMounts() []string {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return nil
+	}
+
+	var mounts []string
+
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+
+		fsType := fields[2]
+		options := fields[3]
+
+		if fsType == "9p" && strings.Contains(options, "drvfs") {
+			mounts = append(mounts, fields[1])
+		}
+	}
+
+	return mounts
+}
+
+// isUnderWindowsDrive reports whether dir falls under one of the given
+// Windows drive mount points (e.g. /mnt/c, /mnt/d).
+func isUnderWindowsDrive(dir string, mounts []string) bool {
+	for _, mount := range mounts {
+		if dir == mount || strings.HasPrefix(dir, mount+"/") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// lookPathSkipWindowsDrives is like exec.LookPath but skips PATH directories
+// under WSL Windows drive mounts (identified via /proc/mounts as 9p/drvfs).
+// These are slow NTFS mounts and irrelevant for Linux package managers.
+func lookPathSkipWindowsDrives(file string, mounts []string) bool {
+	pathEnv := os.Getenv("PATH")
+	if pathEnv == "" {
+		return false
+	}
+
+	for _, dir := range strings.Split(pathEnv, ":") {
+		if isUnderWindowsDrive(dir, mounts) {
+			continue
+		}
+
+		path := dir + "/" + file
+		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+			return true
+		}
+	}
+
+	return false
+}
+
 var (
 	availableManagersOnce   sync.Once
 	availableManagersCached []string
+	detectedWSL             bool
+	windowsDriveMounts      []string
 )
+
+// SetDetectionHints provides WSL information so that DetectAvailableManagers
+// can skip slow Windows drive mounts. On WSL, it reads /proc/mounts to
+// identify 9p/drvfs mount points. Call this before DetectAvailableManagers.
+func SetDetectionHints(_ string, isWSL bool) {
+	detectedWSL = isWSL
+	if isWSL {
+		windowsDriveMounts = detectWindowsDriveMounts()
+	}
+}
 
 // DetectAvailableManagers returns a list of package managers available on the system
 // by checking which managers from KnownPackageManagers are present in the PATH.
+// On WSL, it skips slow Windows drive mount PATH entries (e.g. /mnt/c/).
 // Results are cached after the first call since PATH rarely changes during execution.
 func DetectAvailableManagers() []string {
 	availableManagersOnce.Do(func() {
 		available := make([]string, 0, len(KnownPackageManagers))
 
 		for _, mgr := range KnownPackageManagers {
-			if IsCommandAvailable(mgr) {
-				available = append(available, mgr)
+			if detectedWSL && len(windowsDriveMounts) > 0 {
+				if lookPathSkipWindowsDrives(mgr, windowsDriveMounts) {
+					available = append(available, mgr)
+				}
+			} else {
+				if IsCommandAvailable(mgr) {
+					available = append(available, mgr)
+				}
 			}
 		}
 

@@ -118,7 +118,7 @@ func getApplicationStatus(app ApplicationItem) string {
 	}
 
 	if app.PkgInstalled == nil {
-		if app.PkgMethod != "" && app.PkgMethod != TypeNone {
+		if app.Application.HasPackage() {
 			return StatusLoading
 		}
 		return StatusUnknown

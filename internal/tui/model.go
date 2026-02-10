@@ -356,11 +356,6 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 				EntryType: entryType,
 			}
 
-			// Add package info if entry has a package (install check deferred to async)
-			if entry.HasPackage() {
-				item.PkgMethod = getPackageInstallMethodFromPackage(entry.Package, plat.OS)
-			}
-
 			items = append(items, item)
 		}
 	}
@@ -375,11 +370,10 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 	pkgItems := make([]PackageItem, 0)
 
 	for _, item := range items {
-		if item.PkgMethod != "" && item.PkgMethod != TypeNone {
+		if item.Entry.HasPackage() {
 			pkgItems = append(pkgItems, PackageItem{
 				Entry:    item.Entry,
-				Method:   item.PkgMethod,
-				Selected: true, // Select all by default
+				Selected: true, // Method populated by async check
 			})
 		}
 	}
@@ -493,11 +487,11 @@ func (m Model) Init() tea.Cmd {
 // This is part of the Bubble Tea model interface.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case pkgCheckCompleteMsg:
-		return m.handlePkgCheckComplete(msg)
+	case pkgCheckResultMsg:
+		return m.handlePkgCheckResult(msg)
 
-	case stateCheckCompleteMsg:
-		return m.handleStateCheckComplete(msg)
+	case stateCheckResultMsg:
+		return m.handleStateCheckResult(msg)
 
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
@@ -811,24 +805,23 @@ func detectConfigState(backupPath, targetPath string, isFolder bool, files []str
 	return StateMissing
 }
 
-// handlePkgCheckComplete processes the results of async package install checks.
-func (m Model) handlePkgCheckComplete(msg pkgCheckCompleteMsg) (tea.Model, tea.Cmd) {
-	for _, r := range msg.results {
-		if r.appIndex < len(m.Applications) {
-			installed := r.installed
-			m.Applications[r.appIndex].PkgInstalled = &installed
+// handlePkgCheckResult processes the result of a single async package install check.
+func (m Model) handlePkgCheckResult(msg pkgCheckResultMsg) (tea.Model, tea.Cmd) {
+	if msg.appIndex < len(m.Applications) {
+		m.Applications[msg.appIndex].PkgMethod = msg.method
+		if msg.method != TypeNone {
+			installed := msg.installed
+			m.Applications[msg.appIndex].PkgInstalled = &installed
 		}
 	}
 	m.initTableModel()
 	return m, nil
 }
 
-// handleStateCheckComplete processes the results of async sub-entry state checks.
-func (m Model) handleStateCheckComplete(msg stateCheckCompleteMsg) (tea.Model, tea.Cmd) {
-	for _, r := range msg.results {
-		if r.appIndex < len(m.Applications) && r.subIndex < len(m.Applications[r.appIndex].SubItems) {
-			m.Applications[r.appIndex].SubItems[r.subIndex].State = r.state
-		}
+// handleStateCheckResult processes the result of a single async sub-entry state check.
+func (m Model) handleStateCheckResult(msg stateCheckResultMsg) (tea.Model, tea.Cmd) {
+	if msg.appIndex < len(m.Applications) && msg.subIndex < len(m.Applications[msg.appIndex].SubItems) {
+		m.Applications[msg.appIndex].SubItems[msg.subIndex].State = msg.state
 	}
 	m.initTableModel()
 	return m, nil
