@@ -258,40 +258,78 @@ func TestNeedsAttention(t *testing.T) {
 	})
 }
 
-func TestAppInfoNeedsAttention(t *testing.T) {
-	t.Run("app info needs attention when any sub-entry is not Linked", func(t *testing.T) {
+func TestAppInfoMaxState(t *testing.T) {
+	t.Run("returns highest severity state", func(t *testing.T) {
 		app := ApplicationItem{
 			SubItems: []SubEntryItem{
 				{State: StateLinked},
 				{State: StateMissing},
 			},
 		}
-		if !appInfoNeedsAttention(app) {
-			t.Errorf("App with non-Linked sub-entry should need attention")
+		if got := appInfoMaxState(app); got != StateMissing {
+			t.Errorf("expected StateMissing, got %v", got)
 		}
 	})
 
-	t.Run("app info does not need attention when all sub-entries are Linked", func(t *testing.T) {
+	t.Run("returns StateLinked when all sub-entries are Linked", func(t *testing.T) {
 		app := ApplicationItem{
 			SubItems: []SubEntryItem{
 				{State: StateLinked},
 				{State: StateLinked},
 			},
 		}
-		if appInfoNeedsAttention(app) {
-			t.Errorf("App with all Linked sub-entries should not need attention")
+		if got := appInfoMaxState(app); got != StateLinked {
+			t.Errorf("expected StateLinked, got %v", got)
 		}
 	})
 
-	t.Run("app info does not need attention when filtered", func(t *testing.T) {
+	t.Run("returns StateLinked when filtered", func(t *testing.T) {
 		app := ApplicationItem{
 			IsFiltered: true,
 			SubItems: []SubEntryItem{
 				{State: StateMissing},
 			},
 		}
-		if appInfoNeedsAttention(app) {
-			t.Errorf("Filtered app should not need attention")
+		if got := appInfoMaxState(app); got != StateLinked {
+			t.Errorf("expected StateLinked for filtered app, got %v", got)
+		}
+	})
+
+	t.Run("red state wins over amber and blue", func(t *testing.T) {
+		app := ApplicationItem{
+			SubItems: []SubEntryItem{
+				{State: StateModified},
+				{State: StateOutdated},
+				{State: StateMissing},
+			},
+		}
+		if got := appInfoMaxState(app); got != StateMissing {
+			t.Errorf("expected StateMissing (red), got %v", got)
+		}
+	})
+
+	t.Run("amber state wins over blue", func(t *testing.T) {
+		app := ApplicationItem{
+			SubItems: []SubEntryItem{
+				{State: StateLinked},
+				{State: StateModified},
+				{State: StateOutdated},
+			},
+		}
+		if got := appInfoMaxState(app); got != StateOutdated {
+			t.Errorf("expected StateOutdated (amber), got %v", got)
+		}
+	})
+
+	t.Run("blue state wins over linked", func(t *testing.T) {
+		app := ApplicationItem{
+			SubItems: []SubEntryItem{
+				{State: StateLinked},
+				{State: StateModified},
+			},
+		}
+		if got := appInfoMaxState(app); got != StateModified {
+			t.Errorf("expected StateModified (blue), got %v", got)
 		}
 	})
 }
@@ -437,15 +475,15 @@ func TestGetApplicationStatus_PackageState(t *testing.T) {
 	})
 }
 
-func TestAppInfoNeedsAttention_Outdated(t *testing.T) {
+func TestAppInfoMaxState_Outdated(t *testing.T) {
 	app := ApplicationItem{
 		SubItems: []SubEntryItem{
 			{State: StateLinked},
 			{State: StateOutdated},
 		},
 	}
-	if !appInfoNeedsAttention(app) {
-		t.Error("App with StateOutdated sub-entry should need attention")
+	if got := appInfoMaxState(app); got != StateOutdated {
+		t.Errorf("expected StateOutdated, got %v", got)
 	}
 }
 
@@ -467,14 +505,14 @@ func TestStateModified_NeedsAttention(t *testing.T) {
 	}
 }
 
-func TestAppInfoNeedsAttention_Modified(t *testing.T) {
+func TestAppInfoMaxState_Modified(t *testing.T) {
 	app := ApplicationItem{
 		SubItems: []SubEntryItem{
 			{State: StateLinked},
 			{State: StateModified},
 		},
 	}
-	if !appInfoNeedsAttention(app) {
-		t.Error("App with StateModified sub-entry should need attention")
+	if got := appInfoMaxState(app); got != StateModified {
+		t.Errorf("expected StateModified, got %v", got)
 	}
 }

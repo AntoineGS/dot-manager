@@ -18,6 +18,7 @@ type TableRow struct {
 	State           PathState // For badge rendering
 	StatusAttention bool      // Status column needs attention
 	InfoAttention   bool      // Info column needs attention
+	InfoState       PathState // Highest-severity sub-entry state (app rows only)
 	BackupPath      string    // Backup/source path for sub-entries (empty for app rows)
 }
 
@@ -50,6 +51,8 @@ func flattenApplications(apps []ApplicationItem, osType string, filterEnabled bo
 		}
 		entryCount := fmt.Sprintf("%d %s", len(app.SubItems), entryText)
 
+		infoState := appInfoMaxState(app)
+
 		rows = append(rows, TableRow{
 			Data: table.Row{
 				expandChar + app.Application.Name,
@@ -64,7 +67,8 @@ func flattenApplications(apps []ApplicationItem, osType string, filterEnabled bo
 			AppName:         app.Application.Name,
 			SubIndex:        -1,
 			StatusAttention: needsAttention(statusText),
-			InfoAttention:   appInfoNeedsAttention(app),
+			InfoAttention:   infoState != StateLinked,
+			InfoState:       infoState,
 		})
 
 		// Level 1: Sub-entry rows (if expanded)
@@ -143,19 +147,39 @@ func needsAttention(status string) bool {
 	return status != StatusInstalled && status != StatusUnknown && status != StateLinked.String()
 }
 
-// appInfoNeedsAttention returns true if the application has any configs that need attention
-func appInfoNeedsAttention(app ApplicationItem) bool {
-	// Filtered apps don't need attention
-	if app.IsFiltered {
-		return false
+// stateSeverity returns a numeric severity for a PathState.
+// Higher values indicate more urgent states that should take priority in the info column.
+func stateSeverity(s PathState) int {
+	switch s {
+	case StateMissing, StateReady, StateAdopt:
+		return 3 // Red — action required
+	case StateOutdated:
+		return 2 // Amber — template source changed
+	case StateModified:
+		return 1 // Blue — user edits detected
+	case StateLinked:
+		return 0 // No attention
 	}
 
-	// Check if any sub-entry is not linked
+	return 0
+}
+
+// appInfoMaxState returns the highest-severity sub-entry state for an application.
+// Returns StateLinked when no sub-entry needs attention or the app is filtered.
+func appInfoMaxState(app ApplicationItem) PathState {
+	if app.IsFiltered {
+		return StateLinked
+	}
+
+	maxState := StateLinked
+	maxSev := 0
+
 	for _, sub := range app.SubItems {
-		if sub.State != StateLinked {
-			return true
+		if sev := stateSeverity(sub.State); sev > maxSev {
+			maxSev = sev
+			maxState = sub.State
 		}
 	}
 
-	return false
+	return maxState
 }

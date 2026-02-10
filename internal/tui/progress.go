@@ -532,7 +532,16 @@ func cellAttentionStyle(tr TableRow, col int) lipgloss.Style {
 		return baseStyle.Foreground(errorColor)
 	}
 	if col == 2 && tr.InfoAttention {
-		return baseStyle.Foreground(errorColor)
+		switch {
+		case stateSeverity(tr.InfoState) >= 3:
+			return baseStyle.Foreground(errorColor)
+		case tr.InfoState == StateOutdated:
+			return baseStyle.Foreground(accentColor)
+		case tr.InfoState == StateModified:
+			return baseStyle.Foreground(lipgloss.Color("#3B82F6"))
+		default:
+			return baseStyle.Foreground(errorColor)
+		}
 	}
 
 	// Mute "Unknown" status and "0 entries" info text
