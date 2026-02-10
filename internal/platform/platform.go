@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // Supported operating system identifiers.
@@ -201,16 +202,33 @@ var KnownPackageManagers = []string{
 	"git", // Git for repository cloning
 }
 
+var (
+	availableManagersOnce   sync.Once
+	availableManagersCached []string
+)
+
 // DetectAvailableManagers returns a list of package managers available on the system
 // by checking which managers from KnownPackageManagers are present in the PATH.
+// Results are cached after the first call since PATH rarely changes during execution.
 func DetectAvailableManagers() []string {
-	available := make([]string, 0, len(KnownPackageManagers))
+	availableManagersOnce.Do(func() {
+		available := make([]string, 0, len(KnownPackageManagers))
 
-	for _, mgr := range KnownPackageManagers {
-		if IsCommandAvailable(mgr) {
-			available = append(available, mgr)
+		for _, mgr := range KnownPackageManagers {
+			if IsCommandAvailable(mgr) {
+				available = append(available, mgr)
+			}
 		}
-	}
 
-	return available
+		availableManagersCached = available
+	})
+
+	return availableManagersCached
+}
+
+// ResetAvailableManagersCache clears the cached manager detection results,
+// causing the next call to DetectAvailableManagers to re-scan PATH.
+func ResetAvailableManagersCache() {
+	availableManagersOnce = sync.Once{}
+	availableManagersCached = nil
 }

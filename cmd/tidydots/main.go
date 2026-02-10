@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"syscall"
 
@@ -28,6 +29,7 @@ var (
 	noMerge     bool
 	forceDelete bool
 	forceRender bool
+	cpuProfile  string
 )
 
 func main() {
@@ -45,12 +47,32 @@ Configuration is stored in two places:
 Run 'tidydots init <path>' to set up the app configuration.
 Run without arguments to start the interactive TUI.`,
 		RunE: runInteractive,
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+			if cpuProfile != "" {
+				f, err := os.Create(filepath.Clean(cpuProfile))
+				if err != nil {
+					return fmt.Errorf("creating CPU profile: %w", err)
+				}
+				if err := pprof.StartCPUProfile(f); err != nil {
+					_ = f.Close()
+					return fmt.Errorf("starting CPU profile: %w", err)
+				}
+			}
+			return nil
+		},
+		PersistentPostRun: func(_ *cobra.Command, _ []string) {
+			if cpuProfile != "" {
+				pprof.StopCPUProfile()
+			}
+		},
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&configDir, "dir", "d", "", "Override configurations directory (ignores app config)")
 	rootCmd.PersistentFlags().StringVarP(&osOverride, "os", "o", "", "Override OS detection (linux or windows)")
 	rootCmd.PersistentFlags().BoolVarP(&dryRun, "dry-run", "n", false, "Show what would be done without making changes")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+	rootCmd.PersistentFlags().StringVar(&cpuProfile, "cpuprofile", "", "Write CPU profile to file (e.g. cpu.prof)")
+	_ = rootCmd.PersistentFlags().MarkHidden("cpuprofile")
 
 	initCmd := &cobra.Command{
 		Use:   "init <path>",
