@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,8 +16,6 @@ import (
 	"github.com/AntoineGS/tidydots/internal/state"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
 )
-
-const osWindows = "windows"
 
 // File permissions constants
 const (
@@ -172,42 +169,8 @@ func (m *Manager) expandTarget(target string) string {
 //
 // Returns false if the state store is nil, the directory doesn't exist, or has no templates.
 func (m *Manager) HasOutdatedTemplates(backupDir string) bool {
-	if m.stateStore == nil {
-		return false
-	}
-
-	if !hasTemplateFiles(backupDir) {
-		return false
-	}
-
 	outdated := false
-	_ = filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || outdated {
-			return filepath.SkipDir
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		if tmpl.IsRenderedFile(d.Name()) || tmpl.IsConflictFile(d.Name()) {
-			return nil
-		}
-
-		if !tmpl.IsTemplateFile(d.Name()) {
-			return nil
-		}
-
-		relPath, relErr := filepath.Rel(backupDir, path)
-		if relErr != nil {
-			return nil
-		}
-
-		record, lookupErr := m.stateStore.GetLatestRender(relPath)
-		if lookupErr != nil {
-			return nil
-		}
-
+	_ = m.walkTemplateFiles(backupDir, func(path, _ string, record *state.RenderRecord) error {
 		// No render record = template never rendered = outdated
 		if record == nil {
 			outdated = true
@@ -238,39 +201,9 @@ func (m *Manager) HasOutdatedTemplates(backupDir string) bool {
 //
 // Returns false if the state store is nil, the directory doesn't exist, or has no templates.
 func (m *Manager) HasModifiedRenderedFiles(backupDir string) bool {
-	if m.stateStore == nil {
-		return false
-	}
-
-	if !hasTemplateFiles(backupDir) {
-		return false
-	}
-
 	modified := false
-	_ = filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || modified {
-			return filepath.SkipDir
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		if tmpl.IsRenderedFile(d.Name()) || tmpl.IsConflictFile(d.Name()) {
-			return nil
-		}
-
-		if !tmpl.IsTemplateFile(d.Name()) {
-			return nil
-		}
-
-		relPath, relErr := filepath.Rel(backupDir, path)
-		if relErr != nil {
-			return nil
-		}
-
-		record, lookupErr := m.stateStore.GetLatestRender(relPath)
-		if lookupErr != nil || record == nil {
+	_ = m.walkTemplateFiles(backupDir, func(path, _ string, record *state.RenderRecord) error {
+		if record == nil {
 			return nil
 		}
 
@@ -308,7 +241,7 @@ func isSymlink(path string) bool {
 
 	// On Windows, directory junctions (mklink /J) are not reported as
 	// ModeSymlink in recent Go versions, but Readlink still resolves them.
-	if runtime.GOOS == osWindows {
+	if runtime.GOOS == platform.OSWindows {
 		_, err := os.Readlink(path)
 		return err == nil
 	}
@@ -438,30 +371,8 @@ func (m *Manager) GetModifiedTemplateFiles(backupDir string) ([]ModifiedTemplate
 
 	var result []ModifiedTemplate
 
-	err := filepath.WalkDir(backupDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		if tmpl.IsRenderedFile(d.Name()) || tmpl.IsConflictFile(d.Name()) {
-			return nil
-		}
-
-		if !tmpl.IsTemplateFile(d.Name()) {
-			return nil
-		}
-
-		relPath, relErr := filepath.Rel(backupDir, path)
-		if relErr != nil {
-			return nil
-		}
-
-		record, lookupErr := m.stateStore.GetLatestRender(relPath)
-		if lookupErr != nil || record == nil {
+	err := m.walkTemplateFiles(backupDir, func(path, relPath string, record *state.RenderRecord) error {
+		if record == nil {
 			return nil
 		}
 
