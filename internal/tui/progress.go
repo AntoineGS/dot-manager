@@ -1673,9 +1673,10 @@ func (m Model) installNextPackage() tea.Cmd {
 		}
 	}
 
-	// Use tea.ExecProcess to properly suspend the TUI and give terminal control to the command
-	// This allows sudo to prompt for password correctly
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	// Use tea.Exec to properly suspend the TUI and give terminal control to the command.
+	// This allows sudo to prompt for password correctly.
+	// pauseOnFailExec wraps the command to pause on failure so the user can read error output.
+	return tea.Exec(&pauseOnFailExec{cmd: cmd}, func(err error) tea.Msg {
 		if err != nil {
 			return PackageInstallMsg{
 				Package: pkg,
