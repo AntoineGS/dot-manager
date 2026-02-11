@@ -276,8 +276,9 @@ func TestRemoveAll(t *testing.T) {
 
 func TestResolvePath(t *testing.T) {
 	t.Parallel()
+	backupRoot := filepath.Join("/home", "user", "backups")
 	cfg := &config.Config{
-		BackupRoot: "/home/user/backups",
+		BackupRoot: backupRoot,
 	}
 	plat := &platform.Platform{OS: platform.OSLinux}
 	mgr := New(cfg, plat)
@@ -287,8 +288,8 @@ func TestResolvePath(t *testing.T) {
 		path string
 		want string
 	}{
-		{"relative path", "./configs", "/home/user/backups/configs"},
-		{"absolute path", "/etc/config", "/etc/config"},
+		{"relative path", "./configs", filepath.Join(backupRoot, "configs")},
+		{"absolute path", filepath.Join("/etc", "config"), filepath.Join("/etc", "config")},
 	}
 
 	for _, tt := range tests {

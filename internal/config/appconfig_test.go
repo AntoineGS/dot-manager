@@ -241,12 +241,13 @@ func TestLoadAppConfigNonexistentConfigDir(t *testing.T) {
 func TestGetRepoConfigPath(t *testing.T) {
 	t.Parallel()
 
+	configDir := filepath.Join("/home", "user", "dotfiles")
 	cfg := &AppConfig{
-		ConfigDir: "/home/user/dotfiles",
+		ConfigDir: configDir,
 	}
 
 	got := cfg.GetRepoConfigPath()
-	want := "/home/user/dotfiles/tidydots.yaml"
+	want := filepath.Join(configDir, "tidydots.yaml")
 
 	if got != want {
 		t.Errorf("GetRepoConfigPath() = %q, want %q", got, want)

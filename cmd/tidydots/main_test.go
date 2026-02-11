@@ -127,7 +127,7 @@ func TestGetConfigDir(t *testing.T) {
 		},
 		{
 			name:      "flag override with absolute path",
-			flagValue: "/tmp/test-config",
+			flagValue: t.TempDir(),
 			wantAbs:   true,
 			wantErr:   false,
 		},
