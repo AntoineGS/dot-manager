@@ -290,6 +290,11 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.applicationForm.focusIndex < 0 {
 			m.applicationForm.focusIndex = 3
 		}
+		if m.getApplicationFieldType() == appFieldPackages {
+			m.applicationForm.packagesCursor = len(displayPackageManagers) + 1
+			m.applicationForm.gitFieldCursor = -1
+			m.applicationForm.installerFieldCursor = -1
+		}
 		m.updateApplicationFormFocus()
 		return m, nil
 
@@ -305,6 +310,11 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.applicationForm.focusIndex--
 		if m.applicationForm.focusIndex < 0 {
 			m.applicationForm.focusIndex = 3
+		}
+		if m.getApplicationFieldType() == appFieldPackages {
+			m.applicationForm.packagesCursor = len(displayPackageManagers) + 1
+			m.applicationForm.gitFieldCursor = -1
+			m.applicationForm.installerFieldCursor = -1
 		}
 		m.updateApplicationFormFocus()
 		return m, nil
@@ -931,18 +941,6 @@ func (m Model) viewApplicationForm() string {
 
 	var b strings.Builder
 	ft := m.getApplicationFieldType()
-
-	// Title
-	if m.applicationForm.editAppIdx >= 0 {
-		b.WriteString(TitleStyle.Render("  Edit Application"))
-		b.WriteString("\n\n")
-		b.WriteString(SubtitleStyle.Render("Edit the application metadata"))
-	} else {
-		b.WriteString(TitleStyle.Render("  Add Application"))
-		b.WriteString("\n\n")
-		b.WriteString(SubtitleStyle.Render("Add a new application to your configuration"))
-	}
-	b.WriteString("\n\n")
 
 	// Name field
 	nameLabel := "Name:"

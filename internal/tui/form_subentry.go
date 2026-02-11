@@ -359,6 +359,9 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.subEntryForm.focusIndex < 0 {
 			m.subEntryForm.focusIndex = m.subEntryFormMaxIndex()
 		}
+		if m.getSubEntryFieldType() == subFieldFiles {
+			m.subEntryForm.filesCursor = len(m.subEntryForm.files)
+		}
 
 		m.updateSubEntryFormFocus()
 		m.subEntryForm.err = ""            // Clear error on navigation
@@ -384,6 +387,9 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.subEntryForm.focusIndex--
 		if m.subEntryForm.focusIndex < 0 {
 			m.subEntryForm.focusIndex = m.subEntryFormMaxIndex()
+		}
+		if m.getSubEntryFieldType() == subFieldFiles {
+			m.subEntryForm.filesCursor = len(m.subEntryForm.files)
 		}
 
 		m.updateSubEntryFormFocus()
@@ -749,19 +755,6 @@ func (m Model) viewSubEntryForm() string {
 
 	var b strings.Builder
 	ft := m.getSubEntryFieldType()
-
-	// Title
-	if m.subEntryForm.editAppIdx >= 0 {
-		b.WriteString(TitleStyle.Render("  Edit Config Entry"))
-		b.WriteString("\n\n")
-		b.WriteString(SubtitleStyle.Render("Edit the entry configuration"))
-	} else {
-		b.WriteString(TitleStyle.Render("  Add Entry"))
-		b.WriteString("\n\n")
-		b.WriteString(SubtitleStyle.Render("Add a new entry to the application"))
-	}
-
-	b.WriteString("\n\n")
 
 	// Name field
 	nameLabel := "Name:"
