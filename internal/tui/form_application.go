@@ -423,14 +423,12 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 				m.applicationForm.gitFieldCursor = 0
 				return m, nil
 			}
-			// Moving to next item - handle installer sub-field entry
-			if m.applicationForm.packagesCursor == installerItemIdx && m.applicationForm.hasInstallerPackage && m.applicationForm.installerFieldCursor == -1 {
-				m.applicationForm.installerFieldCursor = 0
-				return m, nil
-			}
 			m.applicationForm.packagesCursor++
 			m.applicationForm.gitFieldCursor = -1
 			m.applicationForm.installerFieldCursor = -1
+		case m.applicationForm.packagesCursor == installerItemIdx && m.applicationForm.hasInstallerPackage && m.applicationForm.installerFieldCursor == -1:
+			// Enter installer sub-fields (handled separately since installer is the last item, so packagesCursor == maxCursor)
+			m.applicationForm.installerFieldCursor = 0
 		default:
 			// Move to next field
 			m.applicationForm.focusIndex++
@@ -489,16 +487,16 @@ func (m Model) handlePackagesListActivate(gitItemIdx, installerItemIdx int) (tea
 	if m.applicationForm.packagesCursor == gitItemIdx {
 		if !m.applicationForm.hasGitPackage {
 			m.applicationForm.hasGitPackage = true
-			m.applicationForm.gitFieldCursor = GitFieldURL
 		}
+		m.applicationForm.gitFieldCursor = GitFieldURL
 		return m, nil
 	}
 	// Handle installer item
 	if m.applicationForm.packagesCursor == installerItemIdx {
 		if !m.applicationForm.hasInstallerPackage {
 			m.applicationForm.hasInstallerPackage = true
-			m.applicationForm.installerFieldCursor = InstallerFieldLinux
 		}
+		m.applicationForm.installerFieldCursor = InstallerFieldLinux
 		return m, nil
 	}
 	// Edit the selected package manager's package name
