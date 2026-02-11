@@ -10,6 +10,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/packages"
 	"github.com/AntoineGS/tidydots/internal/platform"
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -437,7 +438,7 @@ func (m *Model) renderTable(availableHeight int) string {
 	if showBackupColumn {
 		headers = []string{
 			m.formatHeaderWithShortcut("name", 'n', SortColumnName),
-			m.formatHeaderWithShortcut("status", 's', SortColumnStatus),
+			m.formatHeaderWithShortcut("status", 't', SortColumnStatus),
 			"info",
 			"backup",
 			m.formatHeaderWithShortcut("path", 'p', SortColumnPath),
@@ -445,7 +446,7 @@ func (m *Model) renderTable(availableHeight int) string {
 	} else {
 		headers = []string{
 			m.formatHeaderWithShortcut("name", 'n', SortColumnName),
-			m.formatHeaderWithShortcut("status", 's', SortColumnStatus),
+			m.formatHeaderWithShortcut("status", 't', SortColumnStatus),
 			"info",
 			m.formatHeaderWithShortcut("path", 'p', SortColumnPath),
 		}
@@ -818,8 +819,8 @@ func (m Model) viewProgress() string {
 func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle search mode input
 	if m.Operation == OpList && m.searching {
-		switch msg.String() {
-		case KeyEsc:
+		switch {
+		case key.Matches(msg, SearchKeys.Cancel):
 			// Clear search and exit search mode
 			m.searching = false
 			m.searchText = ""
@@ -829,7 +830,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.rebuildTable()
 
 			return m, nil
-		case KeyEnter:
+		case key.Matches(msg, SearchKeys.Confirm):
 			// Confirm search and return to navigation mode
 			m.searching = false
 			m.searchInput.Blur()
@@ -849,8 +850,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle filter toggle confirmation
 	if m.Operation == OpList && m.confirmingFilterToggle {
-		switch msg.String() {
-		case "y", "Y", KeyEnter:
+		switch {
+		case key.Matches(msg, ConfirmKeys.Yes):
 			// Confirm - toggle filter and clear hidden selections
 			m.confirmingFilterToggle = false
 			m.filterToggleHiddenCount = 0
@@ -858,7 +859,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.clearHiddenSelections()
 			m.rebuildTable()
 			return m, nil
-		case "n", "N", KeyEsc:
+		case key.Matches(msg, ConfirmKeys.No):
 			// Cancel - keep filter off
 			m.confirmingFilterToggle = false
 			m.filterToggleHiddenCount = 0
@@ -869,8 +870,8 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle delete confirmation
 	if m.Operation == OpList && (m.confirmingDeleteApp || m.confirmingDeleteSubEntry) {
-		switch msg.String() {
-		case "y", "Y", KeyEnter:
+		switch {
+		case key.Matches(msg, ConfirmKeys.Yes):
 			// Confirm delete
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if m.confirmingDeleteApp && appIdx >= 0 {
@@ -892,7 +893,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 
 			return m, nil
-		case "n", "N", KeyEsc:
+		case key.Matches(msg, ConfirmKeys.No):
 			// Cancel delete
 			m.confirmingDeleteApp = false
 			m.confirmingDeleteSubEntry = false
@@ -910,21 +911,22 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Handle detail popup separately
 	if m.Operation == OpList && m.showingDetail {
-		switch msg.String() {
-		case KeyEsc, KeyEnter:
+		if m, cmd, handled := m.handleCommonKeys(msg); handled {
+			return m, cmd
+		}
+
+		switch {
+		case key.Matches(msg, DetailKeys.Close):
 			// Close detail popup (ESC cancels/closes the popup)
 			m.showingDetail = false
 			return m, nil
-		case "q":
-			// q quits the application
-			return m, tea.Quit
 		}
 
 		return m, nil
 	}
 
 	// Handle ESC to clear active search or selections (when not in search mode but search text or selections are present)
-	if m.Operation == OpList && msg.String() == KeyEsc && !m.searching {
+	if m.Operation == OpList && key.Matches(msg, FormNavKeys.Cancel) && !m.searching {
 		// Priority 1: Clear search first if active
 		if m.searchText != "" {
 			m.searchText = ""
@@ -939,18 +941,21 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	switch msg.String() {
-	case "/":
+	// Helper to check if we're in a clean list state (no modals/search)
+	listClean := m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail
+
+	switch {
+	case key.Matches(msg, ListKeys.Search):
 		// Enter search mode
-		if m.Operation == OpList && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+		if listClean {
 			m.searching = true
 			m.searchInput.Focus()
 
 			return m, nil
 		}
-	case "n":
+	case key.Matches(msg, ListKeys.SortByName):
 		// Sort by name
-		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+		if listClean {
 			if m.sortColumn == SortColumnName {
 				m.sortAscending = !m.sortAscending
 			} else {
@@ -960,9 +965,9 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.rebuildTable()
 			return m, nil
 		}
-	case "s":
+	case key.Matches(msg, ListKeys.SortByStatus):
 		// Sort by status
-		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+		if listClean {
 			if m.sortColumn == SortColumnStatus {
 				m.sortAscending = !m.sortAscending
 			} else {
@@ -972,9 +977,9 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.rebuildTable()
 			return m, nil
 		}
-	case "p":
+	case key.Matches(msg, ListKeys.SortByPath):
 		// Sort by path
-		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+		if listClean {
 			if m.sortColumn == SortColumnPath {
 				m.sortAscending = !m.sortAscending
 			} else {
@@ -984,9 +989,9 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.rebuildTable()
 			return m, nil
 		}
-	case "f":
+	case key.Matches(msg, ListKeys.Filter):
 		// Toggle filter
-		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+		if listClean {
 			// If toggling filter ON (false -> true), check if selections would be hidden
 			if !m.filterEnabled && m.multiSelectActive {
 				hiddenCount := m.countHiddenSelections()
@@ -1010,10 +1015,10 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			return m, nil
 		}
-	case "q":
+	case key.Matches(msg, SharedKeys.Quit):
 		// Quit the application
 		return m, tea.Quit
-	case "up", "k":
+	case key.Matches(msg, ListKeys.Up):
 		if m.Operation == OpList {
 			// Clear any previous restore results when navigating
 			m.results = nil
@@ -1026,7 +1031,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, nil
-	case "down", "j":
+	case key.Matches(msg, ListKeys.Down):
 		if m.Operation == OpList {
 			// Clear any previous restore results when navigating
 			m.results = nil
@@ -1039,7 +1044,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, nil
-	case "h", "left":
+	case key.Matches(msg, ListKeys.Collapse):
 		if m.Operation == OpList {
 			// Clear any previous restore results when navigating
 			m.results = nil
@@ -1056,7 +1061,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, tea.Quit
-	case KeyEnter, "l", "right":
+	case key.Matches(msg, ListKeys.Expand):
 		if m.Operation == OpList {
 			// Clear any previous restore results when navigating
 			m.results = nil
@@ -1077,7 +1082,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, tea.Quit
-	case "e":
+	case key.Matches(msg, ListKeys.Edit):
 		// Edit selected Application or SubEntry (only in List view)
 		if m.Operation == OpList {
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
@@ -1093,13 +1098,13 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-	case "A":
+	case key.Matches(msg, ListKeys.AddApp):
 		// Add new Application (only in List view)
 		if m.Operation == OpList {
 			m.initApplicationFormNew()
 			return m, nil
 		}
-	case "a":
+	case key.Matches(msg, ListKeys.AddEntry):
 		// Add new SubEntry to current Application (only in List view)
 		if m.Operation == OpList {
 			appIdx, _ := m.getApplicationAtCursorFromTable()
@@ -1108,7 +1113,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-	case "d", "delete", "backspace":
+	case key.Matches(msg, ListKeys.Delete):
 		// Ask for delete confirmation (only in List view)
 		if m.Operation == OpList {
 			// Check if multi-select mode is active
@@ -1131,7 +1136,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-	case "i":
+	case key.Matches(msg, ListKeys.Install):
 		// Install or Diff depending on context (only in List view)
 		if m.Operation == OpList {
 			// Check if multi-select mode is active
@@ -1189,7 +1194,7 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, nil
-	case "r":
+	case key.Matches(msg, ListKeys.Restore):
 		// Restore selected SubEntry (only in List view for SubEntry rows)
 		if m.Operation == OpList {
 			// Check if multi-select mode is active
@@ -1238,9 +1243,9 @@ func (m Model) updateResults(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, nil
-	case "tab", " ":
+	case key.Matches(msg, ListKeys.Toggle):
 		// Toggle selection and advance cursor (only in List view)
-		if m.Operation == OpList && !m.searching && !m.confirmingDeleteApp && !m.confirmingDeleteSubEntry && !m.showingDetail {
+		if listClean {
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 			if appIdx >= 0 {
 				if subIdx >= 0 {
@@ -1355,9 +1360,9 @@ func (m Model) viewResults() string {
 
 	// Help
 	b.WriteString("\n")
-	b.WriteString(RenderHelpWithWidth(m.width,
-		"r", "new operation",
-		"q/enter", "quit",
+	b.WriteString(RenderHelpFromBindings(m.width,
+		ListKeys.NewOperation,
+		ListKeys.QuitOrEnter,
 	))
 
 	return BaseStyle.Render(b.String())
@@ -1381,9 +1386,9 @@ func (m Model) renderHelpForCurrentState() string {
 
 		if name != "" {
 			return WarningStyle.Render(fmt.Sprintf("Delete '%s'? ", name)) +
-				RenderHelpWithWidth(m.width, "y/enter", "yes", "n/esc", "no")
+				RenderHelpFromBindings(m.width, ConfirmKeys.Yes, ConfirmKeys.No)
 		}
-		return HelpStyle.Render("y/enter: yes | n/esc: no")
+		return RenderHelpFromBindings(m.width, ConfirmKeys.Yes, ConfirmKeys.No)
 
 	case m.confirmingFilterToggle:
 		// Filter toggle confirmation dialog
@@ -1396,63 +1401,60 @@ func (m Model) renderHelpForCurrentState() string {
 		return WarningStyle.Render(prompt)
 
 	case m.searching:
-		return RenderHelpWithWidth(m.width,
-			"enter", "confirm",
-			"esc", "clear",
+		return RenderHelpFromBindings(m.width,
+			SearchKeys.Confirm,
+			SearchKeys.Cancel,
 		)
 
 	case m.showingDiffPicker:
-		return RenderHelpWithWidth(m.width,
-			"enter", "select",
-			"esc", "cancel",
+		return RenderHelpFromBindings(m.width,
+			DiffPickerKeys.Select,
+			DiffPickerKeys.Cancel,
 		)
 
 	case m.showingDetail:
-		return RenderHelpWithWidth(m.width,
-			"h/←/esc", "close",
-			"q", "quit",
+		return RenderHelpFromBindings(m.width,
+			DetailKeys.Close,
+			SharedKeys.Quit,
 		)
 
 	default:
 		// Build help text based on cursor position and multi-select mode
-		var helpItems []string
-
 		if m.multiSelectActive {
-			// Multi-select mode help text
-			helpItems = []string{
-				"tab", "toggle",
-				"esc", "clear",
-				"r", "restore",
-				"i", "install",
-				"d", "delete",
-				"q", "quit",
-			}
-		} else {
-			// Normal mode help text
-			helpItems = []string{
-				"/", "search",
-				"A", "add app",
-				"a", "add entry",
-				"e", "edit",
-				"d", "delete",
-				"r", "restore",
-			}
-
-			// Show context-sensitive "i" help
-			if subIdx < 0 {
-				// App row: install
-				helpItems = append(helpItems, "i", "install")
-			} else if appIdx >= 0 && subIdx >= 0 && appIdx < len(m.Applications) &&
-				subIdx < len(m.Applications[appIdx].SubItems) &&
-				m.Applications[appIdx].SubItems[subIdx].State == StateModified {
-				// Modified sub-entry: diff
-				helpItems = append(helpItems, "i", "diff")
-			}
-
-			helpItems = append(helpItems, "q", "quit")
+			return RenderHelpFromBindings(m.width,
+				MultiSelectKeys.Toggle,
+				MultiSelectKeys.Clear,
+				MultiSelectKeys.Restore,
+				MultiSelectKeys.Install,
+				MultiSelectKeys.Delete,
+				SharedKeys.Quit,
+			)
 		}
 
-		return RenderHelpWithWidth(m.width, helpItems...)
+		// Normal mode help text
+		bindings := []key.Binding{
+			ListKeys.Search,
+			ListKeys.AddApp,
+			ListKeys.AddEntry,
+			ListKeys.Edit,
+			ListKeys.Delete,
+			ListKeys.Restore,
+		}
+
+		// Show context-sensitive "i" help
+		if subIdx < 0 {
+			// App row: install
+			bindings = append(bindings, ListKeys.Install)
+		} else if appIdx >= 0 && subIdx >= 0 && appIdx < len(m.Applications) &&
+			subIdx < len(m.Applications[appIdx].SubItems) &&
+			m.Applications[appIdx].SubItems[subIdx].State == StateModified {
+			// Modified sub-entry: diff
+			diffBinding := key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "diff"))
+			bindings = append(bindings, diffBinding)
+		}
+
+		bindings = append(bindings, SharedKeys.Quit)
+		return RenderHelpFromBindings(m.width, bindings...)
 	}
 }
 

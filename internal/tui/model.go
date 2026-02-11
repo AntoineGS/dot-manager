@@ -13,6 +13,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/platform"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
 	"github.com/charmbracelet/bubbles/filepicker"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -642,6 +643,65 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleCommonKeys checks for keys that are common across all navigation screens.
+// Returns (model, cmd, handled). If handled is true, the caller should return immediately.
+// This should NOT be used in text-editing handlers where "q" is valid typed input;
+// use handleTextEditKeys instead.
+func (m Model) handleCommonKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, SharedKeys.ForceQuit):
+		return m, tea.Quit, true
+	case key.Matches(msg, SharedKeys.Quit):
+		return m, tea.Quit, true
+	}
+
+	return m, nil, false
+}
+
+// handleTextEditKeys checks for keys common to all text-editing handlers.
+// Handles ctrl+c (force quit) and ctrl+s (save form).
+func (m Model) handleTextEditKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, SharedKeys.ForceQuit):
+		return m, tea.Quit, true
+	case key.Matches(msg, TextEditKeys.SaveForm):
+		return m.saveActiveForm()
+	}
+
+	return m, nil, false
+}
+
+// saveActiveForm saves whichever form is currently active and returns to the results screen.
+func (m Model) saveActiveForm() (tea.Model, tea.Cmd, bool) {
+	switch m.activeForm {
+	case FormApplication:
+		if m.applicationForm == nil {
+			return m, nil, true
+		}
+		if err := m.saveApplicationForm(); err != nil {
+			m.applicationForm.err = err.Error()
+			return m, nil, true
+		}
+		m.applicationForm = nil
+	case FormSubEntry:
+		if m.subEntryForm == nil {
+			return m, nil, true
+		}
+		if err := m.saveSubEntryForm(); err != nil {
+			m.subEntryForm.err = err.Error()
+			return m, nil, true
+		}
+		m.subEntryForm = nil
+	default:
+		return m, nil, true
+	}
+
+	m.activeForm = FormNone
+	m.Screen = ScreenResults
+
+	return m, nil, true
+}
+
 func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle AddForm separately (needs text input handling)
 	if m.Screen == ScreenAddForm {
@@ -658,11 +718,11 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	switch msg.String() {
-	case KeyCtrlC:
+	switch {
+	case key.Matches(msg, SharedKeys.ForceQuit):
 		return m, tea.Quit
 
-	case "q":
+	case key.Matches(msg, SharedKeys.Quit):
 		// Let the List view handle q for sub-screens
 		if m.Screen == ScreenResults && m.Operation == OpList {
 			return m.updateResults(msg)
@@ -671,7 +731,7 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Quit the application
 		return m, tea.Quit
 
-	case KeyEsc:
+	case key.Matches(msg, FormNavKeys.Cancel):
 		// ESC is only for canceling operations, not navigation
 		// Let screens that need it handle it (filter mode, delete confirmation, detail popup)
 		if m.Screen == ScreenResults && m.Operation == OpList {

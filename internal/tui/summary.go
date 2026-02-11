@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -39,10 +40,10 @@ func (m Model) viewSummary() string {
 
 	// Help
 	b.WriteString("\n\n")
-	b.WriteString(RenderHelpWithWidth(m.width,
-		"y/enter", "confirm",
-		"n/esc", "cancel",
-		"q", "quit",
+	b.WriteString(RenderHelpFromBindings(m.width,
+		SummaryKeys.Confirm,
+		SummaryKeys.Cancel,
+		SharedKeys.Quit,
 	))
 
 	return BaseStyle.Render(b.String())
@@ -208,61 +209,47 @@ func (m Model) renderHierarchicalSummary(operation string) string {
 // updateSummary handles keyboard input for the summary screen.
 // Supports y/enter to confirm, r/i/d for double-press, n/esc to cancel.
 func (m Model) updateSummary(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "y", "Y", KeyEnter:
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
+
+	switch {
+	case key.Matches(msg, SummaryKeys.Confirm):
 		// Confirm - execute the batch operation
 		return m.executeConfirmedOperation()
 
-	case "n", "N", KeyEsc:
+	case key.Matches(msg, SummaryKeys.Cancel):
 		// Cancel - return to manage view
 		m.Screen = ScreenResults
 		m.Operation = OpList
 		m.summaryDoublePress = ""
 		return m, nil
 
-	case "r":
-		// Double-press restore trigger (will be wired in Task 11)
-		// For now, just track the key press
+	case key.Matches(msg, MultiSelectKeys.Restore):
+		// Double-press restore trigger
 		if m.summaryDoublePress == "r" {
-			// Second press - would trigger restore
 			m.summaryDoublePress = ""
 		} else {
 			m.summaryDoublePress = "r"
 		}
 		return m, nil
 
-	case "i":
-		// Double-press install trigger (will be wired in Task 11)
+	case key.Matches(msg, MultiSelectKeys.Install):
+		// Double-press install trigger
 		if m.summaryDoublePress == "i" {
-			// Second press - would trigger install
 			m.summaryDoublePress = ""
 		} else {
 			m.summaryDoublePress = "i"
 		}
 		return m, nil
 
-	case "d":
-		// Double-press delete trigger (will be wired in Task 11)
+	case key.Matches(msg, MultiSelectKeys.Delete):
+		// Double-press delete trigger
 		if m.summaryDoublePress == "d" {
-			// Second press - would trigger delete
 			m.summaryDoublePress = ""
 		} else {
 			m.summaryDoublePress = "d"
 		}
-		return m, nil
-
-	case "q":
-		// Quit the application
-		return m, tea.Quit
-
-	case "up", "k", KeyDown, "j":
-		// Navigation placeholders for future hierarchical navigation
-		// For now, summary is static (no cursor navigation needed)
-		return m, nil
-
-	case "left", "h", "right", "l":
-		// Expand/collapse placeholders for future hierarchical navigation
-		// For now, summary shows everything expanded
 		return m, nil
 	}
 

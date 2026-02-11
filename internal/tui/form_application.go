@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/AntoineGS/tidydots/internal/config"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -264,18 +265,19 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateApplicationPackagesList(msg)
 	}
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, FormNavKeys.Cancel):
 		// Return to list view
 		m.activeForm = FormNone
 		m.applicationForm = nil
 		m.Screen = ScreenResults
 		return m, nil
 
-	case KeyDown, "j":
+	case key.Matches(msg, FormNavKeys.Down):
 		m.applicationForm.focusIndex++
 		if m.applicationForm.focusIndex > 3 {
 			m.applicationForm.focusIndex = 0
@@ -283,7 +285,7 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, FormNavKeys.Up):
 		m.applicationForm.focusIndex--
 		if m.applicationForm.focusIndex < 0 {
 			m.applicationForm.focusIndex = 3
@@ -291,7 +293,7 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case KeyTab:
+	case key.Matches(msg, FormNavKeys.TabNext):
 		m.applicationForm.focusIndex++
 		if m.applicationForm.focusIndex > 3 {
 			m.applicationForm.focusIndex = 0
@@ -299,7 +301,7 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case KeyShiftTab:
+	case key.Matches(msg, FormNavKeys.TabPrev):
 		m.applicationForm.focusIndex--
 		if m.applicationForm.focusIndex < 0 {
 			m.applicationForm.focusIndex = 3
@@ -307,7 +309,7 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case KeyEnter, "e":
+	case key.Matches(msg, FormNavKeys.Edit):
 		// Enter edit mode for text fields
 		ft := m.getApplicationFieldType()
 		if ft == appFieldName || ft == appFieldDescription {
@@ -322,7 +324,7 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case "s", KeyCtrlS:
+	case key.Matches(msg, FormNavKeys.Save):
 		// Save the form
 		if err := m.saveApplicationForm(); err != nil {
 			m.applicationForm.err = err.Error()
@@ -350,16 +352,17 @@ func (m Model) updateApplicationFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 	var cmd tea.Cmd
 	ft := m.getApplicationFieldType()
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleTextEditKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, TextEditKeys.Cancel):
 		// Cancel editing and restore original value
 		m.cancelApplicationFieldEdit()
 		return m, nil
 
-	case KeyEnter, KeyTab:
+	case key.Matches(msg, TextEditKeys.Confirm):
 		// Save and exit edit mode
 		m.applicationForm.editingField = false
 		m.updateApplicationFormFocus()
@@ -392,17 +395,18 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	installerItemIdx := len(displayPackageManagers) + 1
 	maxCursor := installerItemIdx // includes git and installer items at the end
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, FormNavKeys.Cancel):
 		m.activeForm = FormNone
 		m.applicationForm = nil
 		m.Screen = ScreenResults
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, FormNavKeys.Up):
 		if m.applicationForm.packagesCursor > 0 {
 			m.applicationForm.packagesCursor--
 			// Reset field cursors when moving between items
@@ -415,7 +419,7 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		}
 		return m, nil
 
-	case KeyDown, "j":
+	case key.Matches(msg, FormNavKeys.Down):
 		switch {
 		case m.applicationForm.packagesCursor < maxCursor:
 			// Moving to next item - handle git sub-field entry
@@ -442,7 +446,7 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		}
 		return m, nil
 
-	case KeyTab:
+	case key.Matches(msg, FormNavKeys.TabNext):
 		m.applicationForm.focusIndex++
 		if m.applicationForm.focusIndex > 3 {
 			m.applicationForm.focusIndex = 0
@@ -453,20 +457,20 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case KeyShiftTab:
+	case key.Matches(msg, FormNavKeys.TabPrev):
 		m.applicationForm.focusIndex--
 		m.applicationForm.gitFieldCursor = -1
 		m.applicationForm.installerFieldCursor = -1
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case KeyEnter, "e", " ":
+	case key.Matches(msg, FilesListKeys.Edit):
 		return m.handlePackagesListActivate(gitItemIdx, installerItemIdx)
 
-	case "d", KeyBackspace, KeyDelete:
+	case key.Matches(msg, FormNavKeys.Delete):
 		return m.handlePackagesListDelete(gitItemIdx, installerItemIdx)
 
-	case "s", KeyCtrlS:
+	case key.Matches(msg, FormNavKeys.Save):
 		// Save the form
 		if err := m.saveApplicationForm(); err != nil {
 			m.applicationForm.err = err.Error()
@@ -560,18 +564,19 @@ func (m Model) updateApplicationPackageInput(msg tea.KeyMsg) (tea.Model, tea.Cmd
 
 	var cmd tea.Cmd
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleTextEditKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, TextEditKeys.Cancel):
 		// Cancel editing package name
 		m.applicationForm.editingPackage = false
 		m.applicationForm.packageNameInput.SetValue("")
 		m.applicationForm.err = ""
 		return m, nil
 
-	case KeyEnter:
+	case key.Matches(msg, SearchKeys.Confirm):
 		pkgName := strings.TrimSpace(m.applicationForm.packageNameInput.Value())
 		if m.applicationForm.packagesCursor < 0 || m.applicationForm.packagesCursor >= len(displayPackageManagers) {
 			m.applicationForm.editingPackage = false
@@ -605,17 +610,18 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, FormNavKeys.Cancel):
 		m.activeForm = FormNone
 		m.applicationForm = nil
 		m.Screen = ScreenResults
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, FormNavKeys.Up):
 		if m.applicationForm.gitFieldCursor > 0 {
 			m.applicationForm.gitFieldCursor--
 		} else {
@@ -624,7 +630,7 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case KeyDown, "j":
+	case key.Matches(msg, FormNavKeys.Down):
 		if m.applicationForm.gitFieldCursor < GitFieldCount-1 {
 			m.applicationForm.gitFieldCursor++
 		} else {
@@ -635,7 +641,7 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case KeyEnter, "e":
+	case key.Matches(msg, FormNavKeys.Edit):
 		if m.applicationForm.gitFieldCursor == GitFieldSudo {
 			m.applicationForm.gitSudo = !m.applicationForm.gitSudo
 			return m, nil
@@ -650,13 +656,13 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case " ":
+	case key.Matches(msg, FormNavKeys.Toggle):
 		if m.applicationForm.gitFieldCursor == GitFieldSudo {
 			m.applicationForm.gitSudo = !m.applicationForm.gitSudo
 		}
 		return m, nil
 
-	case KeyTab:
+	case key.Matches(msg, FormNavKeys.TabNext):
 		m.applicationForm.focusIndex++
 		if m.applicationForm.focusIndex > 3 {
 			m.applicationForm.focusIndex = 0
@@ -666,13 +672,13 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case KeyShiftTab:
+	case key.Matches(msg, FormNavKeys.TabPrev):
 		m.applicationForm.focusIndex--
 		m.applicationForm.gitFieldCursor = -1
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case "s", KeyCtrlS:
+	case key.Matches(msg, FormNavKeys.Save):
 		if err := m.saveApplicationForm(); err != nil {
 			m.applicationForm.err = err.Error()
 			return m, nil
@@ -694,11 +700,12 @@ func (m Model) updateApplicationGitFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cm
 
 	var cmd tea.Cmd
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleTextEditKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, TextEditKeys.Cancel):
 		// Restore original value and exit edit mode
 		input := m.getGitFieldInput()
 		if input != nil {
@@ -707,7 +714,7 @@ func (m Model) updateApplicationGitFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cm
 		m.applicationForm.editingGitField = false
 		return m, nil
 
-	case KeyEnter, KeyTab:
+	case key.Matches(msg, TextEditKeys.Confirm):
 		// Save current value and exit edit mode
 		m.applicationForm.editingGitField = false
 		return m, nil
@@ -749,17 +756,18 @@ func (m Model) updateApplicationInstallerFields(msg tea.KeyMsg) (tea.Model, tea.
 		return m, nil
 	}
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, FormNavKeys.Cancel):
 		m.activeForm = FormNone
 		m.applicationForm = nil
 		m.Screen = ScreenResults
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, FormNavKeys.Up):
 		if m.applicationForm.installerFieldCursor > 0 {
 			m.applicationForm.installerFieldCursor--
 		} else {
@@ -768,7 +776,7 @@ func (m Model) updateApplicationInstallerFields(msg tea.KeyMsg) (tea.Model, tea.
 		}
 		return m, nil
 
-	case KeyDown, "j":
+	case key.Matches(msg, FormNavKeys.Down):
 		if m.applicationForm.installerFieldCursor < InstallerFieldCount-1 {
 			m.applicationForm.installerFieldCursor++
 		} else {
@@ -783,7 +791,7 @@ func (m Model) updateApplicationInstallerFields(msg tea.KeyMsg) (tea.Model, tea.
 		}
 		return m, nil
 
-	case KeyEnter, "e":
+	case key.Matches(msg, FormNavKeys.Edit):
 		// Enter edit mode for text fields
 		input := m.getInstallerFieldInput()
 		if input != nil {
@@ -794,7 +802,7 @@ func (m Model) updateApplicationInstallerFields(msg tea.KeyMsg) (tea.Model, tea.
 		}
 		return m, nil
 
-	case KeyTab:
+	case key.Matches(msg, FormNavKeys.TabNext):
 		m.applicationForm.focusIndex++
 		if m.applicationForm.focusIndex > 3 {
 			m.applicationForm.focusIndex = 0
@@ -804,13 +812,13 @@ func (m Model) updateApplicationInstallerFields(msg tea.KeyMsg) (tea.Model, tea.
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case KeyShiftTab:
+	case key.Matches(msg, FormNavKeys.TabPrev):
 		m.applicationForm.focusIndex--
 		m.applicationForm.installerFieldCursor = -1
 		m.updateApplicationFormFocus()
 		return m, nil
 
-	case "s", KeyCtrlS:
+	case key.Matches(msg, FormNavKeys.Save):
 		if err := m.saveApplicationForm(); err != nil {
 			m.applicationForm.err = err.Error()
 			return m, nil
@@ -832,11 +840,12 @@ func (m Model) updateApplicationInstallerFieldInput(msg tea.KeyMsg) (tea.Model, 
 
 	var cmd tea.Cmd
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleTextEditKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, TextEditKeys.Cancel):
 		// Restore original value and exit edit mode
 		input := m.getInstallerFieldInput()
 		if input != nil {
@@ -845,7 +854,7 @@ func (m Model) updateApplicationInstallerFieldInput(msg tea.KeyMsg) (tea.Model, 
 		m.applicationForm.editingInstallerField = false
 		return m, nil
 
-	case KeyEnter, KeyTab:
+	case key.Matches(msg, TextEditKeys.Confirm):
 		// Save current value and exit edit mode
 		m.applicationForm.editingInstallerField = false
 		return m, nil
@@ -887,11 +896,12 @@ func (m Model) updateApplicationWhenInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleTextEditKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, TextEditKeys.Cancel):
 		// Cancel editing and restore original value
 		m.applicationForm.whenInput.SetValue(m.applicationForm.originalValue)
 		m.applicationForm.editingWhen = false
@@ -899,7 +909,7 @@ func (m Model) updateApplicationWhenInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.applicationForm.err = ""
 		return m, nil
 
-	case KeyEnter, KeyTab:
+	case key.Matches(msg, TextEditKeys.Confirm):
 		// Save and exit edit mode
 		m.applicationForm.editingWhen = false
 		m.applicationForm.whenInput.Blur()
@@ -1060,30 +1070,34 @@ func (m Model) renderApplicationFormHelp() string {
 	ft := m.getApplicationFieldType()
 
 	if m.applicationForm.editingGitField || m.applicationForm.editingInstallerField {
-		return RenderHelpWithWidth(m.width,
-			"enter", "save",
-			"esc", "cancel",
+		return RenderHelpFromBindings(m.width,
+			TextEditKeys.Confirm,
+			TextEditKeys.SaveForm,
+			TextEditKeys.Cancel,
 		)
 	}
 
 	if m.applicationForm.editingPackage {
-		return RenderHelpWithWidth(m.width,
-			"enter", "save",
-			"esc", "cancel",
+		return RenderHelpFromBindings(m.width,
+			TextEditKeys.Confirm,
+			TextEditKeys.SaveForm,
+			TextEditKeys.Cancel,
 		)
 	}
 
 	if m.applicationForm.editingWhen {
-		return RenderHelpWithWidth(m.width,
-			"enter/tab", "save",
-			"esc", "cancel",
+		return RenderHelpFromBindings(m.width,
+			TextEditKeys.Confirm,
+			TextEditKeys.SaveForm,
+			TextEditKeys.Cancel,
 		)
 	}
 
 	if m.applicationForm.editingField {
-		return RenderHelpWithWidth(m.width,
-			"enter/tab", "save",
-			"esc", "cancel edit",
+		return RenderHelpFromBindings(m.width,
+			TextEditKeys.Confirm,
+			TextEditKeys.SaveForm,
+			TextEditKeys.Cancel,
 		)
 	}
 
@@ -1091,54 +1105,56 @@ func (m Model) renderApplicationFormHelp() string {
 		// Git package states
 		if m.applicationForm.packagesCursor == len(displayPackageManagers) {
 			if !m.applicationForm.hasGitPackage {
-				return RenderHelpWithWidth(m.width, "enter", "add", "s", "save")
+				addBinding := key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "add"))
+				return RenderHelpFromBindings(m.width, addBinding, FormNavKeys.Save)
 			}
 			if m.applicationForm.gitFieldCursor == -1 {
-				return RenderHelpWithWidth(m.width, "d", "delete", "s", "save")
+				return RenderHelpFromBindings(m.width, FormNavKeys.Delete, FormNavKeys.Save)
 			}
 			if m.applicationForm.gitFieldCursor == GitFieldSudo {
-				return RenderHelpWithWidth(m.width, "space", "toggle", "s", "save")
+				return RenderHelpFromBindings(m.width, FormNavKeys.Toggle, FormNavKeys.Save)
 			}
-			return RenderHelpWithWidth(m.width, "e", "edit", "s", "save")
+			return RenderHelpFromBindings(m.width, FormNavKeys.Edit, FormNavKeys.Save)
 		}
 		// Installer package states
 		if m.applicationForm.packagesCursor == len(displayPackageManagers)+1 {
 			if !m.applicationForm.hasInstallerPackage {
-				return RenderHelpWithWidth(m.width, "enter", "add", "s", "save")
+				addBinding := key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "add"))
+				return RenderHelpFromBindings(m.width, addBinding, FormNavKeys.Save)
 			}
 			if m.applicationForm.installerFieldCursor == -1 {
-				return RenderHelpWithWidth(m.width, "d", "delete", "s", "save")
+				return RenderHelpFromBindings(m.width, FormNavKeys.Delete, FormNavKeys.Save)
 			}
-			return RenderHelpWithWidth(m.width, "e", "edit", "s", "save")
+			return RenderHelpFromBindings(m.width, FormNavKeys.Edit, FormNavKeys.Save)
 		}
 		// Bounds check for packagesCursor
 		if m.applicationForm.packagesCursor >= 0 && m.applicationForm.packagesCursor < len(displayPackageManagers) {
 			manager := displayPackageManagers[m.applicationForm.packagesCursor]
 			if m.applicationForm.packageManagers[manager] != "" {
-				return RenderHelpWithWidth(m.width,
-					"e", "edit",
-					"d", "delete",
-					"s", "save",
+				return RenderHelpFromBindings(m.width,
+					FormNavKeys.Edit,
+					FormNavKeys.Delete,
+					FormNavKeys.Save,
 				)
 			}
 		}
-		return RenderHelpWithWidth(m.width,
-			"e", "edit",
-			"s", "save",
+		return RenderHelpFromBindings(m.width,
+			FormNavKeys.Edit,
+			FormNavKeys.Save,
 		)
 	}
 
 	if ft == appFieldWhen {
-		return RenderHelpWithWidth(m.width,
-			"e", "edit",
-			"s", "save",
+		return RenderHelpFromBindings(m.width,
+			FormNavKeys.Edit,
+			FormNavKeys.Save,
 		)
 	}
 
 	// Text field focused (not editing)
-	return RenderHelpWithWidth(m.width,
-		"e", "edit",
-		"s", "save",
+	return RenderHelpFromBindings(m.width,
+		FormNavKeys.Edit,
+		FormNavKeys.Save,
 	)
 }
 

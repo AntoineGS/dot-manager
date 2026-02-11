@@ -9,6 +9,7 @@ import (
 
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/charmbracelet/bubbles/filepicker"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -326,11 +327,12 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateSubEntryFilesList(msg)
 	}
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, FormNavKeys.Cancel):
 		// Return to list view
 		m.activeForm = FormNone
 		m.subEntryForm = nil
@@ -338,7 +340,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyDown, "j":
+	case key.Matches(msg, FormNavKeys.Down):
 		m.subEntryForm.focusIndex++
 
 		maxIndex := m.subEntryFormMaxIndex()
@@ -352,7 +354,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, FormNavKeys.Up):
 		m.subEntryForm.focusIndex--
 		if m.subEntryForm.focusIndex < 0 {
 			m.subEntryForm.focusIndex = m.subEntryFormMaxIndex()
@@ -364,7 +366,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyTab:
+	case key.Matches(msg, FormNavKeys.TabNext):
 		m.subEntryForm.focusIndex++
 
 		maxIndex := m.subEntryFormMaxIndex()
@@ -378,7 +380,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyShiftTab:
+	case key.Matches(msg, FormNavKeys.TabPrev):
 		m.subEntryForm.focusIndex--
 		if m.subEntryForm.focusIndex < 0 {
 			m.subEntryForm.focusIndex = m.subEntryFormMaxIndex()
@@ -390,7 +392,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case " ":
+	case key.Matches(msg, FormNavKeys.Toggle):
 		// Handle toggles
 		ft := m.getSubEntryFieldType()
 		switch ft {
@@ -404,7 +406,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Text and list fields don't toggle
 		}
 
-	case KeyEnter, "e":
+	case key.Matches(msg, FormNavKeys.Edit):
 		// Enter edit mode for text fields
 		ft := m.getSubEntryFieldType()
 
@@ -424,7 +426,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// Text and list fields don't toggle
 		}
 
-	case "s", "ctrl+s":
+	case key.Matches(msg, FormNavKeys.Save):
 		// Save the form
 		if err := m.saveSubEntryForm(); err != nil {
 			m.subEntryForm.err = err.Error()
@@ -458,11 +460,12 @@ func (m Model) updateSubEntryFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	hasSuggestions := m.subEntryForm.showSuggestions && len(m.subEntryForm.suggestions) > 0
 	hasSelectedSuggestion := hasSuggestions && m.subEntryForm.suggestionCursor >= 0
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleTextEditKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, TextEditKeys.Cancel):
 		// If suggestions are showing, close them first
 		if hasSuggestions {
 			m.subEntryForm.showSuggestions = false
@@ -473,7 +476,7 @@ func (m Model) updateSubEntryFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyEnter:
+	case key.Matches(msg, SearchKeys.Confirm):
 		// Accept suggestion only if user has explicitly selected one
 		if hasSelectedSuggestion {
 			m.acceptSuggestionSubEntry()
@@ -486,7 +489,7 @@ func (m Model) updateSubEntryFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyTab:
+	case key.Matches(msg, FormNavKeys.TabNext):
 		// Accept suggestion if selected
 		if hasSelectedSuggestion {
 			m.acceptSuggestionSubEntry()
@@ -499,7 +502,7 @@ func (m Model) updateSubEntryFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case "up":
+	case key.Matches(msg, SuggestionKeys.Up):
 		// Navigate suggestions if showing
 		if hasSuggestions {
 			if m.subEntryForm.suggestionCursor < 0 {
@@ -511,7 +514,7 @@ func (m Model) updateSubEntryFieldInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case KeyDown:
+	case key.Matches(msg, SuggestionKeys.Down):
 		// Navigate suggestions if showing
 		if hasSuggestions {
 			if m.subEntryForm.suggestionCursor < 0 {
@@ -561,18 +564,19 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// filesCursor: 0 to len(files)-1 for file items, len(files) for "Add File" button
 	maxCursor := len(m.subEntryForm.files)
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, FormNavKeys.Cancel):
 		m.activeForm = FormNone
 		m.subEntryForm = nil
 		m.Screen = ScreenResults
 
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, FilesListKeys.Up):
 		if m.subEntryForm.filesCursor > 0 {
 			m.subEntryForm.filesCursor--
 		} else {
@@ -583,7 +587,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyDown, "j":
+	case key.Matches(msg, FilesListKeys.Down):
 		if m.subEntryForm.filesCursor < maxCursor {
 			m.subEntryForm.filesCursor++
 		} else {
@@ -600,7 +604,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyTab:
+	case key.Matches(msg, FormNavKeys.TabNext):
 		// Move to next field
 		m.subEntryForm.focusIndex++
 
@@ -613,7 +617,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyShiftTab:
+	case key.Matches(msg, FormNavKeys.TabPrev):
 		// Move to previous field
 		m.subEntryForm.focusIndex--
 		m.subEntryForm.filesCursor = 0
@@ -621,7 +625,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyEnter, " ", "e":
+	case key.Matches(msg, FilesListKeys.Edit):
 		// If on "Add File" button, start mode selection
 		if m.subEntryForm.filesCursor == len(m.subEntryForm.files) {
 			m.subEntryForm.addFileMode = ModeChoosing
@@ -640,7 +644,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case "d", "backspace", KeyDelete:
+	case key.Matches(msg, FilesListKeys.Delete):
 		// Delete the selected file
 		if m.subEntryForm.filesCursor < len(m.subEntryForm.files) && len(m.subEntryForm.files) > 0 {
 			// Remove file at cursor
@@ -656,7 +660,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case "s", "ctrl+s":
+	case key.Matches(msg, FilesListKeys.Save):
 		// Save the form
 		if err := m.saveSubEntryForm(); err != nil {
 			m.subEntryForm.err = err.Error()
@@ -680,11 +684,12 @@ func (m Model) updateSubEntryFileInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleTextEditKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, TextEditKeys.Cancel):
 		// Cancel adding/editing file
 		m.subEntryForm.addingFile = false
 		m.subEntryForm.editingFile = false
@@ -694,7 +699,7 @@ func (m Model) updateSubEntryFileInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyEnter:
+	case key.Matches(msg, SearchKeys.Confirm):
 		fileName := strings.TrimSpace(m.subEntryForm.newFileInput.Value())
 		if m.subEntryForm.editingFile {
 			// Update existing file if not empty
@@ -955,78 +960,83 @@ func (m Model) renderSubEntryFormHelp() string {
 	ft := m.getSubEntryFieldType()
 
 	if m.subEntryForm.addingFile {
-		return RenderHelpWithWidth(m.width,
-			"enter", "add file",
-			"esc", "cancel",
+		return RenderHelpFromBindings(m.width,
+			SearchKeys.Confirm,
+			TextEditKeys.SaveForm,
+			TextEditKeys.Cancel,
 		)
 	}
 
 	if m.subEntryForm.editingFile {
-		return RenderHelpWithWidth(m.width,
-			"enter", "save",
-			"esc", "cancel",
+		return RenderHelpFromBindings(m.width,
+			SearchKeys.Confirm,
+			TextEditKeys.SaveForm,
+			TextEditKeys.Cancel,
 		)
 	}
 
 	if m.subEntryForm.editingField {
 		// Editing a text field
 		if m.subEntryForm.showSuggestions && len(m.subEntryForm.suggestions) > 0 && m.subEntryForm.suggestionCursor >= 0 {
-			return RenderHelpWithWidth(m.width,
-				"↑/↓", "select",
-				"tab/enter", "accept",
-				"esc", "cancel edit",
+			return RenderHelpFromBindings(m.width,
+				SuggestionKeys.Up,
+				SuggestionKeys.Accept,
+				TextEditKeys.SaveForm,
+				TextEditKeys.Cancel,
 			)
 		}
 
 		if m.subEntryForm.showSuggestions && len(m.subEntryForm.suggestions) > 0 {
-			return RenderHelpWithWidth(m.width,
-				"↑/↓", "select suggestion",
-				"enter/tab", "save",
-				"esc", "cancel edit",
+			return RenderHelpFromBindings(m.width,
+				SuggestionKeys.Up,
+				TextEditKeys.Confirm,
+				TextEditKeys.SaveForm,
+				TextEditKeys.Cancel,
 			)
 		}
 
-		return RenderHelpWithWidth(m.width,
-			"enter/tab", "save",
-			"esc", "cancel edit",
+		return RenderHelpFromBindings(m.width,
+			TextEditKeys.Confirm,
+			TextEditKeys.SaveForm,
+			TextEditKeys.Cancel,
 		)
 	}
 
 	if ft == subFieldFiles {
 		// Files list focused
 		if m.subEntryForm.filesCursor < len(m.subEntryForm.files) {
-			return RenderHelpWithWidth(m.width,
-				"e", "edit",
-				"d", "delete",
-				"s", "save",
+			return RenderHelpFromBindings(m.width,
+				FilesListKeys.Edit,
+				FilesListKeys.Delete,
+				FilesListKeys.Save,
 			)
 		}
 
-		return RenderHelpWithWidth(m.width,
-			"e", "add file",
-			"s", "save",
+		return RenderHelpFromBindings(m.width,
+			FilesListKeys.Edit,
+			FilesListKeys.Save,
 		)
 	}
 
 	if m.isSubEntryTextInputField() {
 		// Text field focused (not editing)
-		return RenderHelpWithWidth(m.width,
-			"e", "edit",
-			"s", "save",
+		return RenderHelpFromBindings(m.width,
+			FormNavKeys.Edit,
+			FormNavKeys.Save,
 		)
 	}
 
 	if m.isSubEntryToggleField() {
 		// Toggle field focused
-		return RenderHelpWithWidth(m.width,
-			"enter/space", "toggle",
-			"s", "save",
+		return RenderHelpFromBindings(m.width,
+			FormNavKeys.Toggle,
+			FormNavKeys.Save,
 		)
 	}
 
-	return RenderHelpWithWidth(m.width,
-		"e", "edit",
-		"s", "save",
+	return RenderHelpFromBindings(m.width,
+		FormNavKeys.Edit,
+		FormNavKeys.Save,
 	)
 }
 
@@ -1415,17 +1425,18 @@ func (m Model) updateFileAddModeChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, ModeChooserKeys.Cancel):
 		// Cancel mode selection and return to files list
 		m.subEntryForm.addFileMode = ModeNone
 		m.subEntryForm.modeMenuCursor = 0
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, ModeChooserKeys.Up):
 		// Move up with wrapping (0=Browse target, 1=Browse source, 2=Type)
 		m.subEntryForm.modeMenuCursor--
 		if m.subEntryForm.modeMenuCursor < 0 {
@@ -1433,7 +1444,7 @@ func (m Model) updateFileAddModeChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case KeyDown, "j":
+	case key.Matches(msg, ModeChooserKeys.Down):
 		// Move down with wrapping
 		m.subEntryForm.modeMenuCursor++
 		if m.subEntryForm.modeMenuCursor > 2 {
@@ -1441,7 +1452,7 @@ func (m Model) updateFileAddModeChoice(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case KeyEnter:
+	case key.Matches(msg, ModeChooserKeys.Select):
 		// Select the current option
 		switch m.subEntryForm.modeMenuCursor {
 		case 0:
@@ -1503,9 +1514,9 @@ func (m Model) viewFileAddModeMenu() string {
 	b.WriteString("\n")
 
 	// Help
-	b.WriteString(RenderHelpWithWidth(m.width,
-		"enter", "select",
-		"esc", "cancel",
+	b.WriteString(RenderHelpFromBindings(m.width,
+		ModeChooserKeys.Select,
+		ModeChooserKeys.Cancel,
 	))
 
 	return BaseStyle.Render(b.String())
@@ -1602,17 +1613,18 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 
-	switch msg.String() {
-	case KeyCtrlC:
-		return m, tea.Quit
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
 
-	case KeyEsc:
+	switch {
+	case key.Matches(msg, FilePickerKeys.Cancel):
 		// Cancel file picker, clear selections, and return to files list
 		m.subEntryForm.addFileMode = ModeNone
 		m.subEntryForm.selectedFiles = make(map[string]bool)
 		return m, nil
 
-	case " ", KeyTab:
+	case key.Matches(msg, FilePickerKeys.Toggle):
 		// Toggle selection of current file/directory
 		// The selectedFiles map tracks absolute paths of files marked for addition
 		// When user presses space/tab, we add or remove the current file from this map
@@ -1638,7 +1650,7 @@ func (m Model) updateSubEntryFilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
-	case KeyEnter:
+	case key.Matches(msg, FilePickerKeys.Confirm):
 		// Confirm file selections and add them to the files list
 		// This is the final step of the file picker workflow: take all selected
 		// absolute paths, convert them to relative paths (relative to target directory),
@@ -1825,10 +1837,10 @@ func (m Model) viewFilePicker() string {
 	b.WriteString("\n\n")
 
 	// Help
-	b.WriteString(RenderHelpWithWidth(m.width,
-		"space/tab", "toggle",
-		"enter", "confirm",
-		"esc", "cancel",
+	b.WriteString(RenderHelpFromBindings(m.width,
+		FilePickerKeys.Toggle,
+		FilePickerKeys.Confirm,
+		FilePickerKeys.Cancel,
 	))
 
 	return BaseStyle.Render(b.String())

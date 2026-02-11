@@ -4,31 +4,36 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // updateDiffPicker handles key events when the diff picker is showing.
 func (m Model) updateDiffPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case KeyEsc:
+	if m, cmd, handled := m.handleCommonKeys(msg); handled {
+		return m, cmd
+	}
+
+	switch {
+	case key.Matches(msg, DiffPickerKeys.Cancel):
 		m.showingDiffPicker = false
 		m.diffPickerCursor = 0
 		m.diffPickerFiles = nil
 		return m, nil
 
-	case "up", "k":
+	case key.Matches(msg, DiffPickerKeys.Up):
 		if m.diffPickerCursor > 0 {
 			m.diffPickerCursor--
 		}
 		return m, nil
 
-	case "down", "j":
+	case key.Matches(msg, DiffPickerKeys.Down):
 		if m.diffPickerCursor < len(m.diffPickerFiles)-1 {
 			m.diffPickerCursor++
 		}
 		return m, nil
 
-	case KeyEnter:
+	case key.Matches(msg, DiffPickerKeys.Select):
 		if m.diffPickerCursor >= 0 && m.diffPickerCursor < len(m.diffPickerFiles) {
 			selected := m.diffPickerFiles[m.diffPickerCursor]
 			m.showingDiffPicker = false
@@ -64,9 +69,9 @@ func (m Model) viewDiffPicker() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(RenderHelpWithWidth(m.width,
-		"enter", "select",
-		"esc", "cancel",
+	b.WriteString(RenderHelpFromBindings(m.width,
+		DiffPickerKeys.Select,
+		DiffPickerKeys.Cancel,
 	))
 
 	return b.String()
