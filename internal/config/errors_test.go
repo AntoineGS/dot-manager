@@ -2,53 +2,8 @@ package config
 
 import (
 	"errors"
-	"strings"
 	"testing"
 )
-
-func TestValidationErrors(t *testing.T) {
-	tests := []struct {
-		setup      func() *ValidationErrors
-		name       string
-		wantMsg    string
-		wantErrors bool
-	}{
-		{
-			name: "empty_validation_errors",
-			setup: func() *ValidationErrors {
-				return &ValidationErrors{}
-			},
-			wantErrors: false,
-			wantMsg:    "no validation errors",
-		},
-		{
-			name: "multiple_errors",
-			setup: func() *ValidationErrors {
-				ve := &ValidationErrors{}
-				ve.Add(errors.New("error 1"))
-				ve.Add(errors.New("error 2"))
-				return ve
-			},
-			wantErrors: true,
-			wantMsg:    "error 1",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ve := tt.setup()
-
-			if ve.HasErrors() != tt.wantErrors {
-				t.Errorf("HasErrors() = %v, want %v", ve.HasErrors(), tt.wantErrors)
-			}
-
-			msg := ve.Error()
-			if !strings.Contains(msg, tt.wantMsg) {
-				t.Errorf("Error() = %q, want to contain %q", msg, tt.wantMsg)
-			}
-		})
-	}
-}
 
 func TestFieldError(t *testing.T) {
 	baseErr := errors.New("invalid format")

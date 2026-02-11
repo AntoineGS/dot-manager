@@ -5,21 +5,6 @@ import (
 	"strings"
 )
 
-// ValidationError represents a validation error for an entry
-type ValidationError struct {
-	EntryName string
-	Field     string
-	Message   string
-}
-
-func (e ValidationError) Error() string {
-	if e.Field != "" {
-		return fmt.Sprintf("entry '%s': %s - %s", e.EntryName, e.Field, e.Message)
-	}
-
-	return fmt.Sprintf("entry '%s': %s", e.EntryName, e.Message)
-}
-
 // ValidatePath checks a path for potential security issues.
 // It returns an error if the path contains null bytes or suspicious patterns.
 func ValidatePath(path string) error {
