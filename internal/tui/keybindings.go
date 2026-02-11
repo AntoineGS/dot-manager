@@ -140,7 +140,6 @@ var MultiSelectKeys = MultiSelectKeyMap{
 	),
 	Clear: key.NewBinding(
 		key.WithKeys("esc"),
-		key.WithHelp("esc", "clear"),
 	),
 	Restore: key.NewBinding(
 		key.WithKeys("r"),
@@ -170,7 +169,6 @@ var SearchKeys = SearchKeyMap{
 	),
 	Cancel: key.NewBinding(
 		key.WithKeys("esc"),
-		key.WithHelp("esc", "clear"),
 	),
 }
 
