@@ -330,7 +330,7 @@ func (m Model) updateSubEntryForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case KeyCtrlC:
 		return m, tea.Quit
 
-	case "q", KeyEsc:
+	case KeyEsc:
 		// Return to list view
 		m.activeForm = FormNone
 		m.subEntryForm = nil
@@ -565,7 +565,7 @@ func (m Model) updateSubEntryFilesList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case KeyCtrlC:
 		return m, tea.Quit
 
-	case "q", KeyEsc:
+	case KeyEsc:
 		m.activeForm = FormNone
 		m.subEntryForm = nil
 		m.Screen = ScreenResults

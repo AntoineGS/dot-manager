@@ -65,7 +65,6 @@ func (m Model) viewDiffPicker() string {
 
 	b.WriteString("\n")
 	b.WriteString(RenderHelpWithWidth(m.width,
-		"↑/k ↓/j", "navigate",
 		"enter", "select",
 		"esc", "cancel",
 	))

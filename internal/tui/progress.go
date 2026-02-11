@@ -1403,7 +1403,6 @@ func (m Model) renderHelpForCurrentState() string {
 
 	case m.showingDiffPicker:
 		return RenderHelpWithWidth(m.width,
-			"↑/k ↓/j", "navigate",
 			"enter", "select",
 			"esc", "cancel",
 		)

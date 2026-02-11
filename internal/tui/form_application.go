@@ -268,7 +268,7 @@ func (m Model) updateApplicationForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case KeyCtrlC:
 		return m, tea.Quit
 
-	case "q", KeyEsc:
+	case KeyEsc:
 		// Return to list view
 		m.activeForm = FormNone
 		m.applicationForm = nil
@@ -396,7 +396,7 @@ func (m Model) updateApplicationPackagesList(msg tea.KeyMsg) (tea.Model, tea.Cmd
 	case KeyCtrlC:
 		return m, tea.Quit
 
-	case "q", KeyEsc:
+	case KeyEsc:
 		m.activeForm = FormNone
 		m.applicationForm = nil
 		m.Screen = ScreenResults
@@ -609,7 +609,7 @@ func (m Model) updateApplicationGitFields(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case KeyCtrlC:
 		return m, tea.Quit
 
-	case "q", KeyEsc:
+	case KeyEsc:
 		m.activeForm = FormNone
 		m.applicationForm = nil
 		m.Screen = ScreenResults
@@ -753,7 +753,7 @@ func (m Model) updateApplicationInstallerFields(msg tea.KeyMsg) (tea.Model, tea.
 	case KeyCtrlC:
 		return m, tea.Quit
 
-	case "q", KeyEsc:
+	case KeyEsc:
 		m.activeForm = FormNone
 		m.applicationForm = nil
 		m.Screen = ScreenResults
