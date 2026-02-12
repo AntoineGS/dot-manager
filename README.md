@@ -6,6 +6,8 @@ packages, and clone git repositories --- all from a single YAML file.
 
 > For comprehensive documentation, visit **[tidydots.io](https://tidydots.io)**.
 
+<img width="825" height="489" alt="image" src="https://github.com/user-attachments/assets/1de6041f-ca59-4138-871f-2ef0a48a1630" />
+
 ## Features
 
 - **Symlink-based config management** --- edits sync instantly, no copying
