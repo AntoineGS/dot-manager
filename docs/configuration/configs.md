@@ -16,7 +16,7 @@ A **SubEntry** (config entry) represents a single configuration that tidydots ma
 
 When you run `tidydots restore`, for each config entry tidydots:
 
-1. Reads the `backup` path (relative to `backup_root` in `tidydots.yaml`)
+1. Reads the `backup` path (relative to the config directory)
 2. Looks up the `targets` map for the current OS
 3. Creates a symlink from the target path pointing to the backup path
 4. If `files` is specified, only those specific files are symlinked
@@ -27,10 +27,10 @@ The result is that your system reads configuration from the target path, but the
 
 ### backup
 
-The `backup` field specifies where the configuration files are stored in your dotfiles repository. This path is relative to `backup_root` (which defaults to the directory containing `tidydots.yaml`).
+The `backup` field specifies where the configuration files are stored in your dotfiles repository. This path is relative to the directory containing `tidydots.yaml`.
 
 ```yaml
-backup: "./nvim"           # Relative to backup_root
+backup: "./nvim"           # Relative to config directory
 backup: "./shell/zsh"      # Nested directory
 ```
 

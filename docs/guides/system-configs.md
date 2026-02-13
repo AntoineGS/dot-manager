@@ -297,7 +297,6 @@ Managing system files through dotfiles is powerful but requires care.
 
 ```yaml
 version: 3
-backup_root: "."
 
 applications:
   # --- User-level configs ---

@@ -14,7 +14,7 @@ import (
 // Config is the main configuration structure
 type Config struct {
 	Version         int           `yaml:"version"`
-	BackupRoot      string        `yaml:"backup_root"`
+	BackupRoot      string        `yaml:"-"`
 	DefaultManager  string        `yaml:"default_manager,omitempty"`
 	ManagerPriority []string      `yaml:"manager_priority,omitempty"`
 	Applications    []Application `yaml:"applications,omitempty"`
@@ -54,8 +54,6 @@ func Load(path string) (*Config, error) {
 // ExpandPaths expands environment variables and tilde (~) in all path fields
 // of the configuration, including backup paths, target paths, and file paths.
 func (c *Config) ExpandPaths(envVars map[string]string) {
-	c.BackupRoot = ExpandPath(c.BackupRoot, envVars)
-
 	// Expand Applications
 	for i := range c.Applications {
 		for j := range c.Applications[i].Entries {

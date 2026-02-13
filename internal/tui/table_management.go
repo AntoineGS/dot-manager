@@ -525,6 +525,7 @@ func (m *Model) buildVisibleRowsWithIndicators(
 	}
 
 	// Add data rows
+	spinnerFrame := m.spinner.View()
 	for i := dataStartIdx; i < dataEndIdx; i++ {
 		// Safety check
 		if i < 0 || i >= len(m.tableRows) {
@@ -533,10 +534,16 @@ func (m *Model) buildVisibleRowsWithIndicators(
 
 		tr := m.tableRows[i]
 
+		// Replace "Loading..." text with spinner frame
+		status := tr.Data[1]
+		if status == StatusLoading {
+			status = spinnerFrame
+		}
+
 		if showBackupColumn {
 			rows = append(rows, []string{
 				tr.Data[0],    // Name
-				tr.Data[1],    // Status
+				status,        // Status
 				tr.Data[2],    // Info
 				tr.BackupPath, // Backup
 				tr.Data[3],    // Path
@@ -544,7 +551,7 @@ func (m *Model) buildVisibleRowsWithIndicators(
 		} else {
 			rows = append(rows, []string{
 				tr.Data[0], // Name
-				tr.Data[1], // Status
+				status,     // Status
 				tr.Data[2], // Info
 				tr.Data[3], // Path
 			})

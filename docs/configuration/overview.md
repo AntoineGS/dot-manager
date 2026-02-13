@@ -56,7 +56,6 @@ The `tidydots.yaml` file supports the following root-level fields:
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `version` | integer | no | `3` | Configuration format version. Must be `3` |
-| `backup_root` | string | no | `"."` (config dir) | Base directory for resolving relative backup paths |
 | `default_manager` | string | no | - | Preferred package manager when multiple are available |
 | `manager_priority` | []string | no | - | Ordered list of package managers to try, highest priority first |
 | `applications` | []Application | no | - | Array of application definitions |
@@ -68,14 +67,6 @@ version: 3
 ```
 
 The version field is required. tidydots currently only supports version 3. If omitted, it defaults to 3, but explicitly setting it is recommended for clarity.
-
-### backup_root
-
-```yaml
-backup_root: "./backups"
-```
-
-Sets the base directory for resolving relative `backup` paths in config entries. Defaults to `"."`, meaning relative paths are resolved from the directory containing `tidydots.yaml`.
 
 ### default_manager
 
@@ -117,7 +108,6 @@ An array of [Application](applications.md) objects. Each application groups rela
 
 ```yaml
 version: 3
-backup_root: "."
 default_manager: "yay"
 manager_priority:
   - paru

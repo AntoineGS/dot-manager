@@ -229,7 +229,6 @@ A common scenario: you want the same applications on both machines but with diff
 
 ```yaml
 version: 3
-backup_root: "."
 
 applications:
   # Shared on all machines
@@ -287,7 +286,6 @@ background_opacity 1.0
 
 ```yaml
 version: 3
-backup_root: "."
 
 applications:
   - name: "neovim"

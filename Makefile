@@ -13,7 +13,7 @@ help:
 
 # Build the application
 build:
-	go build -o bin/tidydots ./cmd/tidydots
+	go build ./cmd/tidydots
 
 # Run tests
 test:

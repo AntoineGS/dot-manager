@@ -17,7 +17,6 @@ func TestLoad(t *testing.T) {
 
 	configContent := `
 version: 3
-backup_root: "~/gits/configurations"
 
 applications:
   - name: "neovim"
@@ -62,11 +61,6 @@ applications:
 	// Test version
 	if cfg.Version != 3 {
 		t.Errorf("Version = %d, want 3", cfg.Version)
-	}
-
-	// Test backup root
-	if cfg.BackupRoot != "~/gits/configurations" {
-		t.Errorf("BackupRoot = %q, want %q", cfg.BackupRoot, "~/gits/configurations")
 	}
 
 	// Test applications count
@@ -141,7 +135,6 @@ func TestLoadUnsupportedVersion(t *testing.T) {
 
 	configContent := `
 version: 2
-backup_root: "~/dotfiles"
 applications: []
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
@@ -157,8 +150,7 @@ applications: []
 func TestExpandPaths(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Version:    3,
-		BackupRoot: "~/gits/configs",
+		Version: 3,
 		Applications: []Application{
 			{
 				Name: "test-app",
@@ -184,12 +176,6 @@ func TestExpandPaths(t *testing.T) {
 
 	home, _ := os.UserHomeDir()
 
-	// Test backup root expansion
-	expectedBackupRoot := filepath.Join(home, "gits/configs")
-	if cfg.BackupRoot != expectedBackupRoot {
-		t.Errorf("BackupRoot = %q, want %q", cfg.BackupRoot, expectedBackupRoot)
-	}
-
 	// Test file variable expansion
 	if cfg.Applications[0].Entries[0].Files[0] != "expanded_value" {
 		t.Errorf("Files[0] = %q, want %q", cfg.Applications[0].Entries[0].Files[0], "expanded_value")
@@ -208,8 +194,7 @@ func TestSave(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	cfg := &Config{
-		Version:    3,
-		BackupRoot: "/home/user/dotfiles",
+		Version: 3,
 		Applications: []Application{
 			{
 				Name:        "neovim",
@@ -264,10 +249,6 @@ func TestSave(t *testing.T) {
 		t.Errorf("Version = %d, want %d", loaded.Version, cfg.Version)
 	}
 
-	if loaded.BackupRoot != cfg.BackupRoot {
-		t.Errorf("BackupRoot = %q, want %q", loaded.BackupRoot, cfg.BackupRoot)
-	}
-
 	if len(loaded.Applications) != len(cfg.Applications) {
 		t.Errorf("len(Applications) = %d, want %d", len(loaded.Applications), len(cfg.Applications))
 	}
@@ -297,7 +278,6 @@ func TestLoadDefaultVersion(t *testing.T) {
 
 	// Config without explicit version
 	configContent := `
-backup_root: "~/dotfiles"
 applications: []
 `
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
@@ -322,7 +302,6 @@ func TestLoadWithPackages(t *testing.T) {
 
 	configContent := `
 version: 3
-backup_root: "~/dotfiles"
 default_manager: "pacman"
 manager_priority:
   - paru
@@ -379,33 +358,19 @@ applications:
 func TestExpandPathOnlyTilde(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Version:      3,
-		BackupRoot:   "~",
-		Applications: []Application{},
-	}
-
-	cfg.ExpandPaths(nil)
-
 	home, _ := os.UserHomeDir()
-	if cfg.BackupRoot != home {
-		t.Errorf("BackupRoot = %q, want %q", cfg.BackupRoot, home)
+	result := ExpandPath("~", nil)
+	if result != home {
+		t.Errorf("ExpandPath(~) = %q, want %q", result, home)
 	}
 }
 
 func TestExpandPathEmpty(t *testing.T) {
 	t.Parallel()
 
-	cfg := &Config{
-		Version:      3,
-		BackupRoot:   "",
-		Applications: []Application{},
-	}
-
-	cfg.ExpandPaths(nil)
-
-	if cfg.BackupRoot != "" {
-		t.Errorf("BackupRoot = %q, want empty string", cfg.BackupRoot)
+	result := ExpandPath("", nil)
+	if result != "" {
+		t.Errorf("ExpandPath(\"\") = %q, want empty string", result)
 	}
 }
 
@@ -416,7 +381,6 @@ func TestLoadWithURLInstall(t *testing.T) {
 
 	configContent := `
 version: 3
-backup_root: "~/dotfiles"
 
 applications:
   - name: custom-tool
@@ -461,7 +425,6 @@ func TestLoadWithCustomInstall(t *testing.T) {
 
 	configContent := `
 version: 3
-backup_root: "~/dotfiles"
 
 applications:
   - name: custom-tool
@@ -501,7 +464,6 @@ func TestLoadApplicationStructure(t *testing.T) {
 
 	configContent := `
 version: 3
-backup_root: "~/gits/configurations"
 default_manager: "pacman"
 
 applications:
@@ -736,8 +698,7 @@ func testGetFilteredApps(t *testing.T, cfg *Config, matches map[string]bool) []A
 func TestExpandPathsV3(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		Version:    3,
-		BackupRoot: "~/gits/configs",
+		Version: 3,
 		Applications: []Application{
 			{
 				Name: "neovim",
@@ -762,12 +723,6 @@ func TestExpandPathsV3(t *testing.T) {
 	cfg.ExpandPaths(envVars)
 
 	home, _ := os.UserHomeDir()
-
-	// Test backup root expansion
-	expectedBackupRoot := filepath.Join(home, "gits/configs")
-	if cfg.BackupRoot != expectedBackupRoot {
-		t.Errorf("BackupRoot = %q, want %q", cfg.BackupRoot, expectedBackupRoot)
-	}
 
 	// Test sub-entry backup expansion
 	if cfg.Applications[0].Entries[0].Backup != "./nvim" {
@@ -1032,7 +987,6 @@ func TestLoadWithInstallerPackage(t *testing.T) {
 
 	configContent := `
 version: 3
-backup_root: "~/dotfiles"
 
 applications:
   - name: custom-tool
@@ -1132,7 +1086,6 @@ func TestLoad_FileHandleClosed(t *testing.T) {
 	cfgPath := filepath.Join(tmpDir, "config.yaml")
 
 	content := `version: 3
-backup_root: /test
 applications:
   - name: test
     entries:

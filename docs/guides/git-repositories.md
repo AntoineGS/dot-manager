@@ -250,7 +250,6 @@ Here is a full configuration that sets up a zsh environment with oh-my-zsh, cust
 
 ```yaml
 version: 3
-backup_root: "."
 
 applications:
   - name: "zsh"

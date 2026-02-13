@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
-	"strings"
 	"syscall"
 
 	"github.com/AntoineGS/tidydots/internal/config"
@@ -236,14 +235,7 @@ func loadConfig() (*config.Config, *platform.Platform, string, error) {
 		return nil, nil, "", fmt.Errorf("loading config from %s: %w", configFile, err)
 	}
 
-	// If backup_root is empty or ".", use the config directory
-	if cfg.BackupRoot == "" || cfg.BackupRoot == "." {
-		cfg.BackupRoot = cfgDir
-	} else if !filepath.IsAbs(cfg.BackupRoot) && !strings.HasPrefix(cfg.BackupRoot, "~") {
-		// Make relative paths relative to the config directory
-		// Note: paths starting with ~ are kept as-is (they'll be expanded during operations)
-		cfg.BackupRoot = filepath.Join(cfgDir, cfg.BackupRoot)
-	}
+	cfg.BackupRoot = cfgDir
 
 	plat := platform.Detect()
 

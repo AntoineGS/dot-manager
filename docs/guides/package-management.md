@@ -91,7 +91,6 @@ An ordered list of preferred managers. tidydots tries each one in order and uses
 
 ```yaml
 version: 3
-backup_root: "."
 manager_priority: ["paru", "yay", "pacman"]
 
 applications:
@@ -112,7 +111,6 @@ A simpler alternative -- specify a single preferred manager:
 
 ```yaml
 version: 3
-backup_root: "."
 default_manager: "pacman"
 
 applications:
@@ -226,7 +224,6 @@ In interactive mode, you can browse applications, select which packages to insta
 
 ```yaml
 version: 3
-backup_root: "."
 manager_priority: ["paru", "yay", "pacman"]
 
 applications:

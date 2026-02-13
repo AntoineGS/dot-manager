@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -237,6 +238,7 @@ type Model struct {
 	summaryDoublePress string    // Track double-press state: "r", "i", or "d"
 
 	// Batch operation progress state
+	spinner           spinner.Model  // Loading spinner for async state detection
 	batchProgress     progress.Model // Progress bar for batch operations
 	batchCurrentItem  string         // Name of current item being processed
 	batchTotalItems   int            // Total items in batch
@@ -295,6 +297,11 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 	searchInput.Placeholder = "type to search..."
 	searchInput.CharLimit = 100
 
+	// Initialize loading spinner
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = SpinnerStyle
+
 	m := Model{
 		Screen:             ScreenResults, // Start directly in Manage view
 		Operation:          OpList,        // Set operation to List (Manage)
@@ -306,6 +313,7 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 		width:              80,
 		height:             24,
 		searchInput:        searchInput,
+		spinner:            s,
 		sortColumn:         SortColumnName, // Default sort by name
 		sortAscending:      true,           // Ascending by default
 		filterEnabled:      true,           // Filter ON by default
@@ -324,6 +332,7 @@ func NewModel(cfg *config.Config, plat *platform.Platform, dryRun bool) Model {
 // This is part of the Bubble Tea model interface.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
+		m.spinner.Tick,
 		m.checkPackageStatesCmd(),
 		m.checkSubEntryStatesCmd(),
 	)
@@ -338,6 +347,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case stateCheckResultMsg:
 		return m.handleStateCheckResult(msg)
+
+	case spinner.TickMsg:
+		if m.hasLoadingItems() {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
@@ -559,6 +576,22 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// hasLoadingItems returns true if any application or sub-entry is still loading.
+func (m Model) hasLoadingItems() bool {
+	for i := range m.Applications {
+		app := &m.Applications[i]
+		if app.Application.HasPackage() && app.PkgInstalled == nil && app.PkgMethod != TypeNone {
+			return true
+		}
+		for j := range app.SubItems {
+			if app.SubItems[j].State == StateLoading {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // View renders the current screen and returns the string to display.

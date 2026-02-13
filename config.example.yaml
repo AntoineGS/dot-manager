@@ -3,11 +3,6 @@
 
 version: 1
 
-# Root directory for backups
-# Use "." to mean the directory containing this config file (recommended)
-# Or specify an absolute/relative path
-backup_root: "."
-
 # Regular user paths (used when not running as root)
 paths:
   # Example: Neovim configuration (entire folder)
