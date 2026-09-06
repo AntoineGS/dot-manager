@@ -311,7 +311,10 @@ func TestResolvePath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := mgr.resolvePath(tt.path)
+			got, err := mgr.ResolvePath(tt.path)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if got != tt.want {
 				t.Errorf("resolvePath(%q) = %q, want %q", tt.path, got, tt.want)
 			}

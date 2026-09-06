@@ -92,7 +92,10 @@ func (m *Manager) WithRunner(r cmdexec.Runner) *Manager {
 // InitStateStore initializes the SQLite state store for template render history.
 // The database is placed in the backup root directory.
 func (m *Manager) InitStateStore() error {
-	backupRoot := config.ExpandPath(m.Config.BackupRoot, m.Platform.EnvVars)
+	backupRoot, err := m.repositoryRoot()
+	if err != nil {
+		return fmt.Errorf("resolving state store root: %w", err)
+	}
 	dbPath := filepath.Join(backupRoot, ".tidydots.db")
 
 	store, err := state.Open(m.ctx, dbPath)
@@ -167,30 +170,6 @@ func (m *Manager) GetApplications() []config.Application {
 		}
 	}
 	return result
-}
-
-// resolvePath expands templates, ~ and environment variables in paths and resolves
-// relative paths against BackupRoot. This ensures paths work correctly even when
-// stored with ~ in config.
-func (m *Manager) resolvePath(path string) string {
-	// Expand templates, ~ and env vars in the path
-	expandedPath := config.ExpandPathWithTemplate(path, m.Platform.EnvVars, m.templateEngine)
-
-	// If it's already absolute after expansion, return it
-	if filepath.IsAbs(expandedPath) {
-		return expandedPath
-	}
-
-	// Otherwise, resolve relative to BackupRoot (also expand BackupRoot)
-	expandedBackupRoot := config.ExpandPathWithTemplate(m.Config.BackupRoot, m.Platform.EnvVars, m.templateEngine)
-	return filepath.Join(expandedBackupRoot, expandedPath)
-}
-
-// expandTarget expands templates, ~ and environment variables in a target path.
-// Target paths are typically absolute paths like ~/.config/nvim that need
-// expansion before use in file operations.
-func (m *Manager) expandTarget(target string) string {
-	return config.ExpandPathWithTemplate(target, m.Platform.EnvVars, m.templateEngine)
 }
 
 // HasOutdatedTemplates returns true if the selected .tmpl files in the backup

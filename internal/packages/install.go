@@ -6,16 +6,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/platform"
 )
 
 // Install installs a single package using the best available method.
-// It tries git packages first, then package managers (in order of availability),
-// then custom commands, and finally URL-based installation. Returns an InstallResult
-// indicating success or failure with a descriptive message.
+// It resolves the main method and dependency order once, then runs dependencies
+// before the main installation. Dry-run uses the same validated execution path
+// but returns command previews instead of executing them.
 func (m *Manager) Install(pkg Package) InstallResult {
 	result := InstallResult{Package: pkg.Name}
+	if !m.DryRun {
+		defer ResetInstalledCache()
+	}
 
 	// Validate all package names before executing any commands to prevent flag injection
 	if method, msg, ok := validatePackageNames(pkg); !ok {
@@ -26,73 +28,52 @@ func (m *Manager) Install(pkg Package) InstallResult {
 		return result
 	}
 
-	// Phase 1: Install dependencies across all managers
-	if method, msg, ok := m.installDeps(pkg); !ok {
-		result.Method = method
-		result.Success = false
+	plan := PlanInstallation(pkg, m.Config, m.OS, m.Available)
+	if plan.Method == MethodNone {
+		return m.installPlannedMain(pkg, plan, nil)
+	}
+	if msg := validateSelectedMain(pkg, plan.Method, m.OS); msg != "" {
+		result.Method = plan.Method
 		result.Message = msg
 		return result
 	}
-
-	// Check if this is a git package
-	if gitValue, ok := pkg.Managers[Git]; ok && gitValue.IsGit() {
-		result.Method = string(Git)
-		success, msg := m.installGitPackage(*gitValue.Git)
-		result.Success = success
-		result.Message = msg
-		return result
-	}
-
-	// Check if this is an installer package
-	if installerValue, ok := pkg.Managers[Installer]; ok && installerValue.IsInstaller() {
-		result.Method = string(Installer)
-		success, msg := m.installInstallerPackage(*installerValue.Installer)
-		result.Success = success
-		result.Message = msg
-		return result
-	}
-
-	// Try package managers
-	if len(pkg.Managers) > 0 {
-		for _, mgr := range m.Available {
-			// Skip git and installer managers (already handled above)
-			if mgr == Git || mgr == Installer {
-				continue
-			}
-
-			if val, ok := pkg.Managers[mgr]; ok {
-				result.Method = string(mgr)
-				success, msg := m.installWithManager(mgr, val.PackageName)
-				result.Success = success
-				result.Message = msg
-
-				return result
-			}
+	var previews []string
+	for _, dep := range plan.Dependencies {
+		ok, msg := m.installWithManager(dep.Manager, dep.Name)
+		if !ok {
+			result.Method = string(dep.Manager)
+			result.Message = fmt.Sprintf("Dependency %s failed: %s", dep.Name, msg)
+			return result
 		}
+		previews = append(previews, msg)
 	}
+	return m.installPlannedMain(pkg, plan, previews)
+}
 
-	// Try custom command
-	if cmd, ok := pkg.Custom[m.OS]; ok {
-		result.Method = MethodCustom
-		success, msg := m.runCustomCommand(cmd)
-		result.Success = success
-		result.Message = msg
-
-		return result
+func (m *Manager) installPlannedMain(pkg Package, plan InstallationPlan, previews []string) (result InstallResult) {
+	result.Package = pkg.Name
+	defer func() {
+		if m.DryRun && len(previews) > 0 {
+			result.Message = strings.Join(append(previews, result.Message), "\n")
+		}
+	}()
+	result.Method = plan.Method
+	switch plan.Method {
+	case string(Git):
+		result.Success, result.Message = m.installGitPackage(*pkg.Managers[Git].Git)
+	case string(Installer):
+		result.Success, result.Message = m.installInstallerPackage(*pkg.Managers[Installer].Installer)
+	case MethodCustom:
+		result.Success, result.Message = m.runCustomCommand(pkg.Custom[m.OS])
+	case MethodURL:
+		result.Success, result.Message = m.installFromURL(pkg.URL[m.OS])
+	case MethodNone:
+		result.Method = ""
+		result.Message = "No installation method available for this OS/system"
+	default:
+		mgr := PackageManager(plan.Method)
+		result.Success, result.Message = m.installWithManager(mgr, pkg.Managers[mgr].PackageName)
 	}
-
-	// Try URL install
-	if urlInstall, ok := pkg.URL[m.OS]; ok {
-		result.Method = MethodURL
-		success, msg := m.installFromURL(urlInstall)
-		result.Success = success
-		result.Message = msg
-
-		return result
-	}
-
-	result.Success = false
-	result.Message = "No installation method available for this OS/system"
 
 	return result
 }
@@ -115,34 +96,6 @@ func validatePackageNames(pkg Package) (string, string, bool) {
 		for _, dep := range val.Deps {
 			if err := ValidatePackageName(dep); err != nil {
 				return string(mgr), fmt.Sprintf("Invalid dependency name: %v", err), false
-			}
-		}
-	}
-
-	return "", "", true
-}
-
-// installDeps installs all dependencies for a package across its managers.
-// It skips managers that are not available on the current system.
-// It returns the manager method, an error message, and false if any dependency fails.
-// Returns ("", "", true) if all dependencies installed successfully.
-func (m *Manager) installDeps(pkg Package) (string, string, bool) {
-	for mgr, val := range pkg.Managers {
-		if len(val.Deps) == 0 {
-			continue
-		}
-		// Skip git and installer - they don't have traditional deps
-		if mgr == Git || mgr == Installer {
-			continue
-		}
-		// Skip managers not available on this system
-		if !m.availableSet[mgr] {
-			continue
-		}
-		for _, dep := range val.Deps {
-			success, msg := m.installWithManager(mgr, dep)
-			if !success {
-				return string(mgr), fmt.Sprintf("Dependency %s failed: %s", dep, msg), false
 			}
 		}
 	}
@@ -192,18 +145,10 @@ func (m *Manager) installWithManager(mgr PackageManager, pkgName string) (bool, 
 
 // installGitPackage clones or updates a git repository.
 func (m *Manager) installGitPackage(gitCfg GitConfig) (bool, string) {
-	if err := validateURLScheme(gitCfg.URL); err != nil {
-		return false, fmt.Sprintf("Git URL rejected: %v", err)
+	targetPath, msg := validatedGitTarget(gitCfg, m.OS)
+	if msg != "" {
+		return false, msg
 	}
-
-	// Get target path for current OS
-	targetPath, ok := gitCfg.Targets[m.OS]
-	if !ok {
-		return false, fmt.Sprintf("No git target path defined for OS: %s", m.OS)
-	}
-
-	// Expand path (handle ~ and env vars)
-	targetPath = config.ExpandPath(targetPath, nil)
 
 	// Check if already cloned
 	gitDir := filepath.Join(targetPath, ".git")

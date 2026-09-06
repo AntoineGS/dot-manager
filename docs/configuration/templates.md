@@ -20,6 +20,15 @@ deployment that replaces an existing target may create the exclusive target-side
 recovery file `config.toml.tidydots.bak`; `--force-render` explicitly bypasses
 that no-history backup.
 
+When a symlink-mode template needs the suffix-free repository alias and a
+regular file already occupies that alias, tidydots first preserves that file as
+an exclusive, mode-`0600` `<alias>.tidydots.bak`. An occupied recovery path is
+never replaced: restore stops and leaves the existing alias and live output
+unchanged. `--force-render` does not bypass this preservation rule. Folder
+entries also refuse a merge when a real target-side template alias is already
+occupied, rather than removing it while converting the folder to template
+links.
+
 The symlink target on your system (e.g., `~/.config/alacritty/alacritty.toml`) points into your backup directory, where `alacritty.toml` is itself a relative symlink to `alacritty.toml.tmpl.rendered`.
 
 ## Template Context Variables
@@ -193,6 +202,12 @@ When symlink-mode `tidydots restore` encounters a `.tmpl` file in a backup direc
 5. **Create a relative symlink** `config.toml` pointing to `config.toml.tmpl.rendered`
 6. **Store** the pure render output in the SQLite state database (`.tidydots.db`)
 
+If tidydots cannot safely read the current rendered output, or cannot preserve
+required recovery data, it fails closed: it does not replace the rendered
+output or its alias. Orphan rendered-output backups use an exclusive
+`.tmpl.rendered.bak` path with mode `0600`; an occupied path must be resolved
+or moved by you before restore can continue.
+
 Non-template files in the same backup directory get normal symlinks as usual.
 
 #### Copy-mode template deployment
@@ -319,12 +334,16 @@ The merge follows these fast paths first:
 - **base == ours**: Template did not change. Keep user edits (`theirs`).
 - **theirs == ours**: Both arrive at the same result. Use the new render (`ours`).
 
-If none of the fast paths apply, the merge proceeds line-by-line:
+If none of the fast paths apply, tidydots compares each side's edits against
+the previous pure render. Independent insertions, deletions, and changes are
+normally retained together. Changes that overlap the same base region produce
+a conflict, as do ambiguous end-of-file boundary changes that could otherwise
+join content incorrectly. For unusually divergent files, tidydots may choose a
+conservative conflict instead of attempting an unsafe automatic merge.
 
-- **Only template changed** (base line == their line, our line differs): Use the new template line.
-- **Only user changed** (base line == our line, their line differs): Keep the user edit.
-- **Both changed the same way** (their line == our line): Use either (they are identical).
-- **Both changed differently**: This is a **conflict**.
+This improves preservation of unrelated edits, but a three-way merge cannot
+guarantee a clean result for every pair of changes. Review conflict artifacts
+before incorporating edits into the template source.
 
 ### Conflict Markers
 
@@ -346,7 +365,11 @@ template output so the configuration consumed by applications remains valid.
 For copy mode, the same recovery content is saved beside the source while the
 suffix-free target receives the pure render; copy mode has no `.tmpl.rendered`
 cache. Any manual edits that could not be merged remain available in the
-conflict file.
+conflict file. Both conflict artifacts use restrictive `0600` permissions. In
+symlink mode, the artifact is exclusive: an existing `.tmpl.conflict` blocks a
+new conflicting restore until you resolve or move it. In copy mode, a new
+conflict refreshes the existing conflict artifact while the pure render is
+deployed.
 
 !!! tip "Resolving Conflicts"
     Inspect `.tmpl.conflict`, then port the desired user edits into the `.tmpl`
@@ -416,7 +439,11 @@ behavior, including the existing orphan-backup policy.
 
 The `--force-render` flag bypasses the 3-way merge and overwrites the rendered
 file, or the suffix-free copy target, with the new template output, discarding
-any user edits.
+any user edits. It also skips the first-render target backup for copy templates.
+It never bypasses repository-alias preservation. Symlink-mode Force Render
+leaves existing conflict artifacts untouched. Copy-mode Force Render removes
+stale conflict artifacts, as a conflict-free copy render does. Preserve recovery
+content you still need before forcing a restore.
 
 In the interactive TUI, this behavior is labeled **Force Restore** and is
 available with `R`. The normal `r` Restore action preserves rendered-template
@@ -573,6 +600,10 @@ entries:
 ```
 
 Paths without `{{ }}` delimiters fall through to standard path expansion, maintaining full backward compatibility.
+
+A malformed template, or a template or environment expansion that produces an
+empty path, is an error rather than a literal or fallback deployment path. Use
+an explicit `.` when you intentionally mean the repository root for `backup`.
 
 ### Path Template Examples
 

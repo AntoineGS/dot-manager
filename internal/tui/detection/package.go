@@ -55,35 +55,22 @@ func IsPackageInstalled(pkg *config.EntryPackage, method, entryName, osType stri
 	return packages.IsInstalled(ctx, pkgName, method)
 }
 
-// GetPackageInstallMethod determines how a package would be installed.
-func GetPackageInstallMethod(pkg *config.EntryPackage, osType string) string {
+// GetPackageInstallMethod determines how a package would be installed. Callers
+// with repository preferences should pass them so status and execution agree.
+func GetPackageInstallMethod(pkg *config.EntryPackage, osType string, preferences *packages.Config) string {
 	if pkg == nil {
 		return tuishared.TypeNone
 	}
 
-	// Check package managers
-	availableManagers := DetectAvailableManagers()
-	for _, mgr := range availableManagers {
-		if _, ok := pkg.Managers[mgr]; ok {
-			return mgr
-		}
+	var available []packages.PackageManager
+	for _, mgr := range DetectAvailableManagers() {
+		available = append(available, packages.PackageManager(mgr))
 	}
-	// Check installer (always available when configured with a command for current OS)
-	if val, ok := pkg.Managers[tuishared.TypeInstaller]; ok && val.IsInstaller() {
-		if _, hasCmd := val.Installer.Command[osType]; hasCmd {
-			return tuishared.TypeInstaller
-		}
+	converted := packages.FromPackageSpec("", pkg)
+	if converted == nil {
+		return tuishared.TypeNone
 	}
-	// Check custom
-	if _, ok := pkg.Custom[osType]; ok {
-		return "custom"
-	}
-	// Check URL
-	if _, ok := pkg.URL[osType]; ok {
-		return "url"
-	}
-
-	return tuishared.TypeNone
+	return packages.PlanInstallation(*converted, preferences, osType, available).Method
 }
 
 // DetectAvailableManagers returns the list of package managers available on the current system.

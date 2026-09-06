@@ -27,6 +27,14 @@ func (m *Manager) List() error {
 			if target == "" {
 				continue
 			}
+			target, err := m.ExpandTarget(target)
+			if err != nil {
+				return fmt.Errorf("%s/%s: %w", app.Name, entry.Name, err)
+			}
+			backup, err := m.ResolvePath(entry.Backup)
+			if err != nil {
+				return fmt.Errorf("%s/%s: %w", app.Name, entry.Name, err)
+			}
 
 			fmt.Printf("├─ %s [config]\n", entry.Name)
 
@@ -38,7 +46,7 @@ func (m *Manager) List() error {
 			}
 
 			fmt.Printf("     files: %s\n", files)
-			fmt.Printf("     backup: %s\n", m.resolvePath(entry.Backup))
+			fmt.Printf("     backup: %s\n", backup)
 			fmt.Printf("     target: %s\n", target)
 		}
 

@@ -94,6 +94,8 @@ targets:
 ```
 
 See [Templates](templates.md) for available template variables and functions.
+Template and environment expansion must produce a non-empty path; otherwise
+restore reports an error rather than deploying to a fallback path.
 
 ### files
 
@@ -189,6 +191,11 @@ native files use the source template's permission bits; new files and symlink
 replacements for `sudo: true` on Linux use restrictive `0600` permissions.
 Recovery backups and conflict artifacts also use `0600`.
 
+For folder symlink entries containing templates, restore refuses to merge a
+real suffix-free target alias that would be replaced by a generated template
+link. Preserve or relocate that file, then retry; this avoids deleting a live
+file during folder adoption.
+
 ### Copy-mode template example
 
 ```yaml
@@ -205,10 +212,13 @@ entries:
 The selected `root.tmpl` renders to `/etc/snapper/configs/root`. It does not create
 the symlink-mode `root` alias or `root.tmpl.rendered` cache in the repository.
 On later restores, edits in the target are merged with the new render using the
-SQLite history. A conflict deploys the pure template output and keeps the full
-recovery content in `root.tmpl.conflict`; a later conflict-free restore removes
-that stale artifact. `--force-render` skips the merge and overwrites the target
-with the fresh render.
+SQLite history. Independent changes are normally preserved; an overlapping or
+otherwise unsafe merge deploys the pure template output and keeps full recovery
+content in `root.tmpl.conflict` with restrictive permissions. For copy-mode
+templates, a later conflict refreshes that recovery file; a conflict-free
+restore removes it. `--force-render` skips the merge, overwrites the target
+with the fresh render, and removes any stale copy-mode conflict artifact.
+Preserve recovery content you still need before forcing a restore.
 
 For example, the tested hostname-specific source:
 

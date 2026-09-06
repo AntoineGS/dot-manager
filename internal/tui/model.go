@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"path/filepath"
-
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
@@ -815,16 +813,4 @@ func (m Model) handleMouseClick(mouseY int, toggleSelect bool) (tea.Model, tea.C
 	}
 
 	return m, nil
-}
-
-// resolvePath resolves relative paths against BackupRoot and expands ~ in paths
-func (m Model) resolvePath(path string) string {
-	expandedPath := config.ExpandPath(path, m.Platform.EnvVars)
-
-	if filepath.IsAbs(expandedPath) {
-		return expandedPath
-	}
-
-	expandedBackupRoot := config.ExpandPath(m.Config.BackupRoot, m.Platform.EnvVars)
-	return filepath.Join(expandedBackupRoot, expandedPath)
 }

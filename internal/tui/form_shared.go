@@ -7,6 +7,15 @@ import (
 	"github.com/AntoineGS/tidydots/internal/tui/forms"
 )
 
+// previewConfigChange records an honest preview before any configuration mutation.
+func (m *Model) previewConfigChange(action, name string) bool {
+	if !m.DryRun && (m.Manager == nil || !m.Manager.DryRun) {
+		return false
+	}
+	m.results = []ResultItem{{Name: name, Success: true, Message: "Would " + action + " configuration (dry-run)"}}
+	return true
+}
+
 // Re-export form helper functions from forms/ for backward compatibility.
 var (
 	displayPackageManagers        = forms.DisplayPackageManagers
@@ -35,6 +44,9 @@ func (m *Model) saveNewApplication(app config.Application) error {
 		}
 	}
 
+	if m.previewConfigChange("add", app.Name) {
+		return nil
+	}
 	m.Config.Applications = append(m.Config.Applications, app)
 
 	if err := config.Save(m.Config, m.ConfigPath); err != nil {
@@ -60,6 +72,9 @@ func (m *Model) saveEditedApplication(appIdx int, name, description, when string
 	}
 
 	// Update Application metadata
+	if m.previewConfigChange("edit", name) {
+		return nil
+	}
 	origName, origDesc, origWhen, origPkg := app.Name, app.Description, app.When, app.Package
 	app.Name = name
 	app.Description = description

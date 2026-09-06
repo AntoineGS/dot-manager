@@ -886,9 +886,6 @@ func TestMergeFolder_DuplicateConflicts(t *testing.T) {
 		t.Fatalf("First merge should create 1 conflict file, got %d", len(conflicts1))
 	}
 
-	// Read first conflict content
-	firstConflictContent, _ := os.ReadFile(conflicts1[0]) //nolint:gosec // test file
-
 	// Second merge: Recreate target directory with same file
 	if err := os.MkdirAll(targetDir, DirPerms); err != nil {
 		t.Fatalf("Failed to recreate target dir: %v", err)
@@ -903,20 +900,9 @@ func TestMergeFolder_DuplicateConflicts(t *testing.T) {
 		t.Fatalf("Second MergeFolder() error = %v", err)
 	}
 
-	// Assert: Still only 1 conflict file (current behavior: overwrites)
-	conflicts2, _ := filepath.Glob(pattern1)
-	if len(conflicts2) != 1 {
-		t.Fatalf("Second merge should still have 1 conflict file (overwrites), got %d", len(conflicts2))
-	}
-
-	// Assert: Conflict file has second merge content (overwrote first)
-	secondConflictContent, _ := os.ReadFile(conflicts2[0]) //nolint:gosec // test file
-	if string(secondConflictContent) == string(firstConflictContent) {
-		t.Error("Second merge should have overwritten first conflict file")
-	}
-	if string(secondConflictContent) != "target version 2" {
-		t.Errorf("Conflict file content = %q, want %q", string(secondConflictContent), "target version 2")
-	}
+	// Both recovery generations must survive repeated same-day restores.
+	preservationContent(t, conflicts1[0], "target version 1")
+	preservationContent(t, conflicts1[0]+".1", "target version 2")
 }
 
 // TestMergeFolder_EmptyTargetDir tests that an empty target directory

@@ -1,7 +1,8 @@
 package template
 
 import (
-	"fmt"
+	"cmp"
+	"slices"
 	"strings"
 )
 
@@ -17,12 +18,13 @@ type MergeResult struct {
 //   - theirs: current target file on disk (may have user edits)
 //   - ours: newly rendered template output
 //
-// Fast paths:
-//   - base==theirs: no user edits, use ours
-//   - base==ours: no template changes, keep theirs
-//   - theirs==ours: same result either way, use ours
+// Independent base-relative edits and identical overlapping edits merge cleanly.
+// Conflicts contain both versions of the entire connected overlapping region.
+// Insertions at an edit's boundaries are independent; insertions strictly inside
+// an edit overlap it. Two insertions at the same position overlap each other.
+// Exception: an insertion after an unterminated replacement overlaps that edit,
+// since concatenating them would silently join two intended lines.
 func ThreeWayMerge(base, theirs, ours string) MergeResult {
-	// Fast paths
 	if base == theirs {
 		return MergeResult{Content: ours}
 	}
@@ -33,135 +35,111 @@ func ThreeWayMerge(base, theirs, ours string) MergeResult {
 		return MergeResult{Content: ours}
 	}
 
-	baseLines := splitLines(base)
-	theirLines := splitLines(theirs)
-	ourLines := splitLines(ours)
-
-	return mergeLines(baseLines, theirLines, ourLines)
+	return mergeLines(splitLines(base), lineEdits(base, theirs, false), lineEdits(base, ours, true))
 }
 
-// splitLines splits text into lines, preserving the trailing newline information.
+// splitLines retains line terminators as part of each token. In particular, an
+// empty file has no tokens, and a final newline does not introduce a phantom line.
 func splitLines(s string) []string {
 	if s == "" {
 		return nil
 	}
-	return strings.Split(s, "\n")
+	lines := strings.SplitAfter(s, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
-// mergeLines performs a positional line-by-line 3-way merge.
-//
-//nolint:gocyclo // complexity is necessary for comprehensive 3-way merge logic
-func mergeLines(base, theirs, ours []string) MergeResult {
-	maxLen := len(base)
-	if len(theirs) > maxLen {
-		maxLen = len(theirs)
-	}
-	if len(ours) > maxLen {
-		maxLen = len(ours)
-	}
-
-	var result []string
-	hasConflict := false
-
-	i := 0
-	for i < maxLen {
-		baseLine := getLine(base, i)
-		theirLine := getLine(theirs, i)
-		ourLine := getLine(ours, i)
-
-		baseExists := i < len(base)
-		theirExists := i < len(theirs)
-		ourExists := i < len(ours)
-
-		switch {
-		case baseExists && theirExists && ourExists:
-			//nolint:gocritic // if-else chain is more readable than switch for merge logic
-			if baseLine == theirLine && theirLine == ourLine {
-				// All agree
-				result = append(result, baseLine)
-			} else if baseLine == theirLine {
-				// Only template changed
-				result = append(result, ourLine)
-			} else if baseLine == ourLine {
-				// Only user changed
-				result = append(result, theirLine)
-			} else if theirLine == ourLine {
-				// Both changed the same way
-				result = append(result, ourLine)
-			} else {
-				// Conflict: both changed differently
-				hasConflict = true
-				result = append(result,
-					"<<<<<<< user-edits",
-					theirLine,
-					"=======",
-					ourLine,
-					">>>>>>> template",
-				)
-			}
-
-		case !baseExists && theirExists && ourExists:
-			// Line added in both theirs and ours (beyond base)
-			if theirLine == ourLine {
-				result = append(result, ourLine)
-			} else {
-				hasConflict = true
-				result = append(result,
-					"<<<<<<< user-edits",
-					theirLine,
-					"=======",
-					ourLine,
-					">>>>>>> template",
-				)
-			}
-
-		case baseExists && !theirExists && ourExists:
-			// User deleted the line, template still has it
-			if baseLine != ourLine {
-				// User deleted, template changed -> conflict
-				hasConflict = true
-				result = append(result,
-					"<<<<<<< user-edits",
-					fmt.Sprintf("(line deleted by user, was: %s)", baseLine),
-					"=======",
-					ourLine,
-					">>>>>>> template",
-				)
-				// else: User deleted, template unchanged -> honor user deletion (no append)
-			}
-
-		case baseExists && theirExists && !ourExists:
-			// Template removed the line, user still has it
-			if baseLine != theirLine {
-				// Template removed, user changed -> keep user's change
-				result = append(result, theirLine)
-				// else: Template removed, user unchanged -> honor template deletion (no append)
-			}
-
-		case !baseExists && theirExists && !ourExists:
-			// User added a line beyond both base and ours
-			result = append(result, theirLine)
-
-		case !baseExists && !theirExists && ourExists:
-			// Template added a line beyond both base and theirs
-			result = append(result, ourLine)
-
-		case baseExists && !theirExists && !ourExists:
-			// Both removed the line -> it's gone (no append)
+func mergeLines(base []string, theirs, ours []lineEdit) MergeResult {
+	edits := slices.Concat(theirs, ours)
+	slices.SortStableFunc(edits, func(a, b lineEdit) int {
+		if order := cmp.Compare(a.start, b.start); order != 0 {
+			return order
 		}
+		// Process boundary insertions before the replacement starting there.
+		return cmp.Compare(a.end, b.end)
+	})
 
-		i++
+	var out strings.Builder
+	hasConflict, cursor := false, 0
+	for i := 0; i < len(edits); {
+		start, end := edits[i].start, edits[i].end
+		j := i + 1
+		for j < len(edits) && overlapsRegion(start, end, edits[i:j], edits[j]) {
+			end = max(end, edits[j].end)
+			j++
+		}
+		out.WriteString(strings.Join(base[cursor:start], ""))
+		group := edits[i:j]
+		userText, userChanged := applyRegion(base, start, end, group, false)
+		templateText, templateChanged := applyRegion(base, start, end, group, true)
+		switch {
+		case !userChanged:
+			out.WriteString(templateText)
+		case !templateChanged || userText == templateText:
+			out.WriteString(userText)
+		default:
+			hasConflict = true
+			writeConflict(&out, userText, templateText)
+		}
+		cursor, i = end, j
 	}
-
-	return MergeResult{
-		Content:     strings.Join(result, "\n"),
-		HasConflict: hasConflict,
-	}
+	out.WriteString(strings.Join(base[cursor:], ""))
+	return MergeResult{Content: out.String(), HasConflict: hasConflict}
 }
 
-func getLine(lines []string, idx int) string {
-	if idx < len(lines) {
-		return lines[idx]
+func overlapsRegion(start, end int, region []lineEdit, next lineEdit) bool {
+	if next.start < end || (next.start == start && next.end == start && end == start) {
+		return true
 	}
-	return ""
+	if next.start != end || next.end != end {
+		return false
+	}
+	// A final-line replacement can remove its terminator while the other side
+	// appends at EOF. They share the removed line boundary despite disjoint base
+	// intervals. Include both full payloads rather than inventing a newline.
+	for _, edit := range region {
+		if edit.end == end && edit.text != "" && !strings.HasSuffix(edit.text, "\n") {
+			return true
+		}
+	}
+	return false
+}
+
+// applyRegion reconstructs one side, including unchanged base lines between its
+// edits. This keeps transitive overlaps together instead of truncating a conflict.
+func applyRegion(base []string, start, end int, edits []lineEdit, templateSide bool) (string, bool) {
+	var out strings.Builder
+	cursor, changed := start, false
+	for _, edit := range edits {
+		if edit.templateSide != templateSide {
+			continue
+		}
+		out.WriteString(strings.Join(base[cursor:edit.start], ""))
+		out.WriteString(edit.text)
+		cursor, changed = edit.end, true
+	}
+	out.WriteString(strings.Join(base[cursor:end], ""))
+	return out.String(), changed
+}
+
+// Marker lines use LF. Payload bytes (including CRLF) remain untouched, except
+// that unterminated payloads need an LF to put the following marker on its own
+// line. A deleted side is empty, not synthetic explanatory file content.
+func writeConflict(out *strings.Builder, theirs, ours string) {
+	if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") {
+		out.WriteByte('\n')
+	}
+	out.WriteString("<<<<<<< user-edits\n")
+	out.WriteString(theirs)
+	if theirs != "" && !strings.HasSuffix(theirs, "\n") {
+		out.WriteByte('\n')
+	}
+	out.WriteString("=======\n")
+	out.WriteString(ours)
+	if ours != "" && !strings.HasSuffix(ours, "\n") {
+		out.WriteByte('\n')
+	}
+	out.WriteString(">>>>>>> template\n")
 }

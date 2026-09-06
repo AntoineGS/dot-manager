@@ -74,7 +74,7 @@ func FromApplications(apps []config.Application) []Package {
 
 // FromPackageSpec creates a Package from a name and EntryPackage.
 // This is used by the TUI's buildInstallCommand which only has a name and
-// package spec (no description/when, but those aren't needed by BuildCommand).
+// package spec (no description/when, which installation does not need).
 // Returns nil if pkg is nil.
 func FromPackageSpec(name string, pkg *config.EntryPackage) *Package {
 	if pkg == nil {

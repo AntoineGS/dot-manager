@@ -90,7 +90,11 @@ func (m *Manager) Restore() error {
 			}
 
 			// Expand ~ and env vars in target path for file operations
-			expandedTarget := m.expandTarget(target)
+			expandedTarget, err := m.ExpandTarget(target)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%s/%s: %w", app.Name, subEntry.Name, err))
+				continue
+			}
 
 			if err := m.restoreSubEntry(app.Name, subEntry, expandedTarget); err != nil {
 				m.logger.Error("restore failed",
@@ -143,7 +147,10 @@ func (m *Manager) createSymlink(source, target string, useSudo bool) error {
 }
 
 func (m *Manager) restoreSubEntry(_ string, subEntry config.SubEntry, target string) error {
-	backupPath := m.resolvePath(subEntry.Backup)
+	backupPath, err := m.ResolvePath(subEntry.Backup)
+	if err != nil {
+		return fmt.Errorf("entry %s: %w", subEntry.Name, err)
+	}
 
 	if subEntry.IsFolder() {
 		// Check if folder contains template files

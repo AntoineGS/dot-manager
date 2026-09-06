@@ -123,7 +123,7 @@ Press `x` to toggle the action filter. It keeps applications with an uninstalled
 
 The TUI can start with this filter already enabled by running `tidydots --actions`. This keeps the normal interactive behavior while showing actionable work as soon as status checks settle.
 
-Package status is automatically rechecked after installs. Press `ctrl+r` on the clean main list to manually refresh all package, config, template, and setup statuses. The refresh preserves filters, selections, expansion, and cursor position; existing loading indicators show progress while statuses are rechecked.
+Package status is automatically rechecked after installs using a fresh installed-package snapshot. Press `ctrl+r` on the clean main list to manually refresh all package, config, template, and setup statuses. The refresh preserves filters, selections, expansion, and cursor position; existing loading indicators show progress while statuses are rechecked.
 
 The paging and jump motions operate only on the clean main list, not while search or a confirmation dialog is active. `gg` is a two-key sequence: press `g` twice. A single `g` waits for the second key and any other key cancels that pending sequence. Empty and one-row tables remain clamped safely.
 
@@ -278,14 +278,20 @@ When editing an application's packages section, you can manage dependencies for 
 Navigate to a config entry and press `e` to edit. Editable fields include:
 
 - **Name** -- entry identifier
-- **Backup** -- path in your dotfiles repo
-- **Targets** -- OS-specific target paths (linux, windows)
+- **Backup** -- path in your dotfiles repo (supports template expressions)
+- **Targets** -- OS-specific target paths (linux, windows; supports template expressions)
 - **Files** -- specific file list (empty means entire folder)
 - **Sudo** -- toggle for elevated privileges
 - **Copy files** -- toggle for [`method: copy`](../configuration/configs.md#deployment-method), which deploys real files instead of symlinks
 - **When** -- optional Go-template condition for this individual entry
 
 The **Copy files** toggle only appears when an explicit file list is set, because copy mode is files-only. Switching an entry back to whole-folder mode therefore clears it.
+
+The TUI resolves `backup` and `targets` with the same template and path rules as
+the command line. Invalid expressions and expansions that result in an empty
+path are shown as errors; they are never treated as literal or fallback
+deployment paths. Use `.` when you intentionally select the repository root
+for `backup`.
 
 Focusing the sub-entry **When** field and pressing `enter` or `e` opens the same
 hostname chooser used for applications when hostnames are configured in `tidydots.yaml`.
@@ -351,8 +357,16 @@ When editing a list field (like files), the field has its own internal cursor:
 
 Press `s` or `ctrl+s` to save your changes to the `tidydots.yaml` configuration file. The TUI writes back to the same file it loaded from.
 
+When launched with `-n` / `--dry-run`, adding, editing, and deleting
+applications or entries is preview-only. The TUI reports the proposed config
+change and does not write `tidydots.yaml` or mutate its loaded configuration.
+Deleting an application's final entry removes the application only when it has
+no package definition; package-only applications are retained.
+
 !!! warning
-    Save writes to your `tidydots.yaml` immediately. If you want to preview changes first, use dry-run mode (`tidydots -n`) to confirm behavior before saving.
+    Outside dry-run mode, Save writes to your `tidydots.yaml` immediately. In
+    dry-run mode (`tidydots -n`), saves and deletes are previews and do not
+    change the file.
 
 ## Template diff & edit
 

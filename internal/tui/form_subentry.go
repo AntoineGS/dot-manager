@@ -1093,6 +1093,9 @@ func (m *Model) addSubEntryToApp(appIdx int, subEntry config.SubEntry) error {
 		}
 	}
 
+	if m.previewConfigChange("add", app.Name+"/"+subEntry.Name) {
+		return nil
+	}
 	app.Entries = append(app.Entries, subEntry)
 
 	if err := config.Save(m.Config, m.ConfigPath); err != nil {
@@ -1126,6 +1129,9 @@ func (m *Model) updateSubEntry(appIdx, subIdx int, subEntry config.SubEntry) err
 	}
 
 	// Update SubEntry
+	if m.previewConfigChange("edit", app.Name+"/"+subEntry.Name) {
+		return nil
+	}
 	original := app.Entries[subIdx]
 	app.Entries[subIdx] = subEntry
 

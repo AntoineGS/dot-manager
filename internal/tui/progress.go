@@ -1,9 +1,7 @@
 package tui
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
 	"slices"
 	"strings"
 
@@ -12,7 +10,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/manager"
-	"github.com/AntoineGS/tidydots/internal/packages"
 )
 
 // pkgCheckResultMsg is sent when a single package install check completes.
@@ -72,8 +69,9 @@ func (m *Model) initApplicationItems() {
 			// Setup entries deploy no files, so they have no target. Config
 			// entries do; expand ~ and env vars for the file operations.
 			expandedTarget := ""
+			var pathError error
 			if target := subEntry.GetTarget(m.Platform.OS); target != "" {
-				expandedTarget = config.ExpandPath(target, m.Platform.EnvVars)
+				expandedTarget, pathError = m.pathManager().ExpandTarget(target)
 			}
 
 			subItem := SubEntryItem{
@@ -81,6 +79,10 @@ func (m *Model) initApplicationItems() {
 				Target:   expandedTarget,
 				AppName:  app.Name,
 				Index:    len(subItems),
+			}
+			if pathError != nil {
+				subItem.CheckError = pathError.Error()
+				subItem.State = StateUnavailable
 			}
 
 			subItems = append(subItems, subItem)
@@ -722,12 +724,11 @@ func (m Model) updateResults(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if appIdx >= 0 && subIdx >= 0 && m.Manager != nil {
 				subItem := m.Applications[appIdx].SubItems[subIdx]
 				if subItem.State == StateModified && subItem.SubEntry.IsConfig() {
-					backupPath := m.resolvePath(subItem.SubEntry.Backup)
-					targetPath := config.ExpandPath(subItem.Target, m.Platform.EnvVars)
-					var (
-						modifiedFiles []manager.ModifiedTemplate
-						err           error
-					)
+					targetPath, backupPath, err := resolveSubEntryPaths(subItem, m.Manager)
+					if err != nil {
+						return m, func() tea.Msg { return editorLaunchCompleteMsg{err: err} }
+					}
+					var modifiedFiles []manager.ModifiedTemplate
 					if subItem.SubEntry.IsCopy() {
 						var inspection manager.CopyTemplateInspection
 						inspection, err = m.Manager.InspectCopyTemplates(subItem.SubEntry, backupPath, targetPath)
@@ -1313,18 +1314,6 @@ func (m Model) installNextPackage() tea.Cmd {
 
 	pkg := m.pendingPackages[m.currentPackageIndex]
 
-	// Handle dry run
-	if m.DryRun {
-		return func() tea.Msg {
-			return PackageInstallMsg{
-				Package: pkg,
-				Success: true,
-				Message: fmt.Sprintf("Would install via %s", pkg.Method),
-			}
-		}
-	}
-
-	// Build the command
 	cmd := m.buildInstallCommand(pkg)
 	if cmd == nil {
 		return func() tea.Msg {
@@ -1336,32 +1325,17 @@ func (m Model) installNextPackage() tea.Cmd {
 		}
 	}
 
-	// Use tea.Exec to properly suspend the TUI and give terminal control to the command.
-	// This allows sudo to prompt for password correctly.
-	// pauseOnFailExec wraps the command to pause on failure so the user can read error output.
-	return tea.Exec(&pauseOnFailExec{cmd: cmd}, func(err error) tea.Msg {
-		if err != nil {
-			return PackageInstallMsg{
-				Package: pkg,
-				Success: false,
-				Message: fmt.Sprintf("Installation failed: %v", err),
-				Err:     err,
-			}
-		}
-
-		return PackageInstallMsg{
-			Package: pkg,
-			Success: true,
-			Message: fmt.Sprintf("Installed via %s", pkg.Method),
-		}
-	})
+	result := func(err error) tea.Msg {
+		pkg.Method = cmd.result.Method
+		return PackageInstallMsg{Package: pkg, Success: cmd.result.Success, Message: cmd.result.Message, Err: err}
+	}
+	if m.DryRun {
+		return func() tea.Msg { return result(cmd.Run()) }
+	}
+	// Hand over the terminal for the entire dependency/main sequence.
+	return tea.Exec(cmd, result)
 }
 
-func (m Model) buildInstallCommand(pkg PackageItem) *exec.Cmd {
-	converted := packages.FromPackageSpec(pkg.Name, pkg.Package)
-	if converted == nil {
-		return nil
-	}
-
-	return packages.BuildCommand(context.Background(), *converted, pkg.Method, m.Platform.OS)
+func (m Model) buildInstallCommand(pkg PackageItem) *packageExec {
+	return m.newPackageExec(pkg)
 }

@@ -39,7 +39,9 @@ applications:
         scoop: "neovim"
 ```
 
-When you run `tidydots install`, tidydots finds the first available manager from the `managers` map and uses it to install the package.
+When you run `tidydots install`, tidydots chooses an available manager that has
+a package name configured for that application, using configured priority,
+then the default manager, then platform availability order.
 
 ### Package-only applications
 
@@ -87,7 +89,9 @@ When multiple package managers are available on the same system (common on Arch 
 
 ### `manager_priority`
 
-An ordered list of preferred managers. tidydots tries each one in order and uses the first that is available on the system:
+An ordered list of preferred managers. tidydots tries each one in order and
+uses the first that is both available and configured with a package name for
+the application:
 
 ```yaml
 version: 3
@@ -100,7 +104,9 @@ applications:
         pacman: "neovim"
 ```
 
-With this configuration, if `paru` is installed, tidydots uses `paru` to install packages. If not, it falls back to `yay`, then `pacman`.
+With this configuration, tidydots uses the first available priority manager
+that is configured for the application. For an application that only declares
+`pacman: "neovim"`, it uses `pacman` even if `paru` is installed.
 
 !!! tip
     This is particularly useful on Arch Linux where you might want to prefer an AUR helper (yay/paru) over pacman, since AUR helpers can install both official and AUR packages.
@@ -124,9 +130,25 @@ applications:
 
 tidydots selects a package manager in this order:
 
-1. If `manager_priority` is set, use the first available manager from the list
-2. If `default_manager` is set and available, use it
-3. Otherwise, use the first available manager detected on the system
+1. Use the first `manager_priority` entry that is both configured for the application and available
+2. Otherwise use `default_manager` when it is configured for the application and available
+3. Otherwise use the first available configured manager in platform availability order
+
+Git and `installer` package definitions take precedence over ordinary manager
+selection. `custom` and `url` are fallbacks. A manager entry containing only
+`deps` is dependency-only and cannot become the main installation method.
+
+### Dependencies and validation
+
+tidydots selects and validates the main method before running dependencies.
+It then installs dependencies from eligible standard manager entries before the
+selected main method. If any dependency fails, tidydots does not run the main
+install. This validation means an invalid or blank git target, invalid git URL,
+or missing installer command for the current OS cannot leave a partial
+dependency installation. Dry-run performs the same validation and shows the
+planned dependency commands followed by the selected main command, without
+running install commands. A failure in the selected main method does not fall
+through to a later method.
 
 ## Custom installers
 

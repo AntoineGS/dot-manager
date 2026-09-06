@@ -322,6 +322,9 @@ func (m Model) executeBatchDelete() tea.Cmd {
 			message := ""
 			if success {
 				message = "Deleted successfully"
+				if m.DryRun || (m.Manager != nil && m.Manager.DryRun) {
+					message = "Would delete configuration (dry-run)"
+				}
 				successCount++
 			} else {
 				message = fmt.Sprintf("Failed: %v", err)

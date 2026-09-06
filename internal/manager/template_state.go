@@ -20,7 +20,11 @@ type templateRenderHistory struct {
 // entry. The ./ marker separates scoped keys from legacy filepath.Rel keys,
 // including templates directly in the repository root.
 func (m *Manager) templateStateKey(path string) (string, error) {
-	root, err := filepath.Abs(m.resolvePath("."))
+	root, err := m.ResolvePath(".")
+	if err != nil {
+		return "", err
+	}
+	root, err = filepath.Abs(root)
 	if err != nil {
 		return "", err
 	}

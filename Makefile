@@ -1,5 +1,8 @@
 .PHONY: help build test lint lint-fix clean install coverage
 
+# Keep in sync with .github/workflows/ci.yml.
+GOLANGCI_LINT_VERSION := v2.13.2
+
 # Default target
 help:
 	@echo "Available targets:"
@@ -29,7 +32,7 @@ coverage:
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 || { \
 		echo "golangci-lint not found. Installing..."; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	}
 	golangci-lint run
 	@command -v govulncheck >/dev/null 2>&1 || { \
@@ -42,7 +45,7 @@ lint:
 lint-fix:
 	@command -v golangci-lint >/dev/null 2>&1 || { \
 		echo "golangci-lint not found. Installing..."; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
 	}
 	golangci-lint run --fix
 

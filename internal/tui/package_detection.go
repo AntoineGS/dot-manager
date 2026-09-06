@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/AntoineGS/tidydots/internal/config"
+	"github.com/AntoineGS/tidydots/internal/packages"
 	"github.com/AntoineGS/tidydots/internal/tui/detection"
 )
 
@@ -10,7 +11,14 @@ func isPackageInstalledFromPackage(pkg *config.EntryPackage, method, entryName, 
 	return detection.IsPackageInstalled(pkg, method, entryName, osType)
 }
 
-// getPackageInstallMethodFromPackage determines how a package would be installed.
-func getPackageInstallMethodFromPackage(pkg *config.EntryPackage, osType string) string {
-	return detection.GetPackageInstallMethod(pkg, osType)
+// packageConfig shares repository selection preferences between status and install.
+func (m Model) packageConfig() *packages.Config {
+	cfg := &packages.Config{}
+	if m.Config != nil {
+		cfg.DefaultManager = packages.PackageManager(m.Config.DefaultManager)
+		for _, mgr := range m.Config.ManagerPriority {
+			cfg.ManagerPriority = append(cfg.ManagerPriority, packages.PackageManager(mgr))
+		}
+	}
+	return cfg
 }

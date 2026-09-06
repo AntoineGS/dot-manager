@@ -122,7 +122,7 @@ For each config entry that matches the current OS and `when` conditions:
 1. In symlink mode, if the target does not exist and the backup does, a symlink is created.
 2. In symlink mode, if the target exists but the backup does not, the target is **adopted** -- moved into the backup location and then symlinked back. Copy mode never adopts an existing target; back up missing sources first.
 3. In symlink mode, template files (`.tmpl` suffix) are rendered through the template engine. Rendered output is written to `.tmpl.rendered` and symlinked to the target path with the `.tmpl` suffix stripped. In `method: copy` entries, selected templates are rendered directly to real suffix-free target files and use the target as the current merge input.
-4. On re-render, a 3-way merge preserves any manual edits made to the rendered file or copy-mode target. Ordinary copy files remain literal and overwrite target drift.
+4. On re-render, a 3-way merge normally preserves independent manual edits made to the rendered file or copy-mode target. Overlapping or unsafe changes create a protected conflict artifact while the valid pure render is deployed. Ordinary copy files remain literal and overwrite target drift.
 
 !!! warning
     The `--force` flag deletes existing target files. Always preview with `-n` first to verify what will be removed.
@@ -374,8 +374,8 @@ tidydots install [package-names...] [flags]
 
 1. Loads the configuration and filters packages by OS and their application's `when` condition. Packages remain application-level and do not have entry-level conditions.
 2. Detects available package managers on the system.
-3. Selects the best manager for each package based on `default_manager` and `manager_priority` settings.
-4. Installs each package, reporting success or failure.
+3. Selects and validates one main method: git, installer, a configured available standard manager, custom, or URL.
+4. Installs applicable dependencies before that selected method, then reports success or failure. A selected-method failure does not fall through to another method. Dry-run performs the same validation and previews commands without running install commands.
 
 If specific package names are provided as arguments, only those packages are installed. Otherwise, all matching packages are installed.
 

@@ -3,6 +3,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/AntoineGS/tidydots/internal/config"
@@ -54,15 +55,29 @@ func (m *Model) deleteSubEntry(appIdx, subIdx int) error {
 
 // deleteApplicationOrSubEntry removes an Application or SubEntry from the config
 func (m *Model) deleteApplicationOrSubEntry(appIdx, subIdx int) error {
+	if appIdx < 0 || appIdx >= len(m.Config.Applications) || subIdx < -1 || subIdx >= len(m.Config.Applications[appIdx].Entries) {
+		return fmt.Errorf("invalid application or sub-entry index")
+	}
+	name := m.Config.Applications[appIdx].Name
+	if subIdx >= 0 {
+		name += "/" + m.Config.Applications[appIdx].Entries[subIdx].Name
+	}
+	if m.previewConfigChange("delete", name) {
+		return nil
+	}
+	// Work on detached slices so a failed save cannot change shared config.
+	next := *m.Config
+	next.Applications = slices.Clone(m.Config.Applications)
 	if subIdx >= 0 {
 		// Deleting SubEntry
-		app := &m.Config.Applications[appIdx]
+		app := &next.Applications[appIdx]
+		app.Entries = slices.Clone(app.Entries)
 
-		if len(app.Entries) == 1 {
+		if len(app.Entries) == 1 && app.Package == nil {
 			// Last SubEntry - delete whole Application
-			m.Config.Applications = append(
-				m.Config.Applications[:appIdx],
-				m.Config.Applications[appIdx+1:]...,
+			next.Applications = append(
+				next.Applications[:appIdx],
+				next.Applications[appIdx+1:]...,
 			)
 		} else {
 			// Delete just this SubEntry
@@ -73,16 +88,17 @@ func (m *Model) deleteApplicationOrSubEntry(appIdx, subIdx int) error {
 		}
 	} else {
 		// Deleting entire Application
-		m.Config.Applications = append(
-			m.Config.Applications[:appIdx],
-			m.Config.Applications[appIdx+1:]...,
+		next.Applications = append(
+			next.Applications[:appIdx],
+			next.Applications[appIdx+1:]...,
 		)
 	}
 
 	// Save and rebuild
-	if err := config.Save(m.Config, m.ConfigPath); err != nil {
+	if err := config.Save(&next, m.ConfigPath); err != nil {
 		return err
 	}
+	*m.Config = next
 
 	m.reinitPreservingState("")
 
@@ -123,10 +139,10 @@ func (m Model) performRestoreSubEntry(item SubEntryItem) (bool, string) {
 		return false, "Not a config entry"
 	}
 
-	target := item.Target
-	backupPath := m.resolvePath(subEntry.Backup)
-
-	var err error
+	target, backupPath, err := resolveSubEntryPaths(item, m.pathManager())
+	if err != nil {
+		return false, fmt.Sprintf("Failed: %v", err)
+	}
 	if subEntry.IsFolder() {
 		if m.Manager.HasTemplateFiles(backupPath) {
 			err = m.Manager.RestoreFolderWithTemplates(subEntry, backupPath, target)

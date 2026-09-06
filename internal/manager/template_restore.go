@@ -19,22 +19,10 @@ func normalizeStateKey(relPath string) string {
 	return filepath.ToSlash(relPath)
 }
 
-// writeFileAtomic writes data to path via a sibling temp file and a rename,
-// so a crash mid-write cannot truncate the existing content.
+// writeFileAtomic installs through an exclusive, randomly named sibling stage,
+// so failed writes cannot truncate the existing content or an occupied stage.
 func (m *Manager) writeFileAtomic(path string, data []byte, perm fs.FileMode) error {
-	tmpPath := atomicTempPath(path)
-
-	if err := m.fs.WriteFile(tmpPath, data, perm); err != nil {
-		return fmt.Errorf("writing temp file: %w", err)
-	}
-
-	if err := m.fs.Rename(tmpPath, path); err != nil {
-		// Best-effort cleanup of orphaned temp file.
-		_ = m.fs.Remove(tmpPath)
-		return fmt.Errorf("renaming temp file into place: %w", err)
-	}
-
-	return nil
+	return m.writeTemplateCopyFile(path, data, perm, false, false)
 }
 
 func atomicTempPath(path string) string {
@@ -45,6 +33,9 @@ func atomicTempPath(path string) string {
 // It delegates folder-level operations (adoption, merge, folder symlink) to RestoreFolder,
 // then renders templates and creates relative symlinks inside the backup directory.
 func (m *Manager) RestoreFolderWithTemplates(subEntry config.SubEntry, source, target string) error {
+	if err := m.preflightFolderTemplateAliases(source, target); err != nil {
+		return NewPathError("restore", target, err)
+	}
 	// Step 1: Delegate folder-level operations to RestoreFolder
 	// (handles adoption, merge, creates folder symlink target → source)
 	if err := m.RestoreFolder(subEntry, source, target); err != nil {
@@ -94,6 +85,14 @@ func (m *Manager) renderTemplatesInBackup(backupDir string) error {
 //
 //nolint:gocyclo // complexity acceptable for template restore logic with merge paths
 func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
+	if err := m.preflightLiteralTemplateAlias(tmplAbsPath); err != nil {
+		return NewPathError("restore", tmplAbsPath, err)
+	}
+	alias := filepath.Join(filepath.Dir(tmplAbsPath), tmpl.TargetName(filepath.Base(tmplAbsPath)))
+	preserved, err := m.preserveLiteralAlias(alias)
+	if err != nil {
+		return NewPathError("restore", alias, fmt.Errorf("preserving template alias: %w", err))
+	}
 	// Read template source
 	tmplContent, err := m.fs.ReadFile(tmplAbsPath)
 	if err != nil {
@@ -123,7 +122,7 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 			// Template unchanged and rendered file exists - just ensure relative symlink
 			m.logger.Debug("template unchanged, skipping re-render",
 				slog.String("template", relPath))
-			return m.ensureRelativeSymlinkForTemplate(tmplAbsPath)
+			return m.ensureRelativeSymlinkForTemplate(tmplAbsPath, preserved)
 		}
 	}
 
@@ -144,22 +143,21 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 	// Determine what to write
 	finalContent := rendered
 
-	if m.stateStore != nil && !m.ForceRender {
+	if !m.ForceRender {
 		if record != nil {
 			// Re-render scenario: 3-way merge
 			base := string(record.PureRender)
 
 			var theirs string
-			if m.pathExists(renderedAbsPath) {
-				theirsBytes, readErr := m.fs.ReadFile(renderedAbsPath)
-				if readErr != nil {
-					m.logger.Warn("could not read current rendered file",
-						slog.String("path", renderedAbsPath),
-						slog.String("error", readErr.Error()))
-					theirs = base // Fall back to base if can't read
-				} else {
-					theirs = string(theirsBytes)
-				}
+			current, readErr := m.readTemplateCopyTarget(renderedAbsPath, false)
+			if readErr != nil {
+				return NewPathError("restore", renderedAbsPath, readErr)
+			}
+			if current.Symlink && !current.Exists {
+				return fmt.Errorf("rendered output %q is a dangling symlink", renderedAbsPath)
+			}
+			if current.Exists {
+				theirs = string(current.Content)
 			} else {
 				theirs = base // No rendered file on disk, treat as unchanged
 			}
@@ -168,10 +166,8 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 
 			if len(decision.Conflict) > 0 {
 				conflictPath := tmpl.ConflictPath(tmplAbsPath)
-				if writeErr := m.fs.WriteFile(conflictPath, decision.Conflict, FilePerms); writeErr != nil {
-					m.logger.Warn("could not write conflict file",
-						slog.String("path", conflictPath),
-						slog.String("error", writeErr.Error()))
+				if writeErr := m.writeTemplateCopyFile(conflictPath, decision.Conflict, 0o600, false, true); writeErr != nil {
+					return NewPathError("restore", conflictPath, fmt.Errorf("preserving merge conflict: %w", writeErr))
 				}
 				m.logger.Warn("merge conflict detected",
 					slog.String("template", relPath),
@@ -186,16 +182,8 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 				}
 				finalContent = decision.Content
 			}
-		} else if m.pathExists(renderedAbsPath) {
-			// First render but rendered file exists (orphaned) - back it up
-			bakPath := renderedAbsPath + ".bak"
-			m.logger.Warn("backing up orphaned rendered file",
-				slog.String("from", renderedAbsPath),
-				slog.String("to", bakPath))
-			if copyErr := m.copyFile(renderedAbsPath, bakPath); copyErr != nil {
-				m.logger.Warn("could not backup rendered file",
-					slog.String("error", copyErr.Error()))
-			}
+		} else if err := m.preserveOrphanRender(renderedAbsPath); err != nil {
+			return NewPathError("restore", renderedAbsPath, fmt.Errorf("preserving orphan render: %w", err))
 		}
 	}
 
@@ -218,24 +206,32 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 	}
 
 	// Create relative symlink in backup dir: name → name.tmpl.rendered
-	return m.ensureRelativeSymlinkForTemplate(tmplAbsPath)
+	return m.ensureRelativeSymlinkForTemplate(tmplAbsPath, preserved)
 }
 
 // ensureRelativeSymlinkForTemplate creates a relative symlink in the backup directory
 // for a template file: e.g., "config" → "config.tmpl.rendered".
-func (m *Manager) ensureRelativeSymlinkForTemplate(tmplAbsPath string) error {
+func (m *Manager) ensureRelativeSymlinkForTemplate(tmplAbsPath string, preserved *literalAliasPreservation) error {
 	targetFileName := tmpl.TargetName(filepath.Base(tmplAbsPath))
 	symlinkPath := filepath.Join(filepath.Dir(tmplAbsPath), targetFileName)
 	renderedFileName := filepath.Base(tmpl.RenderedPath(tmplAbsPath))
 
-	return m.ensureRelativeSymlink(symlinkPath, renderedFileName)
+	return m.ensureRelativeSymlinkPrepared(symlinkPath, renderedFileName, preserved)
 }
 
 // ensureRelativeSymlink is an idempotent helper that creates a relative symlink.
-// It checks if the symlink already points to the correct target, removes any
-// existing file/symlink if not, and creates a new relative symlink.
+// It checks if the symlink already points to the correct target and preserves
+// any existing literal before atomically replacing it with a relative symlink.
 // Uses fs.Symlink directly (no sudo needed for same-directory relative links).
 func (m *Manager) ensureRelativeSymlink(symlinkPath, target string) error {
+	preserved, err := m.preserveLiteralAlias(symlinkPath)
+	if err != nil {
+		return NewPathError("restore", symlinkPath, fmt.Errorf("preserving template alias: %w", err))
+	}
+	return m.ensureRelativeSymlinkPrepared(symlinkPath, target, preserved)
+}
+
+func (m *Manager) ensureRelativeSymlinkPrepared(symlinkPath, target string, preserved *literalAliasPreservation) error {
 	// Check if already a correct relative symlink
 	if m.isSymlink(symlinkPath) {
 		existing, err := m.fs.Readlink(symlinkPath)
@@ -244,23 +240,12 @@ func (m *Manager) ensureRelativeSymlink(symlinkPath, target string) error {
 		}
 	}
 
-	// Remove existing file or incorrect symlink
-	if m.pathExists(symlinkPath) || m.isSymlink(symlinkPath) {
-		m.logger.Info("removing existing file/symlink for relative symlink",
-			slog.String("path", symlinkPath))
-		if !m.DryRun {
-			if err := m.fs.Remove(symlinkPath); err != nil {
-				return NewPathError("restore", symlinkPath, fmt.Errorf("removing existing: %w", err))
-			}
-		}
-	}
-
 	m.logger.Info("creating relative symlink",
 		slog.String("link", symlinkPath),
 		slog.String("target", target))
 
 	if !m.DryRun {
-		return m.fs.Symlink(target, symlinkPath)
+		return m.replacePreparedAlias(symlinkPath, target, preserved)
 	}
 
 	return nil

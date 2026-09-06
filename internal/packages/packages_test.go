@@ -1685,7 +1685,7 @@ func TestGetInstallMethod_Installer(t *testing.T) {
 			want: "installer",
 		},
 		{
-			name:      "installer without command for current OS falls through",
+			name:      "installer without OS command retains CLI method for explicit error",
 			available: []PackageManager{},
 			osType:    "linux",
 			pkg: Package{
@@ -1696,10 +1696,10 @@ func TestGetInstallMethod_Installer(t *testing.T) {
 					}},
 				},
 			},
-			want: "none",
+			want: "installer",
 		},
 		{
-			name:      "regular manager takes priority over installer",
+			name:      "installer takes priority as in CLI execution",
 			available: []PackageManager{Pacman},
 			osType:    "linux",
 			pkg: Package{
@@ -1711,7 +1711,7 @@ func TestGetInstallMethod_Installer(t *testing.T) {
 					}},
 				},
 			},
-			want: "pacman",
+			want: "installer",
 		},
 	}
 

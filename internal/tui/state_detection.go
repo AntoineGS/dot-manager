@@ -1,13 +1,13 @@
 package tui
 
 import (
-	"path/filepath"
-
 	tea "charm.land/bubbletea/v2"
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/manager"
+	pkgmanager "github.com/AntoineGS/tidydots/internal/packages"
 	"github.com/AntoineGS/tidydots/internal/platform"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
+	"github.com/AntoineGS/tidydots/internal/tui/detection"
 )
 
 // detectSetupPathState reports the state of a setup sub-entry by running its
@@ -50,8 +50,11 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 		return StateLoading
 	}
 
-	targetPath := config.ExpandPath(item.Target, m.Platform.EnvVars)
-	backupPath := m.resolvePath(item.SubEntry.Backup)
+	targetPath, backupPath, err := resolveSubEntryPaths(*item, m.pathManager())
+	if err != nil {
+		item.CheckError = err.Error()
+		return StateUnavailable
+	}
 
 	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files, item.SubEntry.IsCopy())
 
@@ -153,8 +156,9 @@ func (m Model) packageStateCheckCmd(appIndex int) tea.Cmd {
 	pkg := app.Application.Package
 	name := app.Application.Name
 	osType := m.Platform.OS
+	preferences := m.packageConfig()
 	return func() tea.Msg {
-		method := getPackageInstallMethodFromPackage(pkg, osType)
+		method := detection.GetPackageInstallMethod(pkg, osType, preferences)
 		installed := false
 		if method != TypeNone {
 			installed = isPackageInstalledFromPackage(pkg, method, name, osType)
@@ -178,6 +182,7 @@ func (m Model) subEntryStateCheckCmd(appIndex, subIndex int) tea.Cmd {
 }
 
 func (m *Model) refreshAllStates() tea.Cmd {
+	pkgmanager.ResetInstalledCache()
 	var cmds []tea.Cmd
 	for i := range m.Applications {
 		if m.Applications[i].IsFiltered {
@@ -199,6 +204,7 @@ func (m *Model) refreshAllStates() tea.Cmd {
 }
 
 func (m *Model) refreshPackageStates(packages []PackageItem) tea.Cmd {
+	pkgmanager.ResetInstalledCache()
 	names := make(map[string]struct{}, len(packages))
 	for _, pkg := range packages {
 		names[pkg.Name] = struct{}{}
@@ -263,8 +269,14 @@ func detectSubEntryStateStatic(item SubEntryItem, plat *platform.Platform, cfg *
 		return detectSetupPathState(item.SubEntry, mgr)
 	}
 
-	targetPath := config.ExpandPath(item.Target, plat.EnvVars)
-	backupPath := resolvePathStatic(item.SubEntry.Backup, cfg, plat.EnvVars)
+	pathMgr := mgr
+	if pathMgr == nil {
+		pathMgr = manager.New(cfg, plat)
+	}
+	targetPath, backupPath, err := resolveSubEntryPaths(item, pathMgr)
+	if err != nil {
+		return StateUnavailable, err.Error()
+	}
 
 	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files, item.SubEntry.IsCopy())
 
@@ -323,16 +335,4 @@ func detectCopyTemplateState(
 		return StateModified
 	}
 	return structuralState
-}
-
-// resolvePathStatic resolves relative paths against BackupRoot and expands ~ without using Model receiver.
-func resolvePathStatic(path string, cfg *config.Config, envVars map[string]string) string {
-	expandedPath := config.ExpandPath(path, envVars)
-
-	if filepath.IsAbs(expandedPath) {
-		return expandedPath
-	}
-
-	expandedBackupRoot := config.ExpandPath(cfg.BackupRoot, envVars)
-	return filepath.Join(expandedBackupRoot, expandedPath)
 }

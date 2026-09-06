@@ -796,7 +796,8 @@ func TestRestoreFolderWithTemplates_ExistingFileAtSymlinkPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The plain file should be replaced by a relative symlink
+	// The plain file is preserved before replacement by a relative symlink.
+	preservationContent(t, filepath.Join(backupDir, "app.conf.tidydots.bak"), "old content")
 	verifyRelativeSymlink(t, filepath.Join(backupDir, "app.conf"), "app.conf.tmpl.rendered")
 
 	// Content should resolve to rendered template
@@ -1183,7 +1184,7 @@ func TestWriteFileAtomic_WritesViaTempAndRename(t *testing.T) {
 		t.Fatalf("ReadDir: %v", err)
 	}
 	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".tidydots-tmp") {
+		if strings.HasPrefix(e.Name(), ".tidydots-copy-") {
 			t.Errorf("leftover temp file: %s", e.Name())
 		}
 	}
@@ -1197,9 +1198,9 @@ type spyFS struct {
 	removeErr error
 }
 
-func (s *spyFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
-	s.calls = append(s.calls, "WriteFile:"+name)
-	return s.OsFS.WriteFile(name, data, perm)
+func (s *spyFS) WriteFileExclusive(name string, data []byte, perm fs.FileMode) error {
+	s.calls = append(s.calls, "WriteFileExclusive:"+name)
+	return s.OsFS.WriteFileExclusive(name, data, perm)
 }
 
 func (s *spyFS) Rename(oldpath, newpath string) error {
@@ -1232,9 +1233,9 @@ func TestWriteFileAtomic_CallOrderUsesTempThenRename(t *testing.T) {
 	if len(spy.calls) != 2 {
 		t.Fatalf("expected 2 calls, got %d: %v", len(spy.calls), spy.calls)
 	}
-	expectedTmp := filepath.Join(tmp, ".out.txt.tidydots-tmp")
-	if spy.calls[0] != "WriteFile:"+expectedTmp {
-		t.Errorf("call[0] = %q, want WriteFile on temp path %q", spy.calls[0], expectedTmp)
+	expectedTmp := strings.TrimPrefix(spy.calls[0], "WriteFileExclusive:")
+	if filepath.Dir(expectedTmp) != tmp || !strings.HasPrefix(filepath.Base(expectedTmp), ".tidydots-copy-") {
+		t.Errorf("call[0] = %q, want exclusive sibling stage", spy.calls[0])
 	}
 	if spy.calls[1] != "Rename:"+expectedTmp+"->"+target {
 		t.Errorf("call[1] = %q, want Rename from temp to target", spy.calls[1])
@@ -1252,7 +1253,7 @@ func TestWriteFileAtomic_RenameFailureRemovesTempAndWrapsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "renaming temp file") {
+	if !strings.Contains(err.Error(), "installing copy") {
 		t.Errorf("error message = %q, want it to mention renaming", err.Error())
 	}
 	if !strings.Contains(err.Error(), "simulated rename failure") {
@@ -1260,7 +1261,10 @@ func TestWriteFileAtomic_RenameFailureRemovesTempAndWrapsError(t *testing.T) {
 	}
 
 	// Verify the cleanup Remove was called on the temp path.
-	expectedTmp := filepath.Join(tmp, ".out.txt.tidydots-tmp")
+	if len(spy.calls) == 0 {
+		t.Fatal("no stage calls")
+	}
+	expectedTmp := strings.TrimPrefix(spy.calls[0], "WriteFileExclusive:")
 	var sawRemove bool
 	for _, c := range spy.calls {
 		if c == "Remove:"+expectedTmp {
@@ -1273,7 +1277,7 @@ func TestWriteFileAtomic_RenameFailureRemovesTempAndWrapsError(t *testing.T) {
 	}
 }
 
-func TestWriteFileAtomic_OverwritesStaleTempFile(t *testing.T) {
+func TestWriteFileAtomic_PreservesStaleTempFile(t *testing.T) {
 	tmp := t.TempDir()
 	target := filepath.Join(tmp, "out.txt")
 	staleTmp := filepath.Join(tmp, ".out.txt.tidydots-tmp")
@@ -1296,10 +1300,8 @@ func TestWriteFileAtomic_OverwritesStaleTempFile(t *testing.T) {
 		t.Errorf("target content = %q, want %q", got, "fresh")
 	}
 
-	// No leftover temp file after success.
-	if _, err := os.Stat(staleTmp); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("stale temp file still present: err=%v", err)
-	}
+	// Unowned stages from previous runs must not be overwritten or unlinked.
+	preservationContent(t, staleTmp, "stale")
 }
 
 func TestRenderTemplateAndLink_RemovesStaleConflictFile(t *testing.T) {

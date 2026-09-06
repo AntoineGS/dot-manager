@@ -23,6 +23,18 @@ go test ./internal/manager/...
 go test ./... -v
 ```
 
+### Race Detection
+
+On Linux, run the full suite with the Go race detector:
+
+```bash
+CGO_ENABLED=1 go test -race ./...
+```
+
+The race detector requires CGO and a C compiler (for example, GCC). CI runs
+this as a separate required Linux job; the cross-platform test and coverage
+jobs continue to use `CGO_ENABLED=0`.
+
 ### Snapshot Tests (TUI)
 
 Golden file snapshot tests for the Bubble Tea TUI to catch visual regressions.
@@ -135,7 +147,7 @@ func TestLinuxSpecific(t *testing.T) {
 
 ### How It Works
 
-1. **Render** - Call `m.View()` to render the TUI state
+1. **Render** - Read `m.View().Content` to get the rendered TUI content
 2. **Strip ANSI** - Remove color codes with `stripAnsiCodes()`
 3. **Normalize** - Trim whitespace, consistent line endings with `normalizeOutput()`
 4. **Compare** - Use goldie to compare against `.golden.txt` files
@@ -153,7 +165,7 @@ Golden files are plain text snapshots stored in `internal/tui/testdata/`:
 
 ### Gotchas to Avoid
 
-1. **Color Profile Issues** - Tests force ASCII color profile with `lipgloss.SetColorProfile(termenv.Ascii)` to ensure consistent rendering across environments
+1. **Color Profile Issues** - Tests set `NO_COLOR=1` with `t.Setenv` and strip ANSI codes before comparison. Snapshot tests are skipped on Windows because terminal rendering differs.
 
 2. **Terminal Width Variations** - All setup functions set fixed dimensions:
    ```go
@@ -241,7 +253,19 @@ CI enforces a coverage floor via `coverage-threshold.txt`. To raise the floor af
 golangci-lint run
 ```
 
-This is enforced in CI and pre-commit hooks.
+Use Go 1.26 or newer, as required by `go.mod`. The Makefile fallback installation
+and CI pin golangci-lint to **v2.13.2**, compatible with Go 1.26 and the version-2
+`.golangci.yml` configuration. To install that version explicitly:
+
+```bash
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+```
+
+Ensure `$(go env GOPATH)/bin` (or your custom `GOBIN`) is on `PATH`.
+`make lint` runs golangci-lint and govulncheck; `make lint-fix` runs
+golangci-lint with `--fix`. Both install the pinned linter only when it is
+missing, so update an existing older binary explicitly. Keep the Makefile
+and CI version pins in sync when upgrading. Linting is enforced in CI.
 
 ### Test Coverage
 
@@ -264,6 +288,11 @@ go tool cover -html=coverage.out
 ## Continuous Integration
 
 CI runs:
-1. All tests (`go test ./...`)
-2. Linting (`golangci-lint run`)
-3. Build verification (`go build ./cmd/tidydots`)
+1. Tests with coverage on Linux, Windows, and macOS (`CGO_ENABLED=0`), with the coverage threshold enforced and Codecov upload attempted on Linux.
+2. Linux race detection (`CGO_ENABLED=1 go test -race ./...`).
+3. Linting with golangci-lint v2.13.2.
+4. Vulnerability checks (`govulncheck ./...`).
+5. GoReleaser configuration validation (`goreleaser check`).
+
+The `CI Gate` requires every job above to succeed, including race detection;
+failed, cancelled, or skipped dependencies fail the gate.

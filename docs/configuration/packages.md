@@ -14,11 +14,13 @@ At least one of `managers`, `custom`, or `url` should be specified for the packa
 
 ## Installation Methods
 
-tidydots tries installation methods in this order:
+tidydots first selects and validates one main installation method, then
+installs applicable dependencies, then runs that selected main method. Main
+method selection uses this order:
 
 1. **Git packages** (if `managers.git` is defined)
 2. **Installer packages** (if `managers.installer` is defined)
-3. **Standard package managers** (first available manager from `managers`)
+3. **Standard package managers** (the selected configured manager)
 4. **Custom commands** (if `custom` has a command for the current OS)
 5. **URL downloads** (if `url` has a spec for the current OS)
 
@@ -86,9 +88,10 @@ In this example, `libssl-dev` and `cmake` are installed via `apt` before the ins
 
 **Behavior:**
 
-- All dependencies across all managers are installed first, before the main package
-- If any dependency fails to install, the main package installation is aborted
-- Dependencies are installed in an unordered fashion
+- All dependencies across eligible standard managers are installed first, before the main package
+- If any dependency fails, or the selected main method is invalid for this OS, the main installation is aborted
+- tidydots validates the selected main method before running dependencies; an invalid git target or URL, a blank git target, or a missing installer command for the OS therefore runs no dependencies
+- A deps-only manager entry is never selected as the main installation method
 - The plain string form (`pacman: "yazi"`) is equivalent to `pacman: { name: "yazi" }` with no deps
 
 ### Git Packages
@@ -232,7 +235,9 @@ tidydots selects which package manager to use through a priority system:
 
 ### 1. manager_priority (Highest Priority)
 
-If `manager_priority` is set in `tidydots.yaml`, tidydots iterates the list and uses the first manager that is both listed and available on the system.
+If `manager_priority` is set in `tidydots.yaml`, tidydots considers its managers
+in order and uses the first one that both has a package name configured for this
+application and is available on the system.
 
 ```yaml
 manager_priority:
@@ -243,7 +248,8 @@ manager_priority:
 
 ### 2. default_manager
 
-If `manager_priority` is not set (or none of its entries are available), tidydots checks `default_manager`. If it is set and available, it is used.
+If no priority candidate applies, tidydots checks `default_manager`. It must be
+configured for the application and available to be selected.
 
 ```yaml
 default_manager: "yay"
@@ -251,7 +257,8 @@ default_manager: "yay"
 
 ### 3. Auto-Selection (Fallback)
 
-If neither setting applies, tidydots auto-selects based on the OS:
+If neither setting applies, tidydots uses the first available manager that has
+a package name configured for the application, in platform discovery order:
 
 === "Linux / macOS"
 
@@ -264,7 +271,10 @@ If neither setting applies, tidydots auto-selects based on the OS:
 The first available manager wins.
 
 !!! note
-    Manager selection applies only to standard package managers. Git, installer, custom, and URL methods are used whenever their configuration matches the current OS, regardless of manager selection.
+    Manager selection applies only to standard package managers. Git and
+    installer methods take precedence over ordinary managers; custom commands
+    and URL downloads are fallbacks. Dependency-only manager values participate
+    only in the dependency phase, not main-method selection.
 
 ## Complete Examples
 
@@ -387,7 +397,11 @@ applications:
           command: "tar xzf {file} -C ~/.local/bin"
 ```
 
-tidydots tries methods in order: git first (if defined), then installer, then standard managers, then custom, then URL. The first successful method wins.
+tidydots selects and validates the main method first: git (if defined), then
+installer, then a configured available standard manager, then custom, then URL.
+It installs applicable dependencies before that selected main method. A failure
+in the selected method is reported; tidydots does not silently continue to a
+later method.
 
 ### Application with Package Dependencies
 

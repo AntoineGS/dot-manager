@@ -87,6 +87,13 @@ changes to the `.tmpl` source, and run `tidydots restore` again.
 the next successful merge removes it automatically. The deployed file already
 contains the fresh template output.
 
+!!! note
+    In symlink mode, conflict files are protected recovery artifacts. If a
+    previous `.tmpl.conflict` already exists when another conflict occurs,
+    tidydots stops rather than overwriting it. Resolve or move the existing
+    artifact, then run restore again. Copy-mode conflicts instead refresh their
+    existing recovery artifact.
+
 !!! tip
     To avoid merge conflicts in the future, prefer making changes in the `.tmpl` source file rather than editing generated `.tmpl.rendered` output or copy-mode targets directly.
 
@@ -167,6 +174,10 @@ If only some entries require sudo, you can also split your workflow:
 !!! tip
     Template expressions are also supported in `targets` and `backup` paths. If a path contains `{{` and fails to render, the same debugging approach applies.
 
+In the TUI, invalid path expressions and expansions that result in an empty
+path are reported as errors and are not used as literal or fallback paths.
+Correct the expression before attempting restore.
+
 ---
 
 ## Package installation failures
@@ -190,7 +201,7 @@ If only some entries require sudo, you can also split your workflow:
 
     Packages marked with `✗` cannot be installed because no configured manager is available.
 
-2. If the wrong manager is being selected, configure `default_manager` or `manager_priority` in your `tidydots.yaml`:
+2. If the wrong manager is being selected, configure `default_manager` or `manager_priority` in your `tidydots.yaml`. A priority or default manager is used only when that application has a package name for it; deps-only entries are not installation candidates:
 
     ```yaml
     default_manager: "pacman"
@@ -200,7 +211,7 @@ If only some entries require sudo, you can also split your workflow:
       - "paru"
     ```
 
-3. Preview the installation to see exactly what commands will run:
+3. Preview the installation to validate the selected main method and see the dependency commands before the main command:
 
     ```bash
     tidydots install -n -v

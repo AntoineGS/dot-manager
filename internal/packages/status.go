@@ -98,7 +98,10 @@ func isInstalledSingle(ctx context.Context, pkgName, manager string, mc managerC
 // ResetInstalledCache clears the bulk installed cache, causing the next
 // IsInstalled call to re-query. Useful for tests and after install operations.
 func ResetInstalledCache() {
-	installedCache = sync.Map{}
+	installedCache.Range(func(key, _ any) bool {
+		installedCache.Delete(key)
+		return true
+	})
 }
 
 // IsInstallerInstalled checks if an installer package is installed by looking up
@@ -137,57 +140,20 @@ func IsGitInstalled(targets map[string]string, osType string) bool {
 // It returns true if any of the package's installation methods (manager,
 // custom command, or URL) are available for the current OS and package managers.
 func (m *Manager) CanInstall(pkg Package) bool {
-	// Check managers
-	for _, mgr := range m.Available {
-		if _, ok := pkg.Managers[mgr]; ok {
-			return true
-		}
+	method := m.GetInstallMethod(pkg)
+	if method == string(Installer) {
+		_, ok := pkg.Managers[Installer].Installer.Command[m.OS]
+		return ok
 	}
-	// Check installer (always available when configured with a command for current OS)
-	if val, ok := pkg.Managers[Installer]; ok && val.IsInstaller() {
-		if _, hasCmd := val.Installer.Command[m.OS]; hasCmd {
-			return true
-		}
-	}
-	// Check custom
-	if _, ok := pkg.Custom[m.OS]; ok {
-		return true
-	}
-	// Check URL
-	if _, ok := pkg.URL[m.OS]; ok {
-		return true
-	}
-
-	return false
+	return method != MethodNone
 }
 
 // GetInstallMethod returns the method that would be used to install a package.
-// It returns the name of the first available package manager, "installer" for
-// installer packages, "custom" if a custom command is available, "url" for
-// URL-based installation, or "none" if no installation method is available.
+// It shares Install's special-method precedence and configured manager priority.
+// Configured git/installer methods are reported even if their OS-specific
+// settings are missing; Install returns the corresponding explicit error.
 func (m *Manager) GetInstallMethod(pkg Package) string {
-	for _, mgr := range m.Available {
-		if _, ok := pkg.Managers[mgr]; ok {
-			return string(mgr)
-		}
-	}
-
-	// Check installer (always available when configured with a command for current OS)
-	if val, ok := pkg.Managers[Installer]; ok && val.IsInstaller() {
-		if _, hasCmd := val.Installer.Command[m.OS]; hasCmd {
-			return string(Installer)
-		}
-	}
-
-	if _, ok := pkg.Custom[m.OS]; ok {
-		return MethodCustom
-	}
-
-	if _, ok := pkg.URL[m.OS]; ok {
-		return MethodURL
-	}
-
-	return MethodNone
+	return PlanInstallation(pkg, m.Config, m.OS, m.Available).Method
 }
 
 // GetInstallablePackages returns packages from the configuration that can be
