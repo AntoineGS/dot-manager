@@ -565,7 +565,7 @@ The database stores:
 
 | Field | Description |
 |-------|-------------|
-| `template_path` | Relative path of the `.tmpl` file |
+| `template_path` | Repository-relative source key with a `./` prefix and forward slashes; copy keys also include the resolved target |
 | `pure_render` | The unmerged template output (used as `base` in future merges) |
 | `template_hash` | SHA-256 hash of the template source (for skip optimization) |
 | `rendered_at` | Timestamp of the render |
@@ -574,6 +574,30 @@ The database stores:
 
 The database uses WAL mode for safe concurrent access and maintains a history of renders per template.
 
+History is scoped by repository-relative source path, OS, and hostname, plus the
+resolved target for copy deployments. Templates such as `Both/Git/config.tmpl`
+and `Linux/ghostty/config.tmpl` have independent render histories even though
+their filenames match. Status checks and 3-way merges use the same identities.
+
+!!! warning "Upgrading from entry-relative render history"
+    Older versions recorded paths relative to each entry's backup directory,
+    which could mix up templates with the same name. A legacy baseline is reused
+    only when records matching the current source hash, OS, and hostname agree
+    on the pure render. Otherwise, existing output is left unchanged and normal
+    restore stops so local edits can be preserved before using `--force-render`.
+
+    When there is no scoped or legacy history, a normal restore backs up an
+    existing `.tmpl.rendered` file to `.tmpl.rendered.bak` before a fresh render is
+    written. Manual edits remain in that backup but are not automatically
+    merged into the fresh output. Review those edits and incorporate anything
+    you need into the template source. Preview the affected entry with
+    `tidydots restore <app> <entry> -n` before restoring it, and do not use
+    `--force-render` if you need the backup.
+
+    Restore stops if the backup already exists or cannot be created. Preserve
+    or reconcile an existing `.bak` outside that path before retrying; tidydots
+    will not overwrite it. Keep these machine-specific backups out of Git.
+
 ## Recommended .gitignore
 
 Add these patterns to the `.gitignore` in your dotfiles repository:
@@ -581,6 +605,7 @@ Add these patterns to the `.gitignore` in your dotfiles repository:
 ```gitignore
 # tidydots generated files
 *.tmpl.rendered
+*.tmpl.rendered.bak
 *.tmpl.conflict
 .tidydots.db
 ```
