@@ -175,10 +175,10 @@ Because the target is a real file rather than a live link, editing the file in t
 
 If the target currently exists as a symlink (for example, the entry was previously deployed with `method: symlink`, or adopted), switching the entry to `method: copy` and re-running `tidydots restore` removes the existing symlink and replaces it with a real file copied from the repo. This makes symlink-to-copy migration safe without any manual cleanup.
 
-### v1 Limitations
+### Limitations
 
 - **Files only** — `method: copy` requires an explicit, non-empty `files:` list. Whole-folder copying (`files: []`) is not supported and is rejected during config validation.
-- **No template rendering** — Template (`.tmpl`) rendering only ever applies to folder entries (an entry with an empty `files:` list); see [Template Files in Config Entries](#template-files-in-config-entries). Since `method: copy` requires an explicit, non-empty `files:` list, template rendering never applies to copy entries — this is a consequence of copy mode being files-only, not an additional restriction.
+- **Literal `.tmpl` files** — Copy entries do not render templates. A selected `config.toml.tmpl` is copied literally to `config.toml.tmpl`; use the default symlink method when that source should render. See [Templates](templates.md#explicit-file-selections).
 
 ### When to Use It
 
@@ -202,6 +202,24 @@ entries:
 ```
 
 This creates a symlink `~/.gitconfig` pointing to `<dotfiles>/git/.gitconfig`.
+
+### Single Template File
+
+Select a template by its source filename, including the `.tmpl` suffix:
+
+```yaml
+entries:
+  - name: "gitconfig"
+    backup: "./git"
+    files:
+      - ".gitconfig.tmpl"
+    targets:
+      linux: "~"
+```
+
+This renders and deploys `~/.gitconfig`; it does not deploy a file named
+`~/.gitconfig.tmpl`. See [Explicit file selections](templates.md#explicit-file-selections)
+for the generated-file layout and safety rules.
 
 ### Entire Folder
 
@@ -326,5 +344,11 @@ For example, if your backup directory contains `alacritty.toml.tmpl`:
 1. tidydots renders the template to `alacritty.toml.tmpl.rendered`
 2. A relative symlink `alacritty.toml` is created pointing to `alacritty.toml.tmpl.rendered`
 3. The folder-level symlink from the target path points to the backup directory as usual
+
+For an explicit `files:` list, name the source with its `.tmpl` suffix (for
+example, `.gitconfig.tmpl`). Only those selected sources render; a suffix-free
+entry such as `.gitconfig` remains an ordinary file selection and does not
+implicitly discover the template. `method: copy` always copies `.tmpl` files
+literally.
 
 See [Templates](templates.md) for the full template system documentation.

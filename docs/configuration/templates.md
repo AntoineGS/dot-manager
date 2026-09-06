@@ -188,6 +188,74 @@ When `tidydots restore` encounters a `.tmpl` file in a backup directory:
 
 Non-template files in the same backup directory get normal symlinks as usual.
 
+### Explicit file selections
+
+Entries with a `files` list render only the selected `.tmpl` files. Name the
+**source** in `files`, including its `.tmpl` suffix. A suffix-free name is an
+ordinary literal selection; it does not implicitly discover a similarly named
+template. Unlisted templates are left untouched.
+
+For example, this entry deploys a single rendered Git configuration file:
+
+```yaml
+entries:
+  - name: "gitconfig"
+    backup: "./git"
+    files:
+      - ".gitconfig.tmpl"
+    targets:
+      linux: "~"
+```
+
+After restore, the layout is:
+
+```text
+git/.gitconfig.tmpl                  template source
+git/.gitconfig.tmpl.rendered         generated content
+git/.gitconfig -> .gitconfig.tmpl.rendered
+~/.gitconfig -> <repo>/git/.gitconfig
+```
+
+The final `.tmpl` suffix is stripped once when choosing the deployed name, so
+`config.tmpl.tmpl` deploys as the literal target name `config.tmpl` without
+recursively rendering the output. For nested sources, the parent directory is
+preserved: `nested/config.tmpl.tmpl` deploys as `nested/config.tmpl`. The
+relative alias in the backup directory keeps the source template and the
+generated content distinct while the target uses the expected suffix-free name.
+
+Template status and rendered-file diff discovery also use only the listed
+templates. Folder entries continue to discover templates recursively, and a
+missing rendered output is reported as needing a re-render rather than healthy.
+
+Entries using `method: copy` keep their literal behavior: a selected `.tmpl`
+file is copied to a `.tmpl` target without rendering. During backup, symlink
+entries skip selected `.tmpl` sources so an installed file cannot overwrite the
+template source in the repository.
+
+#### Restore safety for selected templates
+
+Before a selected-template restore mutates the entry, tidydots validates all
+selected template sources and template-derived paths together. A selected
+source must be a regular, renderable file within the entry; selected template
+and literal paths may not collide; generated output aliases may not conflict
+with sources or each other; and source/target aliases and unsafe symlink
+parents are rejected. Literal selections still go through their normal restore
+checks as they are deployed, so a missing literal source or disallowed target
+can fail later.
+
+Run the narrowest restore as a dry run first to inspect the intended work:
+
+```bash
+tidydots restore <app> gitconfig -n
+```
+
+#### Backup behavior
+
+For symlink entries with explicit selections, `tidydots backup` deliberately
+skips selected `.tmpl` paths. The deployed suffix-free target is a link through
+the backup alias, not a replacement template source. Copy entries retain their
+normal literal backup and restore behavior.
+
 ## 3-Way Merge
 
 The 3-way merge system preserves manual edits you make to rendered files. It uses three inputs:
@@ -344,7 +412,7 @@ When you move the cursor in the rendered buffer, the template buffer cursor foll
 
 ## Viewing Template Diffs
 
-If you manually edit a `.tmpl.rendered` file, the TUI shows the entry with a **Modified** status (blue). You can view a diff of your edits and update the template source directly:
+If you manually edit a `.tmpl.rendered` file, the TUI shows the entry with a **Modified** status (blue). For entries with `files`, it considers only the explicitly selected `.tmpl` sources. You can view a diff of your edits and update the template source directly:
 
 1. Open the TUI: `tidydots`
 2. Navigate to the modified entry and press `i`

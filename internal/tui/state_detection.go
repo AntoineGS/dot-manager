@@ -40,11 +40,11 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 
 	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files, item.SubEntry.IsCopy())
 
-	if st == StateLinked && item.SubEntry.IsConfig() && item.SubEntry.IsFolder() && m.Manager != nil {
-		if m.Manager.HasOutdatedTemplates(backupPath) {
+	if st == StateLinked && item.SubEntry.IsConfig() && !item.SubEntry.IsCopy() && m.Manager != nil {
+		if m.Manager.HasOutdatedTemplates(backupPath, item.SubEntry.Files) {
 			return StateOutdated
 		}
-		if m.Manager.HasModifiedRenderedFiles(backupPath) {
+		if m.Manager.HasModifiedRenderedFiles(backupPath, item.SubEntry.Files) {
 			return StateModified
 		}
 	}
@@ -242,11 +242,11 @@ func detectSubEntryStateStatic(item SubEntryItem, plat *platform.Platform, cfg *
 
 	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files, item.SubEntry.IsCopy())
 
-	if st == StateLinked && item.SubEntry.IsConfig() && item.SubEntry.IsFolder() && mgr != nil {
-		if mgr.HasOutdatedTemplates(backupPath) {
+	if st == StateLinked && item.SubEntry.IsConfig() && !item.SubEntry.IsCopy() && mgr != nil {
+		if mgr.HasOutdatedTemplates(backupPath, item.SubEntry.Files) {
 			return StateOutdated
 		}
-		if mgr.HasModifiedRenderedFiles(backupPath) {
+		if mgr.HasModifiedRenderedFiles(backupPath, item.SubEntry.Files) {
 			return StateModified
 		}
 	}

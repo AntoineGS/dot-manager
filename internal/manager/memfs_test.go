@@ -402,7 +402,7 @@ func TestManager_GetModifiedTemplateFiles_NilStateStore(t *testing.T) {
 	t.Parallel()
 	mgr, _ := newMemManager(t)
 	// stateStore is nil, should return nil, nil.
-	result, err := mgr.GetModifiedTemplateFiles("/some/dir")
+	result, err := mgr.GetModifiedTemplateFiles("/some/dir", nil)
 	if err != nil {
 		t.Errorf("expected nil error, got: %v", err)
 	}
@@ -419,7 +419,7 @@ func TestManager_HasOutdatedTemplates_NilStateStore(t *testing.T) {
 	t.Parallel()
 	mgr, _ := newMemManager(t)
 	// stateStore is nil, walkTemplateFiles returns early → false.
-	if mgr.HasOutdatedTemplates("/backup") {
+	if mgr.HasOutdatedTemplates("/backup", nil) {
 		t.Error("expected false when stateStore is nil")
 	}
 }
@@ -427,7 +427,7 @@ func TestManager_HasOutdatedTemplates_NilStateStore(t *testing.T) {
 func TestManager_HasModifiedRenderedFiles_NilStateStore(t *testing.T) {
 	t.Parallel()
 	mgr, _ := newMemManager(t)
-	if mgr.HasModifiedRenderedFiles("/backup") {
+	if mgr.HasModifiedRenderedFiles("/backup", nil) {
 		t.Error("expected false when stateStore is nil")
 	}
 }

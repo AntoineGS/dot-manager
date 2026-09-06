@@ -877,7 +877,7 @@ func TestHasOutdatedTemplates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasOutdatedTemplates(dir) {
+		if mgr.HasOutdatedTemplates(dir, nil) {
 			t.Error("should return false when stateStore is nil")
 		}
 	})
@@ -890,7 +890,7 @@ func TestHasOutdatedTemplates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasOutdatedTemplates(dir) {
+		if mgr.HasOutdatedTemplates(dir, nil) {
 			t.Error("should return false when no .tmpl files exist")
 		}
 	})
@@ -903,7 +903,7 @@ func TestHasOutdatedTemplates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !mgr.HasOutdatedTemplates(dir) {
+		if !mgr.HasOutdatedTemplates(dir, nil) {
 			t.Error("should return true when template has never been rendered")
 		}
 	})
@@ -932,7 +932,7 @@ func TestHasOutdatedTemplates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasOutdatedTemplates(backupDir) {
+		if mgr.HasOutdatedTemplates(backupDir, nil) {
 			t.Error("should return false when template hash matches stored hash")
 		}
 	})
@@ -966,7 +966,7 @@ func TestHasOutdatedTemplates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !mgr.HasOutdatedTemplates(backupDir) {
+		if !mgr.HasOutdatedTemplates(backupDir, nil) {
 			t.Error("should return true when template hash differs from stored hash")
 		}
 	})
@@ -1004,7 +1004,7 @@ func TestHasOutdatedTemplates(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !mgr.HasOutdatedTemplates(backupDir) {
+		if !mgr.HasOutdatedTemplates(backupDir, nil) {
 			t.Error("should return true when at least one template is outdated")
 		}
 	})
@@ -1027,7 +1027,7 @@ func TestHasModifiedRenderedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasModifiedRenderedFiles(dir) {
+		if mgr.HasModifiedRenderedFiles(dir, nil) {
 			t.Error("should return false when stateStore is nil")
 		}
 	})
@@ -1040,7 +1040,7 @@ func TestHasModifiedRenderedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasModifiedRenderedFiles(dir) {
+		if mgr.HasModifiedRenderedFiles(dir, nil) {
 			t.Error("should return false when no .tmpl files exist")
 		}
 	})
@@ -1053,7 +1053,7 @@ func TestHasModifiedRenderedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasModifiedRenderedFiles(dir) {
+		if mgr.HasModifiedRenderedFiles(dir, nil) {
 			t.Error("should return false when no render record exists")
 		}
 	})
@@ -1087,7 +1087,7 @@ func TestHasModifiedRenderedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasModifiedRenderedFiles(backupDir) {
+		if mgr.HasModifiedRenderedFiles(backupDir, nil) {
 			t.Error("should return false when rendered file doesn't exist")
 		}
 	})
@@ -1115,7 +1115,7 @@ func TestHasModifiedRenderedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if mgr.HasModifiedRenderedFiles(backupDir) {
+		if mgr.HasModifiedRenderedFiles(backupDir, nil) {
 			t.Error("should return false when rendered file matches pure render baseline")
 		}
 	})
@@ -1149,7 +1149,7 @@ func TestHasModifiedRenderedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !mgr.HasModifiedRenderedFiles(backupDir) {
+		if !mgr.HasModifiedRenderedFiles(backupDir, nil) {
 			t.Error("should return true when rendered file differs from pure render baseline")
 		}
 	})

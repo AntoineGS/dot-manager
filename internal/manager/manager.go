@@ -193,17 +193,24 @@ func (m *Manager) expandTarget(target string) string {
 	return config.ExpandPathWithTemplate(target, m.Platform.EnvVars, m.templateEngine)
 }
 
-// HasOutdatedTemplates returns true if the backup directory contains any .tmpl files
-// that need rendering. A template is considered outdated when:
+// HasOutdatedTemplates returns true if the selected .tmpl files in the backup
+// directory need rendering. A template is considered outdated when:
 //   - It has never been rendered (no render record in state store)
 //   - Its current SHA256 hash differs from the hash stored at last render
+//   - Its rendered output is missing or cannot be read
 //
-// Returns false if the state store is nil, the directory doesn't exist, or has no templates.
-func (m *Manager) HasOutdatedTemplates(backupDir string) bool {
+// An empty files selection discovers templates recursively. Returns false if
+// the state store is nil, the directory doesn't exist, or has no templates.
+func (m *Manager) HasOutdatedTemplates(backupDir string, files []string) bool {
 	outdated := false
-	_ = m.walkTemplateFiles(backupDir, func(path, _ string, record *state.RenderRecord) error {
+	_ = m.walkTemplateFiles(backupDir, files, func(path, _ string, record *state.RenderRecord) error {
 		// No render record = template never rendered = outdated
 		if record == nil {
+			outdated = true
+			return filepath.SkipAll
+		}
+
+		if _, readErr := m.fs.ReadFile(tmpl.RenderedPath(path)); readErr != nil {
 			outdated = true
 			return filepath.SkipAll
 		}
@@ -225,15 +232,16 @@ func (m *Manager) HasOutdatedTemplates(backupDir string) bool {
 	return outdated
 }
 
-// HasModifiedRenderedFiles returns true if the backup directory contains any
-// .tmpl.rendered files whose content differs from the pure render baseline
-// stored in the state store. This indicates the user has manually edited
-// a rendered template file.
+// HasModifiedRenderedFiles returns true if the selected templates in the backup
+// directory contain any .tmpl.rendered files whose content differs from the
+// pure render baseline stored in the state store. This indicates the user has
+// manually edited a rendered template file.
 //
-// Returns false if the state store is nil, the directory doesn't exist, or has no templates.
-func (m *Manager) HasModifiedRenderedFiles(backupDir string) bool {
+// An empty files selection discovers templates recursively. Returns false if
+// the state store is nil, the directory doesn't exist, or has no templates.
+func (m *Manager) HasModifiedRenderedFiles(backupDir string, files []string) bool {
 	modified := false
-	_ = m.walkTemplateFiles(backupDir, func(path, _ string, record *state.RenderRecord) error {
+	_ = m.walkTemplateFiles(backupDir, files, func(path, _ string, record *state.RenderRecord) error {
 		if record == nil {
 			return nil
 		}
@@ -407,16 +415,17 @@ type ModifiedTemplate struct {
 	CurrentOnDisk []byte // current .tmpl.rendered content on disk
 }
 
-// GetModifiedTemplateFiles returns all .tmpl files in the backup directory
+// GetModifiedTemplateFiles returns selected .tmpl files in the backup directory
 // whose rendered output on disk differs from the pure render stored in the state DB.
-func (m *Manager) GetModifiedTemplateFiles(backupDir string) ([]ModifiedTemplate, error) {
+// An empty files selection discovers templates recursively.
+func (m *Manager) GetModifiedTemplateFiles(backupDir string, files []string) ([]ModifiedTemplate, error) {
 	if m.stateStore == nil {
 		return nil, nil
 	}
 
 	var result []ModifiedTemplate
 
-	err := m.walkTemplateFiles(backupDir, func(path, relPath string, record *state.RenderRecord) error {
+	err := m.walkTemplateFiles(backupDir, files, func(path, relPath string, record *state.RenderRecord) error {
 		if record == nil {
 			return nil
 		}

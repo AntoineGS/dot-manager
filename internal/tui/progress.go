@@ -707,9 +707,9 @@ func (m Model) updateResults(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			// On a modified sub-entry: launch diff viewer
 			if appIdx >= 0 && subIdx >= 0 && m.Manager != nil {
 				subItem := m.Applications[appIdx].SubItems[subIdx]
-				if subItem.State == StateModified {
+				if subItem.State == StateModified && subItem.SubEntry.IsConfig() && !subItem.SubEntry.IsCopy() {
 					backupPath := m.resolvePath(subItem.SubEntry.Backup)
-					modifiedFiles, err := m.Manager.GetModifiedTemplateFiles(backupPath)
+					modifiedFiles, err := m.Manager.GetModifiedTemplateFiles(backupPath, subItem.SubEntry.Files)
 					if err != nil || len(modifiedFiles) == 0 {
 						return m, nil
 					}

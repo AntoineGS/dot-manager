@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/platform"
+	tmpl "github.com/AntoineGS/tidydots/internal/template"
 )
 
 func entryWhenConfig(t *testing.T) *config.Config {
@@ -275,6 +278,198 @@ func TestDetectSubEntryStateStatic_SetupEntryCheckPasses_ReturnsSetupOk(t *testi
 	got := detectSubEntryStateStatic(item, plat, cfg, newStubManager(stub))
 	if got != StateSetupOk {
 		t.Errorf("detectSubEntryStateStatic for a passing setup entry = %v, want StateSetupOk", got)
+	}
+}
+
+func TestDetectSubEntryState_SelectedTemplateStatesSyncAndAsync(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(t *testing.T, templatePath string)
+		want   PathState
+	}{
+		{name: "linked", want: StateLinked},
+		{
+			name: "outdated",
+			mutate: func(t *testing.T, templatePath string) {
+				writeTUITemplateFile(t, templatePath, "source-v2")
+			},
+			want: StateOutdated,
+		},
+		{
+			name: "modified",
+			mutate: func(t *testing.T, templatePath string) {
+				writeTUITemplateFile(t, tmpl.RenderedPath(templatePath), "user-edit")
+			},
+			want: StateModified,
+		},
+		{
+			name: "missing-rendered",
+			mutate: func(t *testing.T, templatePath string) {
+				if err := os.Remove(tmpl.RenderedPath(templatePath)); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: StateOutdated,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newTUISelectedTemplateFixture(t)
+			if tt.mutate != nil {
+				tt.mutate(t, fixture.templatePath)
+			}
+
+			gotSync := fixture.model.detectSubEntryState(&fixture.item)
+			if gotSync != tt.want {
+				t.Fatalf("sync state = %v, want %v", gotSync, tt.want)
+			}
+
+			gotAsync := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager)
+			if gotAsync != tt.want {
+				t.Errorf("async state = %v, want %v", gotAsync, tt.want)
+			}
+		})
+	}
+}
+
+func TestDetectSubEntryState_SelectedTemplateIgnoresUnselectedNeighborSyncAndAsync(t *testing.T) {
+	fixture := newTUISelectedTemplateFixture(t)
+	neighborPath := filepath.Join(filepath.Dir(fixture.templatePath), "neighbor.tmpl")
+	writeTUITemplateFile(t, neighborPath, "neighbor-v1")
+
+	allTemplatesEntry := fixture.item.SubEntry
+	allTemplatesEntry.Files = []string{"config.tmpl", "neighbor.tmpl"}
+	if err := fixture.manager.RestoreFiles(allTemplatesEntry, filepath.Dir(fixture.templatePath), fixture.item.Target); err != nil {
+		t.Fatalf("seed neighboring template state: %v", err)
+	}
+	writeTUITemplateFile(t, neighborPath, "neighbor-v2")
+	writeTUITemplateFile(t, tmpl.RenderedPath(neighborPath), "neighbor-user-edit")
+
+	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateLinked {
+		t.Fatalf("sync selected state = %v, want StateLinked", got)
+	}
+	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateLinked {
+		t.Fatalf("async selected state = %v, want StateLinked", got)
+	}
+}
+
+func TestDetectSubEntryState_CopyTemplateRemainsLiteral(t *testing.T) {
+	fixture := newTUICopyTemplateFixture(t)
+
+	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateLinked {
+		t.Fatalf("sync copy state = %v, want StateLinked", got)
+	}
+	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateLinked {
+		t.Fatalf("async copy state = %v, want StateLinked", got)
+	}
+}
+
+type tuiTemplateFixture struct {
+	model        *Model
+	item         SubEntryItem
+	manager      *manager.Manager
+	config       *config.Config
+	platform     *platform.Platform
+	templatePath string
+}
+
+func newTUISelectedTemplateFixture(t *testing.T) tuiTemplateFixture {
+	t.Helper()
+	root := t.TempDir()
+	backupPath := filepath.Join(root, "backup")
+	targetPath := filepath.Join(root, "target")
+	if err := os.MkdirAll(backupPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(targetPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux, EnvVars: map[string]string{}}
+	cfg := &config.Config{Version: 3, BackupRoot: root}
+	mgr := manager.New(cfg, plat)
+	if err := mgr.InitStateStore(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Close() }) //nolint:errcheck // test cleanup
+
+	templatePath := filepath.Join(backupPath, "config.tmpl")
+	writeTUITemplateFile(t, templatePath, "source-v1")
+	entry := config.SubEntry{
+		Name:    "config",
+		Backup:  backupPath,
+		Files:   []string{"config.tmpl"},
+		Targets: map[string]string{"linux": targetPath},
+	}
+	if err := mgr.RestoreFiles(entry, backupPath, targetPath); err != nil {
+		t.Fatal(err)
+	}
+
+	item := SubEntryItem{AppName: "tool", Target: targetPath, SubEntry: entry}
+	model := &Model{Config: cfg, Platform: plat, Manager: mgr}
+	return tuiTemplateFixture{
+		model:        model,
+		item:         item,
+		manager:      mgr,
+		config:       cfg,
+		platform:     plat,
+		templatePath: templatePath,
+	}
+}
+
+func newTUICopyTemplateFixture(t *testing.T) tuiTemplateFixture {
+	t.Helper()
+	root := t.TempDir()
+	backupPath := filepath.Join(root, "backup")
+	targetPath := filepath.Join(root, "target")
+	if err := os.MkdirAll(backupPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(targetPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	plat := &platform.Platform{OS: platform.OSLinux, EnvVars: map[string]string{}}
+	cfg := &config.Config{Version: 3, BackupRoot: root}
+	mgr := manager.New(cfg, plat)
+	if err := mgr.InitStateStore(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Close() }) //nolint:errcheck // test cleanup
+
+	templatePath := filepath.Join(backupPath, "config.tmpl")
+	writeTUITemplateFile(t, templatePath, "literal {{ .Hostname }}")
+	entry := config.SubEntry{
+		Name:    "config",
+		Backup:  backupPath,
+		Files:   []string{"config.tmpl"},
+		Method:  config.MethodCopy,
+		Targets: map[string]string{"linux": targetPath},
+	}
+	if err := mgr.RestoreFiles(entry, backupPath, targetPath); err != nil {
+		t.Fatal(err)
+	}
+
+	item := SubEntryItem{AppName: "tool", Target: targetPath, SubEntry: entry}
+	model := &Model{Config: cfg, Platform: plat, Manager: mgr}
+	return tuiTemplateFixture{
+		model:        model,
+		item:         item,
+		manager:      mgr,
+		config:       cfg,
+		platform:     plat,
+		templatePath: templatePath,
+	}
+}
+
+func writeTUITemplateFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

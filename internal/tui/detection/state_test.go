@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	tmpl "github.com/AntoineGS/tidydots/internal/template"
 	tuitable "github.com/AntoineGS/tidydots/internal/tui/table"
 )
 
@@ -250,7 +251,248 @@ func TestDetectConfigState_Files_NonSymlinkTarget(t *testing.T) {
 	}
 }
 
+func TestDetectConfigState_SelectedTemplate_UsesSuffixFreeTarget(t *testing.T) {
+	tmp := t.TempDir()
+	backupPath := filepath.Join(tmp, "backup")
+	targetPath := filepath.Join(tmp, "target")
+	mkDir(t, backupPath)
+	mkDir(t, targetPath)
+
+	templatePath := filepath.Join(backupPath, "config.tmpl")
+	renderedPath := tmpl.RenderedPath(templatePath)
+	aliasPath := filepath.Join(backupPath, "config")
+	mkFile(t, templatePath)
+	mkFile(t, renderedPath)
+	mkSymlink(t, renderedPath, aliasPath)
+	mkSymlink(t, aliasPath, filepath.Join(targetPath, "config"))
+
+	got := DetectConfigState(backupPath, targetPath, false, []string{"config.tmpl"}, false)
+	if got != tuitable.StateLinked {
+		t.Errorf("selected template chain = %v, want StateLinked", got)
+	}
+}
+
+func TestDetectConfigState_SelectedTemplate_WrongTargetChainIsNotLinked(t *testing.T) {
+	tmp := t.TempDir()
+	backupPath := filepath.Join(tmp, "backup")
+	targetPath := filepath.Join(tmp, "target")
+	mkDir(t, backupPath)
+	mkDir(t, targetPath)
+
+	mkFile(t, filepath.Join(backupPath, "config.tmpl"))
+	mkFile(t, filepath.Join(backupPath, "other"))
+	mkSymlink(t, filepath.Join(backupPath, "other"), filepath.Join(targetPath, "config"))
+
+	got := DetectConfigState(backupPath, targetPath, false, []string{"config.tmpl"}, false)
+	if got == tuitable.StateLinked {
+		t.Fatal("wrong selected template target chain was reported healthy")
+	}
+}
+
+func TestDetectConfigState_SelectedTemplateCollisionIsNotLinked(t *testing.T) {
+	tmp := t.TempDir()
+	backupPath := filepath.Join(tmp, "backup")
+	targetPath := filepath.Join(tmp, "target")
+	mkDir(t, backupPath)
+	mkDir(t, targetPath)
+
+	templatePath := filepath.Join(backupPath, "config.tmpl")
+	renderedPath := tmpl.RenderedPath(templatePath)
+	aliasPath := filepath.Join(backupPath, "config")
+	mkFile(t, templatePath)
+	mkFile(t, renderedPath)
+	// This is a link layout that makes both selections look linked
+	// independently, even though restore rejects the shared effective name.
+	mkSymlink(t, renderedPath, aliasPath)
+	mkSymlink(t, aliasPath, filepath.Join(targetPath, "config"))
+
+	got := DetectConfigState(backupPath, targetPath, false, []string{"config", "config.tmpl"}, false)
+	if got == tuitable.StateLinked {
+		t.Fatal("ambiguous literal/template selections were reported healthy")
+	}
+}
+
+func TestDetectConfigState_SelectedTemplateGeneratedCollisionIsNotLinked(t *testing.T) {
+	tmp := t.TempDir()
+	backupPath := filepath.Join(tmp, "backup")
+	targetPath := filepath.Join(tmp, "target")
+	mkDir(t, backupPath)
+	mkDir(t, targetPath)
+
+	firstTemplate := filepath.Join(backupPath, "config.tmpl")
+	secondTemplate := filepath.Join(backupPath, "config.tmpl.rendered.tmpl")
+	firstRendered := tmpl.RenderedPath(firstTemplate)
+	secondRendered := tmpl.RenderedPath(secondTemplate)
+	firstAlias := filepath.Join(backupPath, "config")
+	mkFile(t, firstTemplate)
+	mkFile(t, secondTemplate)
+	mkFile(t, secondRendered)
+	// The first template's rendered path is also the second template's
+	// suffix-free alias. Both individual chains look correct, but restore's
+	// generated-path preflight rejects the cross-selection collision.
+	mkSymlink(t, secondRendered, firstRendered)
+	mkSymlink(t, firstRendered, firstAlias)
+	mkSymlink(t, firstAlias, filepath.Join(targetPath, "config"))
+	mkSymlink(t, firstRendered, filepath.Join(targetPath, "config.tmpl.rendered"))
+
+	got := DetectConfigState(backupPath, targetPath, false, []string{
+		"config.tmpl",
+		"config.tmpl.rendered.tmpl",
+	}, false)
+	if got == tuitable.StateLinked {
+		t.Fatal("template-generated cross-selection collision was reported healthy")
+	}
+}
+
+func TestDetectConfigState_SelectedTemplateRejectsEscapingSelection(t *testing.T) {
+	tmp := t.TempDir()
+	backupPath := filepath.Join(tmp, "backup")
+	targetRoot := filepath.Join(tmp, "target-root")
+	targetPath := filepath.Join(targetRoot, "entry")
+	mkDir(t, backupPath)
+	mkDir(t, targetPath)
+
+	templatePath := filepath.Join(tmp, "neighbor.tmpl")
+	renderedPath := tmpl.RenderedPath(templatePath)
+	aliasPath := filepath.Join(tmp, "neighbor")
+	mkFile(t, templatePath)
+	mkFile(t, renderedPath)
+	mkSymlink(t, renderedPath, aliasPath)
+	mkSymlink(t, aliasPath, filepath.Join(targetRoot, "neighbor"))
+
+	got := DetectConfigState(backupPath, targetPath, false, []string{"../neighbor.tmpl"}, false)
+	if got == tuitable.StateLinked {
+		t.Fatal("selected template outside the backup entry was reported healthy")
+	}
+}
+
+func TestDetectConfigState_SelectedTemplateRejectsSymlinkParentEscapes(t *testing.T) {
+	tests := []struct {
+		name         string
+		sourceParent bool
+		targetParent bool
+	}{
+		{name: "source parent", sourceParent: true},
+		{name: "target parent", targetParent: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			backupPath := filepath.Join(tmp, "backup")
+			targetPath := filepath.Join(tmp, "target")
+			sourceOutside := filepath.Join(tmp, "source-outside")
+			targetOutside := filepath.Join(tmp, "target-outside")
+			mkDir(t, backupPath)
+			mkDir(t, targetPath)
+			mkDir(t, sourceOutside)
+			mkDir(t, targetOutside)
+
+			if tt.sourceParent {
+				mkSymlink(t, sourceOutside, filepath.Join(backupPath, "nested"))
+			} else {
+				mkDir(t, filepath.Join(backupPath, "nested"))
+			}
+			if tt.targetParent {
+				mkSymlink(t, targetOutside, filepath.Join(targetPath, "nested"))
+			} else {
+				mkDir(t, filepath.Join(targetPath, "nested"))
+			}
+
+			sourceDir := filepath.Join(backupPath, "nested")
+			if tt.sourceParent {
+				sourceDir = sourceOutside
+			}
+			targetDir := filepath.Join(targetPath, "nested")
+			if tt.targetParent {
+				targetDir = targetOutside
+			}
+			templatePath := filepath.Join(sourceDir, "config.tmpl")
+			mkFile(t, templatePath)
+			mkFile(t, tmpl.RenderedPath(templatePath))
+
+			aliasPath := filepath.Join(backupPath, "nested", "config")
+			mkSymlink(t, filepath.Join(backupPath, "nested", "config.tmpl.rendered"), filepath.Join(sourceDir, "config"))
+			mkSymlink(t, aliasPath, filepath.Join(targetDir, "config"))
+
+			got := DetectConfigState(backupPath, targetPath, false, []string{"nested/config.tmpl"}, false)
+			if got == tuitable.StateLinked {
+				t.Fatalf("selected template through %s was reported healthy", tt.name)
+			}
+		})
+	}
+}
+
 // ── Copy-mode tests ─────────────────────────────────────────────────────────
+
+func TestDetectConfigState_MixedTemplatesNeverReportsInvalidSelectionAsLinked(t *testing.T) {
+	tests := []struct {
+		name       string
+		file       string
+		setupOther func(t *testing.T, backupPath, targetPath string)
+	}{
+		{
+			name: "escaping selection",
+			file: "../neighbor.tmpl",
+			setupOther: func(t *testing.T, backupPath, targetPath string) {
+				tmp := filepath.Dir(backupPath)
+				templatePath := filepath.Join(tmp, "neighbor.tmpl")
+				renderedPath := tmpl.RenderedPath(templatePath)
+				aliasPath := filepath.Join(tmp, "neighbor")
+				targetRoot := filepath.Dir(targetPath)
+				mkFile(t, templatePath)
+				mkFile(t, renderedPath)
+				mkSymlink(t, renderedPath, aliasPath)
+				mkSymlink(t, aliasPath, filepath.Join(targetRoot, "neighbor"))
+			},
+		},
+		{
+			name: "missing source",
+			file: "missing.tmpl",
+		},
+		{
+			name: "nonregular source",
+			file: "nonregular.tmpl",
+			setupOther: func(t *testing.T, backupPath, targetPath string) {
+				sourcePath := filepath.Join(backupPath, "nonregular.tmpl")
+				renderedPath := tmpl.RenderedPath(sourcePath)
+				aliasPath := filepath.Join(backupPath, "nonregular")
+				mkDir(t, sourcePath)
+				mkFile(t, renderedPath)
+				mkSymlink(t, renderedPath, aliasPath)
+				mkSymlink(t, aliasPath, filepath.Join(targetPath, "nonregular"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			backupPath := filepath.Join(tmp, "backup")
+			targetRoot := filepath.Join(tmp, "target-root")
+			targetPath := filepath.Join(targetRoot, "entry")
+			mkDir(t, backupPath)
+			mkDir(t, targetPath)
+
+			validTemplatePath := filepath.Join(backupPath, "valid.tmpl")
+			validRenderedPath := tmpl.RenderedPath(validTemplatePath)
+			validAliasPath := filepath.Join(backupPath, "valid")
+			mkFile(t, validTemplatePath)
+			mkFile(t, validRenderedPath)
+			mkSymlink(t, validRenderedPath, validAliasPath)
+			mkSymlink(t, validAliasPath, filepath.Join(targetPath, "valid"))
+			if tt.setupOther != nil {
+				tt.setupOther(t, backupPath, targetPath)
+			}
+
+			files := []string{"valid.tmpl", tt.file}
+			got := DetectConfigState(backupPath, targetPath, false, files, false)
+			if got == tuitable.StateLinked {
+				t.Fatalf("valid template plus %s was reported healthy", tt.name)
+			}
+		})
+	}
+}
 
 func TestDetectConfigState_Copy_InSync(t *testing.T) {
 	t.Parallel()
@@ -315,5 +557,21 @@ func TestDetectConfigState_Copy_TargetStillSymlink(t *testing.T) {
 	got := DetectConfigState(backup, target, false, []string{"f"}, true)
 	if got != tuitable.StateReady {
 		t.Errorf("state = %v, want StateReady (a symlinked target must not report in sync)", got)
+	}
+}
+
+func TestDetectConfigState_Copy_TemplateNameRemainsLiteral(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "backup")
+	target := filepath.Join(dir, "target")
+	_ = os.MkdirAll(backup, 0o755)
+	_ = os.MkdirAll(target, 0o755)
+	_ = os.WriteFile(filepath.Join(backup, "config.tmpl"), []byte("literal"), 0o644)
+	_ = os.WriteFile(filepath.Join(target, "config.tmpl"), []byte("literal"), 0o644)
+
+	got := DetectConfigState(backup, target, false, []string{"config.tmpl"}, true)
+	if got != tuitable.StateLinked {
+		t.Errorf("copy template-name state = %v, want StateLinked", got)
 	}
 }

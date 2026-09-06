@@ -34,14 +34,18 @@ The main screen displays a table view of all your applications and their entries
 | Linked | Symlink is already in place and correct |
 | Adopt | Target exists but backup does not -- can adopt the existing file |
 | Missing | Neither backup nor target exist |
-| Outdated | Symlink exists but template source has changed since last render |
-| Modified | Symlink exists but the rendered file has been manually edited since last render |
+| Outdated | Symlink exists but a listed `.tmpl` source in a file-list entry has changed since last render, or its rendered output is missing; folder entries discover templates recursively |
+| Modified | Symlink exists but a listed rendered template file in a file-list entry has been manually edited since last render; folder entries inspect discovered templates recursively |
 | Loading... | State not yet resolved -- shown briefly for [setup entries](../configuration/setup.md) while their check command runs |
 | Set up | Setup entry: the check command passed -- nothing to do |
 | Needs setup | Setup entry: the check command failed -- restore will run the setup command |
 
 !!! info
     Setup entries can't be resolved by inspecting the filesystem the way config entries can -- their state comes from actually running the entry's `check` command. tidydots runs that check in a background goroutine rather than on the UI thread, so a setup entry's row may briefly show **Loading...** before settling on **Set up** or **Needs setup**.
+
+For config entries with an explicit `files` list, “listed” means only the
+selected `.tmpl` source names participate in template status. An entry with an
+empty `files` list is a folder entry; its templates are discovered recursively.
 
 ## Navigation
 
@@ -340,7 +344,7 @@ Press `s` or `ctrl+s` to save your changes to the `tidydots.yaml` configuration 
 
 ## Template diff & edit
 
-When a config entry uses templates (`.tmpl` files) and you have manually edited the rendered output, the entry shows a **Modified** status in blue. You can view a diff of your changes and edit the source template to incorporate them.
+When a config entry uses templates (`.tmpl` files) and you have manually edited the rendered output, the entry shows a **Modified** status in blue. For an entry with a `files` list, status and diff discovery inspect only listed `.tmpl` source names; an unlisted template does not affect the row. List the `.tmpl` source name (not its suffix-free target name) to render and deploy a single template. You can view a diff of your changes and edit the source template to incorporate them.
 
 ### Viewing diffs
 

@@ -7,10 +7,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/AntoineGS/tidydots/internal/config"
+	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/platform"
 	"github.com/AntoineGS/tidydots/internal/tui"
 )
@@ -73,20 +75,175 @@ applications:
 
 func executeStatusCommand(t *testing.T, dir string) (string, error) {
 	t.Helper()
+	return executeStatusCommandArgs(t, dir, "status", "--actions", "--json")
+}
+
+func executeStatusCommandArgs(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
 
 	root := newRootCommand()
 	var output bytes.Buffer
 	root.SetOut(&output)
 	root.SetErr(io.Discard)
-	root.SetArgs([]string{
-		"--dir", dir,
-		"--os", "linux",
-		"--verbose",
-		"status", "--actions", "--json",
-	})
+	root.SetArgs(append([]string{"--dir", dir, "--os", "linux", "--verbose"}, args...))
 	err := root.Execute()
 
 	return output.String(), err
+}
+
+func TestStatusCommandReportsOnlySelectedTemplateState(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("selected template status command test requires symlinks")
+	}
+	preserveCommandGlobals(t)
+
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "backup")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.MkdirAll(backup, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(target, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	configYAML := fmt.Sprintf(`version: 3
+applications:
+  - name: tool
+    entries:
+      - name: config
+        backup: ./backup
+        files:
+          - selected.tmpl
+        targets:
+          linux: %q
+      - name: copy
+        backup: ./backup
+        files:
+          - copy.tmpl
+        method: copy
+        targets:
+          linux: %q
+`, target, target)
+	if err := os.WriteFile(filepath.Join(dir, "tidydots.yaml"), []byte(configYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	selected := filepath.Join(backup, "selected.tmpl")
+	unselected := filepath.Join(backup, "unselected.tmpl")
+	copySource := filepath.Join(backup, "copy.tmpl")
+	writeCommandStatusFile(t, selected, "selected-v1")
+	writeCommandStatusFile(t, unselected, "unselected-v1")
+	writeCommandStatusFile(t, copySource, "copy-v1")
+
+	cfg, err := config.Load(filepath.Join(dir, "tidydots.yaml"))
+	if err != nil {
+		t.Fatalf("load status config: %v", err)
+	}
+	cfg.BackupRoot = dir
+	plat := platform.Detect().WithOS(platform.OSLinux)
+	mgr := manager.New(cfg, plat)
+	if err := mgr.InitStateStore(); err != nil {
+		t.Fatalf("init status state: %v", err)
+	}
+	allTemplatesEntry := cfg.Applications[0].Entries[0]
+	allTemplatesEntry.Files = []string{"selected.tmpl", "unselected.tmpl", "copy.tmpl"}
+	if err := mgr.RestoreFiles(allTemplatesEntry, backup, target); err != nil {
+		_ = mgr.Close()
+		t.Fatalf("seed selected template state: %v", err)
+	}
+	if err := mgr.Close(); err != nil {
+		t.Fatal(err)
+	}
+	writeCommandStatusFile(t, filepath.Join(target, "copy.tmpl"), "copy-v1")
+
+	writeCommandStatusFile(t, unselected, "unselected-v2")
+	output, err := executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("status command error: %v", err)
+	}
+
+	var report tui.StatusReport
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output is not JSON: %v\n%s", err, output)
+	}
+	if len(report.Applications) != 1 || len(report.Applications[0].Entries) != 2 {
+		t.Fatalf("status entries = %+v, want selected and copy entries", report.Applications)
+	}
+	selectedEntry := findStatusEntry(t, report, "config")
+	copyEntry := findStatusEntry(t, report, "copy")
+	if got := selectedEntry.State; got != tui.StateLinked.String() {
+		t.Fatalf("selected entry state = %q, want %q", got, tui.StateLinked.String())
+	}
+	if got := copyEntry.State; got != tui.StateLinked.String() {
+		t.Fatalf("copy entry state = %q, want %q", got, tui.StateLinked.String())
+	}
+
+	writeCommandStatusFile(t, selected, "selected-v2")
+	output, err = executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("status command after selected source drift: %v", err)
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output after selected source drift is not JSON: %v\n%s", err, output)
+	}
+	selectedEntry = findStatusEntry(t, report, "config")
+	if got := selectedEntry.State; got != tui.StateOutdated.String() {
+		t.Fatalf("selected entry drift state = %q, want %q", got, tui.StateOutdated.String())
+	}
+	if got := findStatusEntry(t, report, "copy").State; got != tui.StateLinked.String() {
+		t.Fatalf("copy entry after selected drift = %q, want %q", got, tui.StateLinked.String())
+	}
+
+	writeCommandStatusFile(t, selected, "selected-v1")
+	writeCommandStatusFile(t, filepath.Join(backup, "selected.tmpl.rendered"), "selected-user-edit")
+	output, err = executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("status command after rendered edit: %v", err)
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output after rendered edit is not JSON: %v\n%s", err, output)
+	}
+	if got := findStatusEntry(t, report, "config").State; got != tui.StateModified.String() {
+		t.Fatalf("selected entry rendered-edit state = %q, want %q", got, tui.StateModified.String())
+	}
+
+	if err := os.Remove(filepath.Join(backup, "selected.tmpl.rendered")); err != nil {
+		t.Fatal(err)
+	}
+	output, err = executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("status command after missing rendered output: %v", err)
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output after missing rendered output is not JSON: %v\n%s", err, output)
+	}
+	if got := findStatusEntry(t, report, "config").State; got != tui.StateOutdated.String() {
+		t.Fatalf("selected entry missing-rendered state = %q, want %q", got, tui.StateOutdated.String())
+	}
+}
+
+func findStatusEntry(t *testing.T, report tui.StatusReport, name string) tui.StatusEntry {
+	t.Helper()
+	if len(report.Applications) != 1 {
+		t.Fatalf("status applications = %d, want 1", len(report.Applications))
+	}
+	for _, entry := range report.Applications[0].Entries {
+		if entry.Name == name {
+			return entry
+		}
+	}
+	t.Fatalf("status entry %q not found in %+v", name, report.Applications[0].Entries)
+	return tui.StatusEntry{}
+}
+
+func writeCommandStatusFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestStatusJSONIsStableAndActionableDoesNotChangeExitStatus(t *testing.T) {

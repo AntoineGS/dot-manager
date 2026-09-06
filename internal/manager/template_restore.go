@@ -22,9 +22,7 @@ func normalizeStateKey(relPath string) string {
 // writeFileAtomic writes data to path via a sibling temp file and a rename,
 // so a crash mid-write cannot truncate the existing content.
 func (m *Manager) writeFileAtomic(path string, data []byte, perm fs.FileMode) error {
-	dir := filepath.Dir(path)
-	base := filepath.Base(path)
-	tmpPath := filepath.Join(dir, "."+base+".tidydots-tmp")
+	tmpPath := atomicTempPath(path)
 
 	if err := m.fs.WriteFile(tmpPath, data, perm); err != nil {
 		return fmt.Errorf("writing temp file: %w", err)
@@ -37,6 +35,10 @@ func (m *Manager) writeFileAtomic(path string, data []byte, perm fs.FileMode) er
 	}
 
 	return nil
+}
+
+func atomicTempPath(path string) string {
+	return filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".tidydots-tmp")
 }
 
 // RestoreFolderWithTemplates handles folders that contain .tmpl files.
