@@ -101,7 +101,7 @@ func TestRestoreCopyTemplateConflictDeploysPureRenderAndSavesRecovery(t *testing
 	if !strings.Contains(conflict, "a=2") || !strings.Contains(conflict, "a=3") {
 		t.Fatalf("conflict = %q, want both variants", conflict)
 	}
-	record, err := store.GetLatestRender(mgr.ctx, "root.tmpl", "linux", "testhost")
+	record, err := store.GetLatestRender(mgr.ctx, copyStateTestKey("./root.tmpl", dst), "linux", "testhost")
 	if err != nil || record == nil {
 		t.Fatalf("render record = (%v, %v), want record", record, err)
 	}
@@ -123,7 +123,7 @@ func TestRestoreCopyTemplateConflictWriterFailurePreservesTargetAndHistory(t *te
 	}
 	writeTemplateFile(t, dst, "a=2")
 	writeTemplateFile(t, src, "a=3")
-	before, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+	before, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", dst), 10)
 	if err != nil {
 		t.Fatalf("history before: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestRestoreCopyTemplateConflictWriterFailurePreservesTargetAndHistory(t *te
 	if got := readTemplateTestFile(t, dst); got != "a=2" {
 		t.Fatalf("target = %q, want unchanged a=2", got)
 	}
-	after, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+	after, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", dst), 10)
 	if err != nil {
 		t.Fatalf("history after: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestRestoreCopyTemplateDryRunDoesNotMutateOrSaveHistory(t *testing.T) {
 	if got := snapshotTemplateFilesystem(t, target); len(got) != len(beforeTarget) {
 		t.Fatalf("target changed during dry-run: before=%v after=%v", beforeTarget, got)
 	}
-	record, err := store.GetLatestRender(mgr.ctx, "root.tmpl", "linux", "testhost")
+	record, err := store.GetLatestRender(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), "linux", "testhost")
 	if err != nil || record != nil {
 		t.Fatalf("dry-run history = (%v, %v), want no record", record, err)
 	}

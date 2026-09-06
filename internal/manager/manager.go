@@ -203,7 +203,7 @@ func (m *Manager) expandTarget(target string) string {
 // the state store is nil, the directory doesn't exist, or has no templates.
 func (m *Manager) HasOutdatedTemplates(backupDir string, files []string) bool {
 	outdated := false
-	_ = m.walkTemplateFiles(backupDir, files, func(path, _ string, record *state.RenderRecord) error {
+	err := m.walkTemplateFiles(backupDir, files, func(path, _ string, record *state.RenderRecord) error {
 		// No render record = template never rendered = outdated
 		if record == nil {
 			outdated = true
@@ -229,7 +229,7 @@ func (m *Manager) HasOutdatedTemplates(backupDir string, files []string) bool {
 		return nil
 	})
 
-	return outdated
+	return outdated || err != nil
 }
 
 // HasModifiedRenderedFiles returns true if the selected templates in the backup

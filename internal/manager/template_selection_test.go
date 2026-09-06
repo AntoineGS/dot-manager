@@ -192,7 +192,7 @@ func TestSelectedTemplateDiscoveryKeepsNormalizedNestedStateKey(t *testing.T) {
 		t.Fatalf("render nested template: %v", err)
 	}
 
-	record, err := store.GetLatestRender(mgr.ctx, "nested/config.tmpl", "linux", "testhost")
+	record, err := store.GetLatestRender(mgr.ctx, "./config/nested/config.tmpl", "linux", "testhost")
 	if err != nil {
 		t.Fatalf("get nested render record: %v", err)
 	}

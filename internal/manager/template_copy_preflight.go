@@ -66,10 +66,10 @@ func (m *Manager) preflightCopyTemplateFiles(entry config.SubEntry, source, targ
 	if err := m.preflightCopySources(source, preflight); err != nil {
 		return err
 	}
-	if err := m.preflightCopyHistory(preflight); err != nil {
+	if err := m.preflightCopyTargets(entry, target, preflight); err != nil {
 		return err
 	}
-	if err := m.preflightCopyTargets(entry, target, preflight); err != nil {
+	if err := m.preflightCopyHistory(preflight); err != nil {
 		return err
 	}
 	if err := m.preflightCopyArtifacts(preflight); err != nil {
@@ -189,9 +189,13 @@ func (m *Manager) preflightCopySources(source string, preflight copyTemplatePref
 
 func (m *Manager) preflightCopyHistory(preflight copyTemplatePreflight) error {
 	for _, selection := range preflight.selected {
-		if _, err := m.latestCopyTemplateRender(selection.relPath); err != nil {
+		history, err := m.templateHistory(selection.templatePath, selection.relPath, selection.targetPath)
+		if err != nil {
 			return NewPathError("restore", selection.templatePath,
 				fmt.Errorf("reading render history: %w", err))
+		}
+		if err := m.checkCopyLegacyOverwrite(history, selection, preflight.targetSnapshots[selection.targetPath]); err != nil {
+			return NewPathError("restore", selection.templatePath, err)
 		}
 	}
 	return nil

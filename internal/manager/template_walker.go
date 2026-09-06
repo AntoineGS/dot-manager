@@ -52,12 +52,12 @@ func (m *Manager) walkTemplateFiles(backupDir string, files []string, fn templat
 			return nil
 		}
 
-		record, lookupErr := m.stateStore.GetLatestRender(m.ctx, normalizeStateKey(relPath), m.Platform.OS, m.Platform.Hostname)
+		history, lookupErr := m.templateHistory(path, relPath, "")
 		if lookupErr != nil {
-			return nil
+			return lookupErr
 		}
 
-		return fn(path, relPath, record)
+		return fn(path, relPath, history.record)
 	})
 }
 
@@ -90,12 +90,12 @@ func (m *Manager) walkSelectedTemplateFiles(backupDir string, files []string, fn
 			continue
 		}
 
-		record, lookupErr := m.stateStore.GetLatestRender(m.ctx, normalizeStateKey(relPath), m.Platform.OS, m.Platform.Hostname)
+		history, lookupErr := m.templateHistory(path, relPath, "")
 		if lookupErr != nil {
-			continue
+			return lookupErr
 		}
 
-		if err := fn(path, relPath, record); err != nil {
+		if err := fn(path, relPath, history.record); err != nil {
 			return err
 		}
 	}

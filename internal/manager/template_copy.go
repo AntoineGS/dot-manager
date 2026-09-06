@@ -10,7 +10,6 @@ import (
 	"runtime"
 
 	"github.com/AntoineGS/tidydots/internal/config"
-	"github.com/AntoineGS/tidydots/internal/state"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
 )
 
@@ -46,15 +45,22 @@ func (m *Manager) restoreCopyTemplateFile(entry config.SubEntry, source, target,
 	}
 
 	hash := fmt.Sprintf("%x", sha256.Sum256(sourceContent))
-	record, err := m.latestCopyTemplateRender(selection.relPath)
+	history, err := m.templateHistory(selection.templatePath, selection.relPath, selection.targetPath)
 	if err != nil {
 		return NewPathError("restore", selection.templatePath,
 			fmt.Errorf("reading render history: %w", err))
 	}
+	if err := m.checkCopyLegacyOverwrite(history, selection, snapshot); err != nil {
+		return NewPathError("restore", selection.templatePath, err)
+	}
+	record := history.record
 
 	if record != nil && record.TemplateHash == hash && snapshot.Exists && !m.ForceRender {
 		m.logCopyTemplateAction("preserving unchanged copy template", selection)
-		return m.repairUnchangedCopyTemplate(entry, selection.targetPath, sourceInfo, snapshot)
+		if err := m.repairUnchangedCopyTemplate(entry, selection.targetPath, sourceInfo, snapshot); err != nil {
+			return err
+		}
+		return m.migrateTemplateHistory(history)
 	}
 
 	m.logCopyTemplateAction("rendering copy template", selection)
@@ -130,7 +136,7 @@ func (m *Manager) restoreCopyTemplateFile(entry config.SubEntry, source, target,
 		return nil
 	}
 	if err := m.stateStore.SaveRender(
-		m.ctx, normalizeStateKey(selection.relPath), rendered, hash,
+		m.ctx, history.key, rendered, hash,
 		m.Platform.OS, m.Platform.Hostname,
 	); err != nil {
 		return NewPathError("restore", selection.targetPath, fmt.Errorf(
@@ -138,16 +144,6 @@ func (m *Manager) restoreCopyTemplateFile(entry config.SubEntry, source, target,
 	}
 
 	return nil
-}
-
-func (m *Manager) latestCopyTemplateRender(relPath string) (record *renderRecord, err error) {
-	if m.stateStore == nil {
-		return nil, nil
-	}
-
-	return m.stateStore.GetLatestRender(
-		m.ctx, normalizeStateKey(relPath), m.Platform.OS, m.Platform.Hostname,
-	)
 }
 
 func (m *Manager) repairUnchangedCopyTemplate(
@@ -172,11 +168,6 @@ func (m *Manager) repairUnchangedCopyTemplate(
 	}
 	return nil
 }
-
-// renderRecord is the small part of state.RenderRecord used by copy restore.
-// It keeps the orchestration independent of the storage implementation while
-// allowing the concrete store API to remain unchanged.
-type renderRecord = state.RenderRecord
 
 func templateCopyTargetMode(
 	entry config.SubEntry,

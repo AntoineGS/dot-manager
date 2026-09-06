@@ -60,7 +60,7 @@ func TestRestoreCopyTemplateRejectsConcreteRepositoryAndStateClaims(t *testing.T
 			}
 
 			beforeRepo := snapshotTemplateFilesystem(t, repo)
-			beforeHistory, err := store.GetRenderHistory(mgr.ctx, ".tidydots.db.tmpl", 10)
+			beforeHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./templates/.tidydots.db.tmpl", filepath.Join(repo, ".tidydots.db")), 10)
 			if err != nil {
 				t.Fatalf("history before: %v", err)
 			}
@@ -83,7 +83,7 @@ func TestRestoreCopyTemplateRejectsConcreteRepositoryAndStateClaims(t *testing.T
 					t.Fatalf("state file %s changed during rejected preflight: before=%v after=%v", path, before, after)
 				}
 			}
-			afterHistory, err := store.GetRenderHistory(mgr.ctx, ".tidydots.db.tmpl", 10)
+			afterHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./templates/.tidydots.db.tmpl", filepath.Join(repo, ".tidydots.db")), 10)
 			if err != nil {
 				t.Fatalf("history after: %v", err)
 			}
@@ -241,7 +241,7 @@ func TestRestoreCopyTemplateMigrationUsesSourceModeOnNativeChangedAndHashPaths(t
 			if err := os.Symlink(alias, destination); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.SaveRender(mgr.ctx, "root.tmpl", []byte("old"),
+			if err := store.SaveRender(mgr.ctx, copyStateTestKey("./root.tmpl", destination), []byte("old"),
 				fmt.Sprintf("%x", sha256.Sum256([]byte("old"))), "linux", "testhost"); err != nil {
 				t.Fatal(err)
 			}
@@ -298,7 +298,7 @@ func TestRestoreCopyTemplateMigrationUses0600ForSudoChangedAndHashPaths(t *testi
 			if err := os.Symlink(alias, destination); err != nil {
 				t.Fatal(err)
 			}
-			if err := store.SaveRender(mgr.ctx, "root.tmpl", []byte("old"),
+			if err := store.SaveRender(mgr.ctx, copyStateTestKey("./root.tmpl", destination), []byte("old"),
 				fmt.Sprintf("%x", sha256.Sum256([]byte("old"))), "linux", "testhost"); err != nil {
 				t.Fatal(err)
 			}

@@ -357,6 +357,61 @@ conflict file.
 
 If the template source has not changed (detected via SHA-256 hash comparison against the database), and the rendered file already exists on disk, symlink mode skips re-rendering entirely and just ensures the relative symlink is correct. Copy mode uses the same source-byte hash fast path when its suffix-free target exists, preserving target edits without creating a repository cache. The hash does not include hostname, OS, user, or environment context; use `--force-render` to refresh output when context changes.
 
+### Render History and Upgrades
+
+Symlink render history is isolated by the template source's path relative to the
+repository root, plus OS and hostname. For example, `git/config.tmpl` and
+`ghostty/config.tmpl` have separate baselines even though each entry selects
+`config.tmpl`. Symlink deployments of the same source share one `.tmpl.rendered`
+output and therefore share its history, regardless of their entry or target.
+Source keys have an explicit `./` marker (for example, `./git/config.tmpl`) to
+distinguish them from older entry-relative keys.
+
+Copy history additionally includes the **resolved suffix-free target file**.
+Its key is an unambiguous quoted pair, for example
+`copy:"./shared/config.tmpl":"/home/user/target-a/config"`. The target is the
+expanded, cleaned absolute deployment path with forward slashes; target
+symlinks are not followed when constructing the key. Different backup-root
+spellings or entry names do not split history for the same source/target pair.
+Different copy targets do not share history with each other or with the source's
+symlink output. Restoring one deployment cannot mark another deployment's stale
+output as current. Restore, preflight, status, and diff use these same identities.
+
+Older databases may contain interleaved histories for identically named
+templates. On upgrade, tidydots checks the legacy history for the **current
+source's SHA-256 hash on this OS and hostname**, not just the latest record.
+It reuses a baseline only when all matching records agree on the pure rendered
+content. A normal restore copies that verified baseline into the scoped history,
+including when the source is unchanged, while preserving the existing rendered
+file or copy target and its local edits. The old records are retained; unrelated
+history is never merged or moved. Copies look up the original entry-relative
+legacy key, not another deployment's copy key. Status, diff, and dry runs do not
+migrate state.
+
+Source-only scoped records (`./shared/config.tmpl`) from an earlier candidate
+cannot establish which copy target was updated, even when the source hash
+matches. They are not used as copy baselines. If no verified original legacy
+baseline exists, their presence blocks a normal restore of an existing copy
+target rather than silently treating it as a first-render orphan. This also
+applies when switching a source-only symlink deployment to copy mode. If only
+source-only scoped history exists and the live target is **byte-for-byte equal
+to a fresh render**, restore can safely initialize a new copy baseline without
+reusing any historical record. This permits unedited symlink-to-copy migration.
+Differing outputs remain blocked. This exception does not relax the original
+entry-relative legacy hash/consistency checks. Missing targets can be rendered
+normally; an explicit `--force-render` can initialize a new copy baseline after
+local edits have been preserved separately.
+
+If legacy history exists but cannot supply a trustworthy baseline, status reports
+the template as outdated and diff does not invent a baseline from another
+application. Normal restore refuses to overwrite an existing output and reports
+that it was left unchanged. This can happen when the source changed before its
+first restore with the fixed version, or when matching historical renders differ.
+Preserve any local edits in the template source or a separate recovery file
+before deliberately using `--force-render`. Missing outputs can be rendered
+normally. Templates without any legacy history retain normal first-render
+behavior, including the existing orphan-backup policy.
+
 ## Force Render
 
 The `--force-render` flag bypasses the 3-way merge and overwrites the rendered

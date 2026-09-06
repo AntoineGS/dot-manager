@@ -139,11 +139,12 @@ func (m *Manager) inspectCopyTemplate(
 			fmt.Errorf("rendering template: %w", err))
 	}
 
-	record, err := m.latestCopyTemplateRender(selection.relPath)
+	history, err := m.templateHistory(selection.templatePath, selection.relPath, selection.targetPath)
 	if err != nil {
 		return NewPathError("status", selection.templatePath,
 			fmt.Errorf("reading render history: %w", err))
 	}
+	record := history.record
 	if record == nil || record.TemplateHash != fmt.Sprintf("%x", sha256.Sum256(sourceContent)) {
 		inspection.Outdated = true
 	}

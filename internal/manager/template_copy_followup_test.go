@@ -58,7 +58,7 @@ func TestRestoreCopyTemplateRejectsAbsentStateSidecarThroughSymlinkedParent(t *t
 	}
 
 	beforeSource := readTemplateTestFile(t, source)
-	beforeHistory, err := store.GetRenderHistory(mgr.ctx, ".tidydots.db-journal.tmpl", 10)
+	beforeHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./../repo/.tidydots.db-journal.tmpl", target), 10)
 	if err != nil {
 		t.Fatalf("history before: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestRestoreCopyTemplateRejectsAbsentStateSidecarThroughSymlinkedParent(t *t
 			t.Fatalf("state artifact %s changed during rejected preflight: before=%v after=%v", path, before, after)
 		}
 	}
-	afterHistory, err := store.GetRenderHistory(mgr.ctx, ".tidydots.db-journal.tmpl", 10)
+	afterHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./../repo/.tidydots.db-journal.tmpl", target), 10)
 	if err != nil {
 		t.Fatalf("history after: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestRestoreCopyTemplatePropagatesStateParentCanonicalizationFailure(t *test
 
 	beforeRepo := snapshotTemplateFilesystem(t, repo)
 	beforeTarget := snapshotTemplateFilesystem(t, target)
-	beforeHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+	beforeHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 	if err != nil {
 		t.Fatalf("history before: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestRestoreCopyTemplatePropagatesStateParentCanonicalizationFailure(t *test
 	if after := snapshotTemplateFilesystem(t, target); !reflect.DeepEqual(after, beforeTarget) {
 		t.Fatalf("target changed during rejected preflight: before=%v after=%v", beforeTarget, after)
 	}
-	afterHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+	afterHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 	if err != nil {
 		t.Fatalf("history after: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestCopyTemplateRecoveryBackupSymlinkIsUnavailableAndRejected(t *testing.T)
 			t.Fatal(err)
 		}
 		beforeTarget := snapshotTemplateFilesystem(t, target)
-		beforeHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+		beforeHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 		if err != nil {
 			t.Fatalf("history before: %v", err)
 		}
@@ -279,7 +279,7 @@ func TestCopyTemplateRecoveryBackupSymlinkIsUnavailableAndRejected(t *testing.T)
 		if after := snapshotTemplateFilesystem(t, target); !reflect.DeepEqual(after, beforeTarget) {
 			t.Fatalf("target changed during rejected restore: before=%v after=%v", beforeTarget, after)
 		}
-		afterHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+		afterHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 		if err != nil {
 			t.Fatalf("history after: %v", err)
 		}

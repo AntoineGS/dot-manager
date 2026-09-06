@@ -13,8 +13,8 @@ import (
 )
 
 // selectedTemplate describes the source, generated artifacts, and target for a
-// template selected by a file entry. relPath is intentionally the source path:
-// it is also the stable key used by the render state store.
+// template selected by a file entry. relPath is the entry-relative source path
+// used for selection and display; history is keyed by the repository-relative source.
 type selectedTemplate struct {
 	relPath      string
 	aliasRelPath string
@@ -107,7 +107,7 @@ func (m *Manager) preflightTemplateFiles(subEntry config.SubEntry, source, targe
 		}
 	}
 
-	return nil
+	return m.preflightSymlinkTemplateHistory(selected)
 }
 
 func validateTemplateSelectionCollisions(files []string, caseInsensitive bool) error {

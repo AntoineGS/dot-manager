@@ -239,7 +239,7 @@ func TestRestoreFiles_SelectedTemplate_DryRunPreservesFilesystem(t *testing.T) {
 	if after := snapshotTemplateFilesystem(t, target); !reflect.DeepEqual(after, beforeTarget) {
 		t.Fatalf("target changed during dry-run:\nbefore=%v\nafter=%v", beforeTarget, after)
 	}
-	if record, err := store.GetLatestRender(mgr.ctx, "nested/config.tmpl", "linux", "testhost"); err != nil || record != nil {
+	if record, err := store.GetLatestRender(mgr.ctx, "./nested/config.tmpl", "linux", "testhost"); err != nil || record != nil {
 		t.Fatalf("dry-run render state = (%v, %v), want no record", record, err)
 	}
 }
@@ -442,7 +442,7 @@ func TestRestoreFiles_SelectedTemplate_ReRenderPreservesEdits(t *testing.T) {
 	if !strings.Contains(got, "editor=nvim") || !strings.Contains(got, "path=new") {
 		t.Fatalf("merged render = %q, want user and template edits", got)
 	}
-	record, err := store.GetLatestRender(mgr.ctx, "config.tmpl", "linux", "testhost")
+	record, err := store.GetLatestRender(mgr.ctx, "./config.tmpl", "linux", "testhost")
 	if err != nil || record == nil {
 		t.Fatalf("render state = (%v, %v), want record", record, err)
 	}
@@ -521,7 +521,7 @@ func TestRestoreFiles_SelectedTemplate_RegeneratesMissingRenderedOutput(t *testi
 	if got := readTemplateTestFile(t, renderedPath); got != expectedHostnameRender {
 		t.Fatalf("regenerated content = %q, want %q", got, expectedHostnameRender)
 	}
-	record, err := store.GetLatestRender(mgr.ctx, "config.tmpl", "linux", "testhost")
+	record, err := store.GetLatestRender(mgr.ctx, "./config.tmpl", "linux", "testhost")
 	if err != nil || record == nil {
 		t.Fatalf("render state = (%v, %v), want retained history", record, err)
 	}

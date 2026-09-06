@@ -55,7 +55,7 @@ func TestRestoreCopyTemplatePreflightRejectsMissingLiteralSourceBeforeMutation(t
 
 	beforeBackup := snapshotTemplateFilesystem(t, backup)
 	beforeTarget := snapshotTemplateFilesystem(t, target)
-	beforeHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+	beforeHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 	if err != nil {
 		t.Fatalf("history before: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestRestoreCopyTemplatePreflightRejectsMissingLiteralSourceBeforeMutation(t
 	if after := snapshotTemplateFilesystem(t, target); !reflect.DeepEqual(after, beforeTarget) {
 		t.Fatalf("target changed during rejected preflight: before=%v after=%v", beforeTarget, after)
 	}
-	afterHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+	afterHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 	if err != nil {
 		t.Fatalf("history after: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestRestoreCopyTemplateDryRunPreservesCompleteStateAcrossVariants(t *testin
 
 			beforeBackup := snapshotTemplateFilesystem(t, backup)
 			beforeTarget := snapshotTemplateFilesystem(t, target)
-			beforeHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+			beforeHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", destination), 10)
 			if err != nil {
 				t.Fatalf("history before: %v", err)
 			}
@@ -262,7 +262,7 @@ func TestRestoreCopyTemplateDryRunPreservesCompleteStateAcrossVariants(t *testin
 			if after := snapshotTemplateFilesystem(t, target); !reflect.DeepEqual(after, beforeTarget) {
 				t.Fatalf("target changed during dry-run: before=%v after=%v", beforeTarget, after)
 			}
-			afterHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+			afterHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", destination), 10)
 			if err != nil {
 				t.Fatalf("history after: %v", err)
 			}

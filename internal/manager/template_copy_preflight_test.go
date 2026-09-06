@@ -31,7 +31,7 @@ func TestRestoreCopyTemplatePreflightRejectsUnsafeSelectionsBeforeMutation(t *te
 			entry := config.SubEntry{Name: "copy", Method: config.MethodCopy, Backup: backup, Files: files}
 			beforeBackup := snapshotTemplateFilesystem(t, backup)
 			beforeTarget := snapshotTemplateFilesystem(t, target)
-			beforeHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+			beforeHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 			if err != nil {
 				t.Fatalf("history before: %v", err)
 			}
@@ -44,7 +44,7 @@ func TestRestoreCopyTemplatePreflightRejectsUnsafeSelectionsBeforeMutation(t *te
 			if after := snapshotTemplateFilesystem(t, target); !reflect.DeepEqual(after, beforeTarget) {
 				t.Fatalf("target changed during rejected preflight: before=%v after=%v", beforeTarget, after)
 			}
-			afterHistory, err := store.GetRenderHistory(mgr.ctx, "root.tmpl", 10)
+			afterHistory, err := store.GetRenderHistory(mgr.ctx, copyStateTestKey("./root.tmpl", filepath.Join(target, "root")), 10)
 			if err != nil {
 				t.Fatalf("history after: %v", err)
 			}

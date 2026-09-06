@@ -105,13 +105,21 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 
 	// The rendered output sits alongside the template as a sibling
 	renderedAbsPath := tmpl.RenderedPath(tmplAbsPath)
+	history, err := m.templateHistory(tmplAbsPath, relPath, "")
+	if err != nil {
+		return NewPathError("restore", tmplAbsPath, fmt.Errorf("reading render history: %w", err))
+	}
+	if err := history.checkLegacyOverwrite(m.pathExists(renderedAbsPath), m.ForceRender); err != nil {
+		return NewPathError("restore", tmplAbsPath, err)
+	}
+	record := history.record
 
 	// Quick check: if we have a state store, check if template is unchanged
 	if m.stateStore != nil && !m.ForceRender {
-		record, lookupErr := m.stateStore.GetLatestRender(m.ctx, normalizeStateKey(relPath), m.Platform.OS, m.Platform.Hostname)
-		if lookupErr != nil {
-			m.logger.Warn("failed to query render history", slog.String("error", lookupErr.Error()))
-		} else if record != nil && record.TemplateHash == hash && m.pathExists(renderedAbsPath) {
+		if record != nil && record.TemplateHash == hash && m.pathExists(renderedAbsPath) {
+			if err := m.migrateTemplateHistory(history); err != nil {
+				return NewPathError("restore", tmplAbsPath, fmt.Errorf("migrating render history: %w", err))
+			}
 			// Template unchanged and rendered file exists - just ensure relative symlink
 			m.logger.Debug("template unchanged, skipping re-render",
 				slog.String("template", relPath))
@@ -137,11 +145,6 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 	finalContent := rendered
 
 	if m.stateStore != nil && !m.ForceRender {
-		record, lookupErr := m.stateStore.GetLatestRender(m.ctx, normalizeStateKey(relPath), m.Platform.OS, m.Platform.Hostname)
-		if lookupErr != nil {
-			m.logger.Warn("failed to query render history", slog.String("error", lookupErr.Error()))
-		}
-
 		if record != nil {
 			// Re-render scenario: 3-way merge
 			base := string(record.PureRender)
@@ -207,7 +210,7 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 
 	// Store pure render in DB (always store the unmerged template output)
 	if m.stateStore != nil {
-		if saveErr := m.stateStore.SaveRender(m.ctx, normalizeStateKey(relPath), rendered, hash, m.Platform.OS, m.Platform.Hostname); saveErr != nil {
+		if saveErr := m.stateStore.SaveRender(m.ctx, history.key, rendered, hash, m.Platform.OS, m.Platform.Hostname); saveErr != nil {
 			m.logger.Warn("failed to save render record",
 				slog.String("template", relPath),
 				slog.String("error", saveErr.Error()))

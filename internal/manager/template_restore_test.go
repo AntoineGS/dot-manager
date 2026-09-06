@@ -261,7 +261,7 @@ func TestRestoreFolderWithTemplates_ReRenderWithUserEdits(t *testing.T) {
 	}
 
 	// Verify DB stores pure render (not merged result)
-	record, _ := store.GetLatestRender(context.Background(), ".zshrc.tmpl", "linux", "testhost")
+	record, _ := store.GetLatestRender(context.Background(), "./zsh/.zshrc.tmpl", "linux", "testhost")
 	if record == nil {
 		t.Fatal("expected render record in DB")
 	}
@@ -501,7 +501,7 @@ func TestRestoreFolderWithTemplates_DryRun(t *testing.T) {
 	}
 
 	// No DB records
-	record, _ := store.GetLatestRender(context.Background(), "file.tmpl", "linux", "testhost")
+	record, _ := store.GetLatestRender(context.Background(), "./config/file.tmpl", "linux", "testhost")
 	if record != nil {
 		t.Error("dry run should not create DB records")
 	}
