@@ -53,7 +53,7 @@ func generateUnifiedDiff(mt manager.ModifiedTemplate) string {
 	// Build a readable unified diff output
 	var sb strings.Builder
 	sb.WriteString("--- pure render (from DB)\n")
-	fmt.Fprintf(&sb, "+++ edited file (%s)\n", mt.RenderedPath)
+	fmt.Fprintf(&sb, "+++ edited file (%s)\n", mt.CurrentPath)
 	sb.WriteString("\n")
 
 	for _, diff := range diffs {

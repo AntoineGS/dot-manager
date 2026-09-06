@@ -128,12 +128,29 @@ Manager has optional `WithFS(fsys.FS)` and `WithRunner(cmdexec.Runner)` builder 
 ### Key Patterns
 
 - **Unified entries**: Single `entries` array with `sudo: true` flag for entries requiring elevated privileges
-- **Entry types**: Config entries (have `backup`) manage symlinks. `SubEntry.Method` selects the deployment mode: `symlink` (default, or empty) or `copy`. A selected `.tmpl` source in a symlink entry renders and deploys through a suffix-free backup alias (target → alias → `.tmpl.rendered`); only listed templates participate, while copy entries copy `.tmpl` files literally. Copy mode performs content-based drift detection (re-copies only when the repo file's contents differ from the target, no-op when in sync), replaces any pre-existing symlink at the target (safe migration from symlink mode), and requires a non-empty `files:` list (see `internal/config/entry.go`, `internal/manager/template_files.go`, `internal/manager/copy.go`)
+- **Entry types**: Config entries (have `backup`) manage deployments. `SubEntry.Method` selects the deployment mode: `symlink` (default, or empty) or `copy`. A selected `.tmpl` source in a symlink entry renders and deploys through a suffix-free backup alias (target → alias → `.tmpl.rendered`); only listed templates participate. Copy entries render selected `.tmpl` files directly to suffix-free real targets and merge live target edits against render history, while ordinary copy entries remain literal and overwrite drift. Copy mode replaces pre-existing symlinks at ordinary file targets and supported symlink-mode migration chains at template targets, requires a non-empty `files:` list, and does not create the symlink-mode repository alias or `.tmpl.rendered` cache (see `internal/config/entry.go`, `internal/manager/template_files.go`, `internal/manager/copy.go`)
 - **When-based selection**: Applications conditionally included via Go template `when` expressions (e.g., `{{ eq .OS "linux" }}`)
 - **Symlink-based restoration**: Configs are symlinked from the dotfiles repo rather than copied by default; set `method: copy` on an entry to deploy a real file copy instead (see [configs.md](docs/configuration/configs.md#deployment-method))
 - **Dry-run mode**: All operations support `-n` flag for safe preview
 - **Table-driven tests**: Tests use `t.TempDir()` for filesystem isolation
 - **File size targets**: Production files should be <400 LOC (hard max 800). If a file exceeds 400 LOC, consider whether it has multiple responsibilities that should be split.
+
+**Copy-template behavior summary:**
+
+Selected .tmpl files render for both symlink and copy methods. Copy templates
+deploy to suffix-free real files and merge live target edits against stored pure
+render history. Ordinary copy entries remain literal and overwrite on drift.
+Matching content is a no-op only when the required file type and (for sudo
+Linux entries) ownership also match. Existing regular-file modes are retained;
+new native files use source permissions, while new or symlink-
+replacement sudo Linux files use 0600. Recovery backups and conflict files use
+0600. A no-history target backup is skipped when `--force-render` explicitly
+requests an overwrite.
+Copy-template backup skips template sources; status/diff inspect live targets.
+
+Copy-template writes use sudo only on a Linux runtime; Windows uses native
+operations, and sudo-enabled copy-template operations on another runtime host
+fail explicitly. Status and diff inspection never request sudo reads.
 
 ### Configuration Format (tidydots.yaml)
 
@@ -248,19 +265,34 @@ Templates have access to a `TemplateContext` struct:
 - `.tmpl.conflict` - Conflict markers from merge (generated, gitignored)
 
 **How it Works**
-1. During restore, `.tmpl` files in backup directories are rendered using the template engine
+1. During symlink-mode restore, `.tmpl` files in backup directories are rendered using the template engine
 2. Output is written as a sibling `.tmpl.rendered` file in the backup directory
 3. A symlink is created from the target (with `.tmpl` stripped) to the `.tmpl.rendered` file
 4. Non-template files in the same directory get normal symlinks
 
+For copy entries, only selected `.tmpl` files render directly to suffix-free real
+targets. They use the live target as merge input and do not create a repository
+alias or `.tmpl.rendered` cache. Ordinary copy files remain literal copies.
+
 **3-Way Merge with SQLite State**
 - Pure render output is stored in `.tidydots.db` (SQLite, in backup root)
-- On re-render, a 3-way merge preserves user edits to the rendered file:
+- For symlink-mode templates, a 3-way merge preserves user edits to the rendered file:
   - `base` = previous pure render from DB
   - `theirs` = current `.tmpl.rendered` on disk (may have user edits)
   - `ours` = newly rendered template output
 - Conflicts generate `<<<<<<< user-edits` / `=======` / `>>>>>>> template` markers
 - `--force-render` flag bypasses merge and always overwrites
+
+Copy-template re-renders use the suffix-free live target as `theirs`, preserve
+unchanged target edits from stored pure-render history, and deploy the pure
+render when a conflict is found while saving protected recovery markers in
+`.tmpl.conflict`. A first deployment that replaces an existing target saves an
+exclusive `<target>.tidydots.bak` unless `--force-render` explicitly bypasses
+that no-history backup; an occupied backup path is never overwritten.
+Legacy targets that still have the `.tmpl` suffix are not removed implicitly.
+The source-hash fast path only detects source-byte changes, not changes to
+hostname, OS, user, or environment context; use `--force-render` to refresh
+context-dependent output.
 
 **Gitignore Patterns** (recommended in dotfiles repo):
 ```
@@ -283,6 +315,10 @@ Paths without `{{` delimiters fall through to standard `ExpandPath` (backward co
 - `internal/template/merge.go` - 3-way merge algorithm
 - `internal/state/store.go` - SQLite state store for render history
 - `internal/manager/template_restore.go` - Template-specific restore logic
+- `internal/manager/template_copy.go` - Render-then-copy orchestration and merge policy
+- `internal/manager/template_copy_preflight*.go` - Copy safety, path, alias, and target preflight
+- `internal/manager/template_copy_read.go` / `template_copy_write.go` - Native and sudo copy I/O
+- `internal/manager/template_copy_status.go` - Read-only copy-template status inspection
 
 ### TUI Patterns (internal/tui/)
 

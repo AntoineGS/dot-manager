@@ -61,8 +61,8 @@ func TestSelectedTemplateStatusAndDiffIgnoreUnselectedFiles(t *testing.T) {
 	if modified[0].TemplatePath != secondPath {
 		t.Errorf("selected diff template path = %q, want %q", modified[0].TemplatePath, secondPath)
 	}
-	if modified[0].RenderedPath != template.RenderedPath(secondPath) {
-		t.Errorf("selected diff rendered path = %q, want %q", modified[0].RenderedPath, template.RenderedPath(secondPath))
+	if modified[0].CurrentPath != template.RenderedPath(secondPath) {
+		t.Errorf("selected diff current path = %q, want %q", modified[0].CurrentPath, template.RenderedPath(secondPath))
 	}
 	if modified[0].RelPath != "second.tmpl" {
 		t.Errorf("selected diff relative path = %q, want %q", modified[0].RelPath, "second.tmpl")

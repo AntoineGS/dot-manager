@@ -84,7 +84,7 @@ Configurations directory: /home/youruser/dotfiles
 
 ## tidydots restore
 
-Restore configurations by creating symlinks from target locations to backup sources in your dotfiles repo.
+Restore configurations by deploying files from backup sources in your dotfiles repo.
 
 ```
 tidydots restore [app [entry]] [flags]
@@ -119,10 +119,10 @@ entry returns a conditions mismatch error. Targets cannot be combined with
 
 For each config entry that matches the current OS and `when` conditions:
 
-1. If the target does not exist and the backup does, a symlink is created.
-2. If the target exists but the backup does not, the target is **adopted** -- moved into the backup location and then symlinked back.
-3. Template files (`.tmpl` suffix) are rendered through the template engine. Rendered output is written to `.tmpl.rendered` and symlinked to the target path with the `.tmpl` suffix stripped.
-4. On re-render, a 3-way merge preserves any manual edits made to the rendered file.
+1. In symlink mode, if the target does not exist and the backup does, a symlink is created.
+2. In symlink mode, if the target exists but the backup does not, the target is **adopted** -- moved into the backup location and then symlinked back. Copy mode never adopts an existing target; back up missing sources first.
+3. In symlink mode, template files (`.tmpl` suffix) are rendered through the template engine. Rendered output is written to `.tmpl.rendered` and symlinked to the target path with the `.tmpl` suffix stripped. In `method: copy` entries, selected templates are rendered directly to real suffix-free target files and use the target as the current merge input.
+4. On re-render, a 3-way merge preserves any manual edits made to the rendered file or copy-mode target. Ordinary copy files remain literal and overwrite target drift.
 
 !!! warning
     The `--force` flag deletes existing target files. Always preview with `-n` first to verify what will be removed.
@@ -183,7 +183,7 @@ tidydots backup [app [entry]] [flags]
 
 ### Behavior
 
-For each config entry that matches the current OS and `when` conditions, copies the files from the target location into the backup path. This is the inverse of `restore` -- it captures the current state of your live configs into the repo.
+For each config entry that matches the current OS and `when` conditions, copies the files from the target location into the backup path. This is the inverse of `restore` -- it captures the current state of your live configs into the repo. For file-list entries, selected `.tmpl` sources are skipped in both symlink and copy modes so a generated target cannot overwrite its template source; ordinary non-template copy files retain literal backup behavior.
 
 Targeting an application backs up all included config entries in that application and skips setup entries. Directly targeting a setup entry returns an error. Unknown applications and entries return errors, as do applications or entries excluded by current `when` conditions. Targets cannot be combined with `--interactive`.
 
@@ -225,7 +225,7 @@ tidydots list [app [entry]] [flags]
 
 ### Behavior
 
-Lists every config entry that matches the current OS and `when` conditions, showing the backup path and the target path. This is useful for verifying your configuration and checking for broken symlinks.
+Lists every config entry that matches the current OS and `when` conditions, showing the backup path and the target path. This is useful for verifying your configuration, checking for broken symlinks, and reviewing copy-mode destinations.
 
 Targeting an application lists its included config entries, skips its setup entries, and retains the application's package summary. Targeting an entry lists only that config entry and suppresses the package summary. Directly targeting a setup entry returns an error. Unknown applications and entries return errors, as do applications or entries excluded by current `when` conditions.
 
@@ -265,7 +265,7 @@ tidydots status [flags]
 | `--actions` | Show only applications and entries that need action |
 | `--json` | Output stable structured JSON |
 
-Status waits for every package, config, template, and setup check used by the TUI before deciding whether an item is actionable. An actionable result is still a successful command and exits `0`; configuration or status-computation failures exit nonzero. The command honors the global `--dir`, `--os`, and `--verbose` flags.
+Status waits for every package, config, template, and setup check used by the TUI before deciding whether an item is actionable. For selected templates in `method: copy` entries, it compares the source hash and render history with the live suffix-free target; target edits are `Modified`, source or history changes are `Outdated`, and missing targets are `Ready`. Status reads are native-only and never request `sudo` interactively, even when the entry has `sudo: true`; an unreadable source or target is reported as actionable `Unavailable`. An actionable result is still a successful command and exits `0`; configuration or status-computation failures exit nonzero. The command honors the global `--dir`, `--os`, and `--verbose` flags.
 
 With `--actions`, the `applications` array is reduced using the same predicate as the TUI `x` filter. `counts` always includes totals and actionable counts for all applications and entries that apply to the selected platform.
 
@@ -306,7 +306,7 @@ With `--actions`, the `applications` array is reduced using the same predicate a
 }
 ```
 
-`state` uses the same labels as the TUI. Actionable entry states are `Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, and `Modified`; an uninstalled package is actionable when its installation method is available. `package` is an object when the application defines a package and contains its selected `name`, `method`, nullable `installed` value, and `actionable` flag.
+`state` uses the same labels as the TUI. Actionable entry states are `Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, `Modified`, and `Unavailable`; an uninstalled package is actionable when its installation method is available. `Unavailable` means status could not safely read or validate the selected source or live target, rather than meaning the target is absent. `package` is an object when the application defines a package and contains its selected `name`, `method`, nullable `installed` value, and `actionable` flag.
 
 ### Examples
 

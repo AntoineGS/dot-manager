@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
 	"github.com/AntoineGS/tidydots/internal/config"
 )
@@ -193,6 +195,25 @@ func TestFilterActionableApplications(t *testing.T) {
 	}
 	if apps[1].SubItems[0].State != StateLinked || len(apps[1].SubItems) != 2 {
 		t.Error("action filtering must not mutate the source applications")
+	}
+}
+
+func TestFilterActionableApplicationsIncludesUnavailable(t *testing.T) {
+	apps := []ApplicationItem{
+		{
+			Application: config.Application{Name: "protected-config"},
+			SubItems: []SubEntryItem{
+				{SubEntry: config.SubEntry{Name: "root-file"}, State: StateUnavailable},
+			},
+		},
+	}
+
+	filtered := filterActionableApplications(apps, false)
+	if len(filtered) != 1 || len(filtered[0].SubItems) != 1 {
+		t.Fatalf("unavailable entry was filtered out: %+v", filtered)
+	}
+	if got := filtered[0].SubItems[0].State; got != StateUnavailable {
+		t.Fatalf("filtered state = %v, want StateUnavailable", got)
 	}
 }
 
@@ -624,6 +645,18 @@ func TestAppInfoMaxState_Outdated(t *testing.T) {
 	}
 }
 
+func TestAppInfoMaxState_Unavailable(t *testing.T) {
+	app := ApplicationItem{
+		SubItems: []SubEntryItem{
+			{State: StateModified},
+			{State: StateUnavailable},
+		},
+	}
+	if got := appInfoMaxState(app); got != StateUnavailable {
+		t.Fatalf("app info state = %v, want StateUnavailable", got)
+	}
+}
+
 func TestStateOutdated_String(t *testing.T) {
 	if StateOutdated.String() != "Outdated" {
 		t.Errorf("StateOutdated.String() = %q, want %q", StateOutdated.String(), "Outdated")
@@ -673,6 +706,18 @@ func TestStateSeverity_SetupStates(t *testing.T) {
 
 	if got, want := stateSeverity(StateSetupOk), 0; got != want {
 		t.Errorf("stateSeverity(StateSetupOk) = %d, want %d (no attention)", got, want)
+	}
+}
+
+func TestUnavailableStateUsesErrorStatusStyle(t *testing.T) {
+	row := TableRow{
+		Data:            table.Row{"entry", StateUnavailable.String()},
+		State:           StateUnavailable,
+		StatusAttention: true,
+	}
+
+	if got := cellAttentionStyle(row, 1).GetForeground(); !reflect.DeepEqual(got, errorColor) {
+		t.Fatalf("Unavailable foreground = %v, want error color %v", got, errorColor)
 	}
 }
 

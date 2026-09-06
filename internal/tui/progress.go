@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/AntoineGS/tidydots/internal/config"
+	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/packages"
 )
 
@@ -704,13 +705,29 @@ func (m Model) updateResults(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 			appIdx, subIdx := m.getApplicationAtCursorFromTable()
 
-			// On a modified sub-entry: launch diff viewer
+			// On a modified config entry: launch diff viewer. Symlink templates
+			// compare their rendered cache; copy templates compare their live
+			// deployed targets.
 			if appIdx >= 0 && subIdx >= 0 && m.Manager != nil {
 				subItem := m.Applications[appIdx].SubItems[subIdx]
-				if subItem.State == StateModified && subItem.SubEntry.IsConfig() && !subItem.SubEntry.IsCopy() {
+				if subItem.State == StateModified && subItem.SubEntry.IsConfig() {
 					backupPath := m.resolvePath(subItem.SubEntry.Backup)
-					modifiedFiles, err := m.Manager.GetModifiedTemplateFiles(backupPath, subItem.SubEntry.Files)
-					if err != nil || len(modifiedFiles) == 0 {
+					targetPath := config.ExpandPath(subItem.Target, m.Platform.EnvVars)
+					var (
+						modifiedFiles []manager.ModifiedTemplate
+						err           error
+					)
+					if subItem.SubEntry.IsCopy() {
+						var inspection manager.CopyTemplateInspection
+						inspection, err = m.Manager.InspectCopyTemplates(subItem.SubEntry, backupPath, targetPath)
+						modifiedFiles = inspection.Modified
+					} else {
+						modifiedFiles, err = m.Manager.GetModifiedTemplateFiles(backupPath, subItem.SubEntry.Files)
+					}
+					if err != nil {
+						return m, func() tea.Msg { return editorLaunchCompleteMsg{err: err} }
+					}
+					if len(modifiedFiles) == 0 {
 						return m, nil
 					}
 

@@ -7,6 +7,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/platform"
+	tmpl "github.com/AntoineGS/tidydots/internal/template"
 )
 
 // detectSetupPathState reports the state of a setup sub-entry by running its
@@ -39,6 +40,10 @@ func (m *Model) detectSubEntryState(item *SubEntryItem) PathState {
 	backupPath := m.resolvePath(item.SubEntry.Backup)
 
 	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files, item.SubEntry.IsCopy())
+
+	if item.SubEntry.IsConfig() && item.SubEntry.IsCopy() && hasTemplateSelection(item.SubEntry.Files) {
+		return detectCopyTemplateState(st, item.SubEntry, backupPath, targetPath, m.Manager)
+	}
 
 	if st == StateLinked && item.SubEntry.IsConfig() && !item.SubEntry.IsCopy() && m.Manager != nil {
 		if m.Manager.HasOutdatedTemplates(backupPath, item.SubEntry.Files) {
@@ -242,6 +247,10 @@ func detectSubEntryStateStatic(item SubEntryItem, plat *platform.Platform, cfg *
 
 	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files, item.SubEntry.IsCopy())
 
+	if item.SubEntry.IsConfig() && item.SubEntry.IsCopy() && hasTemplateSelection(item.SubEntry.Files) {
+		return detectCopyTemplateState(st, item.SubEntry, backupPath, targetPath, mgr)
+	}
+
 	if st == StateLinked && item.SubEntry.IsConfig() && !item.SubEntry.IsCopy() && mgr != nil {
 		if mgr.HasOutdatedTemplates(backupPath, item.SubEntry.Files) {
 			return StateOutdated
@@ -252,6 +261,47 @@ func detectSubEntryStateStatic(item SubEntryItem, plat *platform.Platform, cfg *
 	}
 
 	return st
+}
+
+func hasTemplateSelection(files []string) bool {
+	for _, file := range files {
+		if tmpl.IsTemplateFile(file) {
+			return true
+		}
+	}
+	return false
+}
+
+func detectCopyTemplateState(
+	structuralState PathState,
+	entry config.SubEntry,
+	backupPath, targetPath string,
+	mgr *manager.Manager,
+) PathState {
+	if mgr == nil {
+		if structuralState == StateLinked {
+			return StateUnavailable
+		}
+		return structuralState
+	}
+
+	inspection, err := mgr.InspectCopyTemplates(entry, backupPath, targetPath)
+	if err != nil {
+		return StateUnavailable
+	}
+	if inspection.NeedsRestore {
+		return StateReady
+	}
+	if structuralState != StateLinked {
+		return structuralState
+	}
+	if inspection.Outdated {
+		return StateOutdated
+	}
+	if len(inspection.Modified) > 0 {
+		return StateModified
+	}
+	return structuralState
 }
 
 // resolvePathStatic resolves relative paths against BackupRoot and expands ~ without using Model receiver.

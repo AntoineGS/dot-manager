@@ -68,9 +68,15 @@ new template output here
 >>>>>>> template
 ```
 
-**Cause:** You manually edited a `.tmpl.rendered` file, and then re-rendered the template. The 3-way merge detected that both sides changed the same lines and could not automatically resolve the difference.
+**Cause:** In symlink mode, you manually edited a `.tmpl.rendered` file and
+then re-rendered the template. In copy mode, you edited the suffix-free live
+target. The 3-way merge detected that both sides changed the same lines and
+could not automatically resolve the difference.
 
-The deployed `.tmpl.rendered` file has already been replaced with valid fresh template output. The conflict file preserves the manual edits that could not be merged.
+The deployed file has already been replaced with valid fresh template output.
+For symlink entries this is `.tmpl.rendered`; for copy entries the suffix-free
+target receives the pure render and no `.tmpl.rendered` cache is created. The
+conflict file preserves the manual edits that could not be merged.
 
 **Solution:**
 
@@ -78,11 +84,11 @@ The deployed `.tmpl.rendered` file has already been replaced with valid fresh te
 changes to the `.tmpl` source, and run `tidydots restore` again.
 
 **Option 2: Discard the edits.** Remove the conflict file or leave it in place;
-the next successful merge removes it automatically. The deployed
-`.tmpl.rendered` file already contains the fresh template output.
+the next successful merge removes it automatically. The deployed file already
+contains the fresh template output.
 
 !!! tip
-    To avoid merge conflicts in the future, prefer making changes in the `.tmpl` source file rather than editing the `.tmpl.rendered` output directly.
+    To avoid merge conflicts in the future, prefer making changes in the `.tmpl` source file rather than editing generated `.tmpl.rendered` output or copy-mode targets directly.
 
 ---
 

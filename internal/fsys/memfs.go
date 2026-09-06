@@ -113,8 +113,8 @@ func (m *MemFS) resolveSymlink(name string) (string, error) {
 // statResolved builds a FileInfo for an already-resolved path (lock must be held).
 func (m *MemFS) statResolved(resolved, displayName string) (fs.FileInfo, error) {
 	if data, ok := m.files[resolved]; ok {
-		perm := m.perms[resolved]
-		if perm == 0 {
+		perm, ok := m.perms[resolved]
+		if !ok {
 			perm = 0o644
 		}
 		return &memFileInfo{
@@ -125,8 +125,8 @@ func (m *MemFS) statResolved(resolved, displayName string) (fs.FileInfo, error) 
 		}, nil
 	}
 	if m.dirs[resolved] {
-		perm := m.perms[resolved]
-		if perm == 0 {
+		perm, ok := m.perms[resolved]
+		if !ok {
 			perm = 0o755
 		}
 		return &memFileInfo{
@@ -188,6 +188,60 @@ func (m *MemFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	m.files[name] = content
 	m.perms[name] = perm
 	return nil
+}
+
+// WriteFileExclusive creates and writes a file only when name is unoccupied.
+// The occupancy check and insertion happen under one lock so concurrent
+// writers cannot replace one another.
+func (m *MemFS) WriteFileExclusive(name string, data []byte, perm fs.FileMode) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	name = norm(name)
+
+	if _, ok := m.files[name]; ok {
+		return pathError("open", name, os.ErrExist)
+	}
+	if m.dirs[name] {
+		return pathError("open", name, os.ErrExist)
+	}
+	if _, ok := m.symlinks[name]; ok {
+		return pathError("open", name, os.ErrExist)
+	}
+
+	parent := path.Dir(name)
+	if parent != name && !m.dirs[parent] {
+		return pathError("open", name, os.ErrNotExist)
+	}
+
+	content := make([]byte, len(data))
+	copy(content, data)
+	m.files[name] = content
+	m.perms[name] = perm
+	return nil
+}
+
+// Chmod changes the permission bits of name. Like os.Chmod, a symlink is
+// followed and the referent is changed.
+func (m *MemFS) Chmod(name string, mode fs.FileMode) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	name = norm(name)
+	resolved, err := m.resolveSymlink(name)
+	if err != nil {
+		return pathError("chmod", name, os.ErrNotExist)
+	}
+	if _, ok := m.files[resolved]; ok {
+		m.perms[resolved] = mode.Perm()
+		return nil
+	}
+	if m.dirs[resolved] {
+		m.perms[resolved] = mode.Perm()
+		return nil
+	}
+
+	return pathError("chmod", name, os.ErrNotExist)
 }
 
 // MkdirAll creates dir and all necessary parent directories.
@@ -323,8 +377,23 @@ func (m *MemFS) Rename(oldpath, newpath string) error {
 	defer m.mu.Unlock()
 
 	oldpath, newpath = norm(oldpath), norm(newpath)
+	if oldpath == newpath {
+		if _, ok := m.files[oldpath]; ok {
+			return nil
+		}
+		if _, ok := m.symlinks[oldpath]; ok {
+			return nil
+		}
+		if m.dirs[oldpath] {
+			return nil
+		}
+		return pathError("rename", oldpath, os.ErrNotExist)
+	}
 
 	if data, ok := m.files[oldpath]; ok {
+		if err := m.prepareRenameDestination(newpath, false); err != nil {
+			return err
+		}
 		perm := m.perms[oldpath]
 		m.files[newpath] = data
 		m.perms[newpath] = perm
@@ -333,11 +402,17 @@ func (m *MemFS) Rename(oldpath, newpath string) error {
 		return nil
 	}
 	if target, ok := m.symlinks[oldpath]; ok {
+		if err := m.prepareRenameDestination(newpath, false); err != nil {
+			return err
+		}
 		m.symlinks[newpath] = target
 		delete(m.symlinks, oldpath)
 		return nil
 	}
 	if m.dirs[oldpath] {
+		if err := m.prepareRenameDestination(newpath, true); err != nil {
+			return err
+		}
 		// Move directory and all its contents.
 		prefix := dirPrefix(oldpath)
 		newPrefix := dirPrefix(newpath)
@@ -369,6 +444,50 @@ func (m *MemFS) Rename(oldpath, newpath string) error {
 	}
 
 	return pathError("rename", oldpath, os.ErrNotExist)
+}
+
+// prepareRenameDestination applies the replacement rules needed by Rename.
+// Regular files and symlinks replace one another, while directories may only
+// replace an empty directory and may not replace a non-directory occupant.
+// The lock must be held by the caller.
+func (m *MemFS) prepareRenameDestination(path string, sourceDir bool) error {
+	if _, ok := m.files[path]; ok {
+		if sourceDir {
+			return pathError("rename", path, os.ErrExist)
+		}
+		delete(m.files, path)
+		delete(m.perms, path)
+	}
+	if _, ok := m.symlinks[path]; ok {
+		if sourceDir {
+			return pathError("rename", path, os.ErrExist)
+		}
+		delete(m.symlinks, path)
+	}
+	if m.dirs[path] {
+		if !sourceDir {
+			return pathError("rename", path, os.ErrExist)
+		}
+		prefix := dirPrefix(path)
+		for child := range m.files {
+			if strings.HasPrefix(child, prefix) {
+				return pathError("rename", path, fmt.Errorf("directory not empty"))
+			}
+		}
+		for child := range m.symlinks {
+			if strings.HasPrefix(child, prefix) {
+				return pathError("rename", path, fmt.Errorf("directory not empty"))
+			}
+		}
+		for child := range m.dirs {
+			if strings.HasPrefix(child, prefix) {
+				return pathError("rename", path, fmt.Errorf("directory not empty"))
+			}
+		}
+		delete(m.dirs, path)
+		delete(m.perms, path)
+	}
+	return nil
 }
 
 // ReadDir reads the named directory, returning sorted directory entries.
@@ -405,8 +524,8 @@ func (m *MemFS) readDirFiles(prefix string, seen map[string]bool, entries []os.D
 			continue
 		}
 		seen[rest] = true
-		perm := m.perms[k]
-		if perm == 0 {
+		perm, ok := m.perms[k]
+		if !ok {
 			perm = 0o644
 		}
 		entries = append(entries, &memDirEntry{name: rest, isDir: false, mode: perm})
@@ -435,8 +554,8 @@ func (m *MemFS) readDirDirs(prefix string, seen map[string]bool, entries []os.Di
 			continue
 		}
 		seen[rest] = true
-		perm := m.perms[k]
-		if perm == 0 {
+		perm, ok := m.perms[k]
+		if !ok {
 			perm = 0o755
 		}
 		entries = append(entries, &memDirEntry{name: rest, isDir: true, mode: perm | fs.ModeDir})
@@ -537,8 +656,8 @@ func (m *MemFS) lstatLocked(name string) (fs.FileInfo, error) {
 		}, nil
 	}
 	if data, ok := m.files[name]; ok {
-		perm := m.perms[name]
-		if perm == 0 {
+		perm, ok := m.perms[name]
+		if !ok {
 			perm = 0o644
 		}
 		return &memFileInfo{
@@ -549,8 +668,8 @@ func (m *MemFS) lstatLocked(name string) (fs.FileInfo, error) {
 		}, nil
 	}
 	if m.dirs[name] {
-		perm := m.perms[name]
-		if perm == 0 {
+		perm, ok := m.perms[name]
+		if !ok {
 			perm = 0o755
 		}
 		return &memFileInfo{

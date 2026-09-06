@@ -23,7 +23,9 @@ When you run `tidydots restore`, for each config entry tidydots:
 3. Creates a symlink from the target path pointing to the backup path (or writes a real file copy, if `method: copy` is set — see [Deployment Method](#deployment-method))
 4. If `files` is specified, only those specific files are symlinked (or copied)
 
-The result is that your system reads configuration from the target path, but the actual files live in your dotfiles repository.
+With the default symlink method, the target reads from the backup in your dotfiles
+repository. Copy mode instead deploys independent files at the target and updates
+them only during a later restore.
 
 ## Conditional Entries
 
@@ -61,7 +63,7 @@ backup: "./shell/zsh"      # Nested directory
 ```
 
 !!! note
-    The `backup` field is what makes an entry a "config entry." If `backup` is present, tidydots treats the entry as a symlink-managed configuration.
+    The `backup` field is what makes an entry a "config entry." The entry's `method` then selects symlink or copy deployment.
 
 ### targets
 
@@ -117,7 +119,7 @@ files: []
 The `method` field selects how tidydots deploys this entry's files to the target path:
 
 - `symlink` (default, or when `method` is omitted) — creates a symlink at the target pointing back into the dotfiles repo.
-- `copy` — writes a real, independent file at the target instead. The repo file remains the source of truth.
+- `copy` — writes a real, independent file at the target instead. Ordinary files remain source-controlled by the repo and overwrite target drift; selected `.tmpl` files are rendered and merged using render history (see [Templates](templates.md#copy-mode-template-deployment)).
 
 ```yaml
 method: copy
@@ -127,7 +129,9 @@ See [Deployment Method](#deployment-method) below for the full behavior, migrati
 
 ### sudo
 
-When `sudo: true` is set, tidydots uses elevated privileges for all symlink operations on this entry. This is required for targets outside your home directory, such as system configuration files.
+When `sudo: true` is set, tidydots uses elevated privileges for deployment operations
+on this entry when the selected operation supports them. This is required for
+targets outside your home directory, such as system configuration files.
 
 ```yaml
 sudo: true
@@ -135,6 +139,11 @@ sudo: true
 
 !!! warning
     Only set `sudo: true` when the target path genuinely requires elevated privileges (e.g., `/etc/` paths). Using sudo unnecessarily may create files owned by root in unexpected locations.
+
+For copy-template entries, elevated writes are supported only on a Linux runtime.
+Windows uses native filesystem operations, and a sudo-enabled copy-template entry
+on another runtime host fails explicitly. Status and diff inspection never request
+sudo reads.
 
 ## Deployment Method
 
@@ -161,24 +170,62 @@ entries:
 
 ### Refresh and Idempotency
 
-With `method: copy`, every `tidydots restore` compares the target file's content against the corresponding repo (backup) file:
+With `method: copy`, every `tidydots restore` compares the target file with the selected source:
 
-- If the contents differ, the target is overwritten with the current repo content.
-- If the contents already match, tidydots makes no changes (a no-op).
+- Ordinary files: if the contents differ, the target is overwritten with the current repo content.
+- Template files selected with their `.tmpl` suffix: the target is compared with the previous pure render stored in `.tidydots.db`. User edits are retained where the template did not change, while template changes are applied where they do not conflict. The source hash covers source bytes only; changes to template context such as hostname or environment do not trigger this fast path, so use `--force-render` when those values change.
+- If the contents already match and the target's required type and ownership also match, tidydots makes no changes (a no-op). Matching content alone may still require type or ownership repair; existing regular-file modes are retained.
 
-Because the target is a real file rather than a live link, editing the file in the dotfiles repo and re-running `tidydots restore` is how changes reach a copy-mode target.
+For ordinary copies, editing the file in the dotfiles repo and re-running `tidydots restore` is how changes reach the target. For copy-mode templates, the `.tmpl` source is still the source of truth for generated content, while the target is the current merge input. A successful restore stores the new pure render, not the target's user edits.
 
 !!! warning
-    If the target already exists as a real file and its contents differ from the repo's, `tidydots restore` **overwrites it with the repo content**. Unlike `symlink` mode, copy mode does **not** merge the existing target's content into your backup first — whatever was at the target is lost. The `--no-merge` and `--force` flags that control this behavior for symlink entries do not apply to `copy` entries; copy mode always overwrites on drift, unconditionally. Back up any pre-existing target file yourself before pointing a new `method: copy` entry at it.
+    A first copy-template deployment that would replace an existing target saves an exclusive recovery copy beside it as `<target>.tidydots.bak`, unless `--force-render` explicitly bypasses the no-history backup. If that path is already occupied, restore refuses to overwrite either file. Legacy targets named with the `.tmpl` suffix are not removed automatically; rename or remove them explicitly after reviewing the migration.
+    Status treats a recovery path that is not a regular file, including a symlink, as unavailable. The legacy `.tmpl` target path remains permitted and is not removed implicitly.
+
+For copy-template idempotency, matching content alone is not sufficient for a
+no-op: the target must also be the expected regular-file type and have the
+required ownership. Existing regular target modes are retained. New
+native files use the source template's permission bits; new files and symlink
+replacements for `sudo: true` on Linux use restrictive `0600` permissions.
+Recovery backups and conflict artifacts also use `0600`.
+
+### Copy-mode template example
+
+```yaml
+entries:
+  - name: snapper-config
+    method: copy
+    sudo: true
+    backup: ./snapper
+    files: [root.tmpl]
+    targets:
+      linux: /etc/snapper/configs
+```
+
+The selected `root.tmpl` renders to `/etc/snapper/configs/root`. It does not create
+the symlink-mode `root` alias or `root.tmpl.rendered` cache in the repository.
+On later restores, edits in the target are merged with the new render using the
+SQLite history. A conflict deploys the pure template output and keeps the full
+recovery content in `root.tmpl.conflict`; a later conflict-free restore removes
+that stale artifact. `--force-render` skips the merge and overwrites the target
+with the fresh render.
+
+For example, the tested hostname-specific source:
+
+```text
+{{ if eq .Hostname "omarchbook" }}no/1{{ else }}yes/7{{ end }}
+```
+
+renders `no/1` on `omarchbook` and `yes/7` on `desktop`.
 
 ### Migrating from Symlink to Copy
 
-If the target currently exists as a symlink (for example, the entry was previously deployed with `method: symlink`, or adopted), switching the entry to `method: copy` and re-running `tidydots restore` removes the existing symlink and replaces it with a real file copied from the repo. This makes symlink-to-copy migration safe without any manual cleanup.
+If the target currently exists as a symlink (for example, the entry was previously deployed with `method: symlink`, or adopted), switching the entry to `method: copy` and re-running `tidydots restore` removes the supported migration symlink and replaces it with a real file copied or rendered from the repo. The replacement uses the source mode for native writes and `0600` for sudo-enabled Linux writes. This makes symlink-to-copy migration safe without any manual cleanup.
 
 ### Limitations
 
 - **Files only** — `method: copy` requires an explicit, non-empty `files:` list. Whole-folder copying (`files: []`) is not supported and is rejected during config validation.
-- **Literal `.tmpl` files** — Copy entries do not render templates. A selected `config.toml.tmpl` is copied literally to `config.toml.tmpl`; use the default symlink method when that source should render. See [Templates](templates.md#explicit-file-selections).
+- **Template selections are rendered** — A selected `config.toml.tmpl` deploys as the real file `config.toml` and uses the copy-template merge history. This replaces the previous literal-copy behavior deliberately; ordinary non-template copy entries retain their overwrite-on-drift behavior. See [Templates](templates.md#copy-mode-template-deployment).
 
 ### When to Use It
 
@@ -337,7 +384,11 @@ applications:
 
 ## Template Files in Config Entries
 
-Config entries can contain `.tmpl` template files in their backup directory. During restore, these files are rendered using the template engine, and the output is written as `.tmpl.rendered` sibling files. The symlink then points to the rendered output.
+Config entries can contain `.tmpl` template files in their backup directory. During
+symlink-mode restore, these files are rendered using the template engine, and the
+output is written as `.tmpl.rendered` sibling files. The symlink then points to
+the rendered output. In copy mode, selected templates render directly to the
+suffix-free target; no repository alias or `.tmpl.rendered` cache is created.
 
 For example, if your backup directory contains `alacritty.toml.tmpl`:
 
@@ -348,7 +399,10 @@ For example, if your backup directory contains `alacritty.toml.tmpl`:
 For an explicit `files:` list, name the source with its `.tmpl` suffix (for
 example, `.gitconfig.tmpl`). Only those selected sources render; a suffix-free
 entry such as `.gitconfig` remains an ordinary file selection and does not
-implicitly discover the template. `method: copy` always copies `.tmpl` files
-literally.
+implicitly discover the template. This selection rule is the same for copy
+entries, whose selected templates now render directly into real target files.
+
+During backup, selected `.tmpl` sources are skipped in both deployment methods;
+the live generated target must never replace the template source in the repo.
 
 See [Templates](templates.md) for the full template system documentation.

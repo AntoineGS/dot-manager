@@ -145,16 +145,20 @@ applications:
 	if err := mgr.InitStateStore(); err != nil {
 		t.Fatalf("init status state: %v", err)
 	}
-	allTemplatesEntry := cfg.Applications[0].Entries[0]
-	allTemplatesEntry.Files = []string{"selected.tmpl", "unselected.tmpl", "copy.tmpl"}
-	if err := mgr.RestoreFiles(allTemplatesEntry, backup, target); err != nil {
+	seedSelectedEntry := cfg.Applications[0].Entries[0]
+	seedSelectedEntry.Files = []string{"selected.tmpl", "unselected.tmpl"}
+	if err := mgr.RestoreFiles(seedSelectedEntry, backup, target); err != nil {
 		_ = mgr.Close()
 		t.Fatalf("seed selected template state: %v", err)
+	}
+	seedCopyEntry := cfg.Applications[0].Entries[1]
+	if err := mgr.RestoreFiles(seedCopyEntry, backup, target); err != nil {
+		_ = mgr.Close()
+		t.Fatalf("seed copy template state: %v", err)
 	}
 	if err := mgr.Close(); err != nil {
 		t.Fatal(err)
 	}
-	writeCommandStatusFile(t, filepath.Join(target, "copy.tmpl"), "copy-v1")
 
 	writeCommandStatusFile(t, unselected, "unselected-v2")
 	output, err := executeStatusCommandArgs(t, dir, "status", "--json")
@@ -194,6 +198,54 @@ applications:
 		t.Fatalf("copy entry after selected drift = %q, want %q", got, tui.StateLinked.String())
 	}
 
+	writeCommandStatusFile(t, filepath.Join(target, "copy"), "copy-user-edit")
+	output, err = executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("status command after copy target edit: %v", err)
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output after copy target edit is not JSON: %v\n%s", err, output)
+	}
+	if got := findStatusEntry(t, report, "copy").State; got != tui.StateModified.String() {
+		t.Fatalf("copy target edit state = %q, want %q", got, tui.StateModified.String())
+	}
+	actionsOutput, err := executeStatusCommandArgs(t, dir, "status", "--actions", "--json")
+	if err != nil {
+		t.Fatalf("status --actions after copy target edit: %v", err)
+	}
+	if err := json.Unmarshal([]byte(actionsOutput), &report); err != nil {
+		t.Fatalf("actions status output is not JSON: %v\n%s", err, actionsOutput)
+	}
+	if got := findStatusEntry(t, report, "copy").State; got != tui.StateModified.String() {
+		t.Fatalf("copy target edit missing from --actions: %q", got)
+	}
+
+	writeCommandStatusFile(t, copySource, "copy-v2")
+	output, err = executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("status command after copy source drift: %v", err)
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output after copy source drift is not JSON: %v\n%s", err, output)
+	}
+	if got := findStatusEntry(t, report, "copy").State; got != tui.StateOutdated.String() {
+		t.Fatalf("copy source drift state = %q, want %q", got, tui.StateOutdated.String())
+	}
+
+	if err := os.Remove(filepath.Join(target, "copy")); err != nil {
+		t.Fatal(err)
+	}
+	output, err = executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("status command after missing copy target: %v", err)
+	}
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output after missing copy target is not JSON: %v\n%s", err, output)
+	}
+	if got := findStatusEntry(t, report, "copy").State; got != tui.StateReady.String() {
+		t.Fatalf("missing copy target state = %q, want %q", got, tui.StateReady.String())
+	}
+
 	writeCommandStatusFile(t, selected, "selected-v1")
 	writeCommandStatusFile(t, filepath.Join(backup, "selected.tmpl.rendered"), "selected-user-edit")
 	output, err = executeStatusCommandArgs(t, dir, "status", "--json")
@@ -219,6 +271,53 @@ applications:
 	}
 	if got := findStatusEntry(t, report, "config").State; got != tui.StateOutdated.String() {
 		t.Fatalf("selected entry missing-rendered state = %q, want %q", got, tui.StateOutdated.String())
+	}
+}
+
+func TestStatusCommandActionsIncludesUnavailableCopySelection(t *testing.T) {
+	preserveCommandGlobals(t)
+	dir := t.TempDir()
+	backup := filepath.Join(dir, "backup")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.MkdirAll(backup, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(target, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	configYAML := fmt.Sprintf(`version: 3
+applications:
+  - name: tool
+    entries:
+      - name: unsafe-copy
+        backup: ./backup
+        files:
+          - root.tmpl
+          - root
+        method: copy
+        targets:
+          linux: %q
+`, target)
+	if err := os.WriteFile(filepath.Join(dir, "tidydots.yaml"), []byte(configYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeCommandStatusFile(t, filepath.Join(backup, "root.tmpl"), "root = 1")
+	writeCommandStatusFile(t, filepath.Join(target, "root"), "root = 1")
+
+	output, err := executeStatusCommandArgs(t, dir, "status", "--actions", "--json")
+	if err != nil {
+		t.Fatalf("status --actions error: %v", err)
+	}
+	var report tui.StatusReport
+	if err := json.Unmarshal([]byte(output), &report); err != nil {
+		t.Fatalf("status output is not JSON: %v\n%s", err, output)
+	}
+	entry := findStatusEntry(t, report, "unsafe-copy")
+	if entry.State != tui.StateUnavailable.String() || !entry.Actionable {
+		t.Fatalf("unavailable entry = %+v, want actionable Unavailable", entry)
+	}
+	if report.Counts.ActionableEntries != 1 || !report.Actionable {
+		t.Fatalf("unavailable action counts = %+v/actionable=%t, want one actionable entry", report.Counts, report.Actionable)
 	}
 }
 

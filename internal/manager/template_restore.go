@@ -161,12 +161,11 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 				theirs = base // No rendered file on disk, treat as unchanged
 			}
 
-			ours := string(rendered)
-			mergeResult := tmpl.ThreeWayMerge(base, theirs, ours)
+			decision := tmpl.MergeRender(record.PureRender, []byte(theirs), rendered, true, false)
 
-			if mergeResult.HasConflict {
+			if len(decision.Conflict) > 0 {
 				conflictPath := tmpl.ConflictPath(tmplAbsPath)
-				if writeErr := m.fs.WriteFile(conflictPath, []byte(mergeResult.Content), FilePerms); writeErr != nil {
+				if writeErr := m.fs.WriteFile(conflictPath, decision.Conflict, FilePerms); writeErr != nil {
 					m.logger.Warn("could not write conflict file",
 						slog.String("path", conflictPath),
 						slog.String("error", writeErr.Error()))
@@ -182,7 +181,7 @@ func (m *Manager) renderTemplateAndLink(tmplAbsPath, relPath string) error {
 						slog.String("path", conflictPath),
 						slog.String("error", err.Error()))
 				}
-				finalContent = []byte(mergeResult.Content)
+				finalContent = decision.Content
 			}
 		} else if m.pathExists(renderedAbsPath) {
 			// First render but rendered file exists (orphaned) - back it up

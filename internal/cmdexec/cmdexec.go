@@ -16,6 +16,8 @@ type RunOptions struct {
 	Dir string
 	// Sudo runs the command with elevated privileges.
 	Sudo bool
+	// Stdin is provided to the command as standard input.
+	Stdin []byte
 }
 
 // Runner abstracts command execution.

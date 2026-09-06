@@ -77,6 +77,8 @@ const (
 	StateSetupOk = tuitable.StateSetupOk
 	// StateSetupNeeded indicates a setup entry whose check command fails.
 	StateSetupNeeded = tuitable.StateSetupNeeded
+	// StateUnavailable indicates status could not be inspected safely.
+	StateUnavailable = tuitable.StateUnavailable
 )
 
 // TableRow is an alias for tuitable.Row so that all existing code in
@@ -350,6 +352,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Success: false,
 				Message: msg.err.Error(),
 			}}
+			m.showingResults = true
+			m.resultsScrollOffset = 0
 		}
 		return m, m.dispatchLoadingSubEntryStates()
 

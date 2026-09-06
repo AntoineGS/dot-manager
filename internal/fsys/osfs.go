@@ -1,6 +1,7 @@
 package fsys
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,6 +28,28 @@ func (OsFS) ReadFile(name string) ([]byte, error) {
 // WriteFile writes data to the named file, creating it if needed.
 func (OsFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	return os.WriteFile(name, data, perm)
+}
+
+// WriteFileExclusive creates and writes a file only when name is unoccupied.
+func (OsFS) WriteFileExclusive(name string, data []byte, perm fs.FileMode) error {
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		// Exclusive creation succeeded, so this is our incomplete file to remove.
+		return errors.Join(err, os.Remove(name))
+	}
+
+	return nil
+}
+
+// Chmod changes the permission bits of name.
+func (OsFS) Chmod(name string, mode fs.FileMode) error {
+	return os.Chmod(name, mode)
 }
 
 // MkdirAll creates path and all necessary parents.

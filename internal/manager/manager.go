@@ -409,7 +409,7 @@ func (m *Manager) hasTemplateFiles(dir string) bool {
 // ModifiedTemplate contains the diff data for a single modified template file.
 type ModifiedTemplate struct {
 	TemplatePath  string // absolute path to .tmpl source file
-	RenderedPath  string // absolute path to .tmpl.rendered file
+	CurrentPath   string // absolute path to the current rendered/deployed file
 	RelPath       string // relative path within backup dir
 	PureRender    []byte // baseline content from state DB
 	CurrentOnDisk []byte // current .tmpl.rendered content on disk
@@ -439,7 +439,7 @@ func (m *Manager) GetModifiedTemplateFiles(backupDir string, files []string) ([]
 		if !bytes.Equal(renderedContent, record.PureRender) {
 			result = append(result, ModifiedTemplate{
 				TemplatePath:  path,
-				RenderedPath:  renderedPath,
+				CurrentPath:   renderedPath,
 				RelPath:       relPath,
 				PureRender:    record.PureRender,
 				CurrentOnDisk: renderedContent,

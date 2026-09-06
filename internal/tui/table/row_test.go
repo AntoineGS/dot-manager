@@ -152,6 +152,13 @@ func TestPathState_Actionable(t *testing.T) {
 	}
 }
 
+func TestUnavailableStateRequiresAttention(t *testing.T) {
+	if StateUnavailable.String() != "Unavailable" || !StateUnavailable.Actionable() ||
+		StateUnavailable.Severity() != 3 {
+		t.Fatal("unavailable inspection must not be healthy or remain loading")
+	}
+}
+
 // The existing states are declared with iota; appending must not renumber them,
 // or persisted/compared state values would silently shift meaning.
 func TestPathState_ExistingValuesUnchanged(t *testing.T) {

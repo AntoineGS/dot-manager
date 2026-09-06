@@ -58,20 +58,28 @@ func detectConfigStateForCase(backupPath, targetPath string, isFolder bool, file
 	checkedAnyFile := false
 	hasTemplateSelection := false
 	for _, file := range files {
-		if !isCopy && tmpl.IsTemplateFile(file) {
+		if tmpl.IsTemplateFile(file) {
 			hasTemplateSelection = true
 			break
 		}
 	}
-	if hasTemplateSelection && tmpl.HasSelectionCollisions(files, caseInsensitive) {
+	selectionCollision := false
+	if hasTemplateSelection {
+		if isCopy {
+			selectionCollision = tmpl.ValidateCopySelectionCollisions(files, caseInsensitive) != nil
+		} else {
+			selectionCollision = tmpl.HasSelectionCollisions(files, caseInsensitive)
+		}
+	}
+	if hasTemplateSelection && selectionCollision {
 		// Restore preflight rejects the whole selection. Do not present an
 		// independently healthy link layout as actionable-free status.
 		allLinked = false
 	}
 
 	for _, file := range files {
-		isSelectedTemplate := !isCopy && tmpl.IsTemplateFile(file)
-		if !isLocalTemplateSelection(backupPath, targetPath, file, isCopy) {
+		isSelectedTemplate := tmpl.IsTemplateFile(file)
+		if !isLocalTemplateSelection(backupPath, targetPath, file) {
 			if isSelectedTemplate {
 				allLinked = false
 			}
@@ -106,10 +114,14 @@ func detectConfigStateForCase(backupPath, targetPath string, isFolder bool, file
 		if info, err := os.Lstat(dstFile); err == nil {
 			anyTarget = true
 			if isCopy {
-				// os.ReadFile follows symlinks, so a stale symlink pointing back
-				// into the backup would compare equal to its own source and be
-				// misreported as in sync. A copy target must be a real file.
-				if info.Mode()&os.ModeSymlink != 0 || !filesContentEqual(srcFile, dstFile) {
+				if isSelectedTemplate {
+					// Copy templates render into the suffix-free target. The
+					// source text is not comparable to the rendered target; the
+					// manager's live inspection refines this structural result.
+					if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+						allLinked = false
+					}
+				} else if info.Mode()&os.ModeSymlink != 0 || !filesContentEqual(srcFile, dstFile) {
 					allLinked = false
 				}
 			} else if isSelectedTemplate {
@@ -140,10 +152,10 @@ func detectConfigStateForCase(backupPath, targetPath string, isFolder bool, file
 }
 
 // isLocalTemplateSelection applies the same entry-boundary checks as selected
-// template restore. Copy-mode and literal selections intentionally bypass this
-// helper to preserve their existing target mapping behavior.
-func isLocalTemplateSelection(backupPath, targetPath, file string, isCopy bool) bool {
-	if isCopy || !tmpl.IsTemplateFile(file) {
+// template restore. Literal selections intentionally bypass this helper because
+// their target mapping remains literal in both deployment methods.
+func isLocalTemplateSelection(backupPath, targetPath, file string) bool {
+	if !tmpl.IsTemplateFile(file) {
 		return true
 	}
 

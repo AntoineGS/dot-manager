@@ -560,18 +560,18 @@ func TestDetectConfigState_Copy_TargetStillSymlink(t *testing.T) {
 	}
 }
 
-func TestDetectConfigState_Copy_TemplateNameRemainsLiteral(t *testing.T) {
+func TestDetectConfigState_Copy_TemplateUsesSuffixFreeTargetWithoutComparingSource(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	backup := filepath.Join(dir, "backup")
 	target := filepath.Join(dir, "target")
 	_ = os.MkdirAll(backup, 0o755)
 	_ = os.MkdirAll(target, 0o755)
-	_ = os.WriteFile(filepath.Join(backup, "config.tmpl"), []byte("literal"), 0o644)
-	_ = os.WriteFile(filepath.Join(target, "config.tmpl"), []byte("literal"), 0o644)
+	_ = os.WriteFile(filepath.Join(backup, "config.tmpl"), []byte("value={{ .Hostname }}"), 0o644)
+	_ = os.WriteFile(filepath.Join(target, "config"), []byte("value=machine"), 0o644)
 
 	got := DetectConfigState(backup, target, false, []string{"config.tmpl"}, true)
 	if got != tuitable.StateLinked {
-		t.Errorf("copy template-name state = %v, want StateLinked", got)
+		t.Errorf("copy template structural state = %v, want StateLinked", got)
 	}
 }

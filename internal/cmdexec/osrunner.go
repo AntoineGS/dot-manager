@@ -25,6 +25,7 @@ func (r OsRunner) RunIn(ctx context.Context, opts RunOptions, name string, args 
 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = opts.Dir
+	cmd.Stdin = bytes.NewReader(opts.Stdin)
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 

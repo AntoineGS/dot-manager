@@ -30,12 +30,13 @@ The main screen displays a table view of all your applications and their entries
 
 | Status | Meaning |
 |--------|---------|
-| Ready | Backup exists, target does not -- ready to create symlink |
-| Linked | Symlink is already in place and correct |
-| Adopt | Target exists but backup does not -- can adopt the existing file |
+| Ready | Backup/source exists, target does not -- ready to restore |
+| Linked | Symlink is correct, or a copy target is present and in sync |
+| Adopt | Target exists but backup does not -- symlink mode can adopt the existing file |
 | Missing | Neither backup nor target exist |
-| Outdated | Symlink exists but a listed `.tmpl` source in a file-list entry has changed since last render, or its rendered output is missing; folder entries discover templates recursively |
-| Modified | Symlink exists but a listed rendered template file in a file-list entry has been manually edited since last render; folder entries inspect discovered templates recursively |
+| Outdated | A listed `.tmpl` source or its render history requires an update; symlink entries inspect rendered output and copy entries inspect the suffix-free target |
+| Modified | A rendered template file or suffix-free copy target differs from its pure render; folder entries inspect discovered templates recursively |
+| Unavailable | tidydots could not safely inspect a selected template source or live target; review access and run the TUI in an environment that can read the file |
 | Loading... | State not yet resolved -- shown briefly for [setup entries](../configuration/setup.md) while their check command runs |
 | Set up | Setup entry: the check command passed -- nothing to do |
 | Needs setup | Setup entry: the check command failed -- restore will run the setup command |
@@ -66,7 +67,7 @@ tidydots uses vim-style keybindings alongside arrow keys for navigation.
 | `f` | Toggle filter (show/hide apps excluded by `when` expressions) |
 | `x` | Toggle the action filter (show only applications or entries needing work) |
 | `ctrl+r` | Refresh all package, config, template, and setup statuses |
-| `r` | Restore the selected application or entry, preserving rendered-template edits through the normal merge |
+| `r` | Restore the selected application or entry, deploying symlinks/copies and preserving rendered-template edits through the normal merge |
 | `R` | Force Restore the selected application or entry, always requiring confirmation and discarding rendered-template edits |
 | `ctrl+u` | Move up by half the visible table height |
 | `ctrl+d` | Move down by half the visible table height |
@@ -115,7 +116,7 @@ their application-level `when` expression are hidden. When disabled, those appli
 are shown. Entries excluded by their own `when` are removed before table filtering and
 remain absent in either mode.
 
-Press `x` to toggle the action filter. It keeps applications with an uninstalled package and entries whose state needs attention (`Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, or `Modified`). The filter composes with search and the `f` platform filter. If enabling it would hide selected items, tidydots asks for confirmation; answer `y` to enable it or `n` to leave the current view and selections unchanged. Confirming does not clear selections.
+Press `x` to toggle the action filter. It keeps applications with an uninstalled package and entries whose state needs attention (`Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, `Modified`, or `Unavailable`). The filter composes with search and the `f` platform filter. If enabling it would hide selected items, tidydots asks for confirmation; answer `y` to enable it or `n` to leave the current view and selections unchanged. Confirming does not clear selections.
 
 The TUI can start with this filter already enabled by running `tidydots --actions`. This keeps the normal interactive behavior while showing actionable work as soon as status checks settle.
 
@@ -189,7 +190,7 @@ With items selected, you can perform operations on all of them at once. Each bat
 
 | Key | Operation | Description |
 |-----|-----------|-------------|
-| `r` | Restore | Create symlinks for selected config entries, and run selected [setup entries](../configuration/setup.md), preserving rendered-template edits through the normal merge |
+| `r` | Restore | Restore selected config entries using their configured method, and run selected [setup entries](../configuration/setup.md), preserving rendered-template edits through the normal merge |
 | `R` | Force Restore | Use the same selected application or entry scope as Restore, always show a confirmation, and discard manual edits to rendered-template files |
 | `i` | Install | Install packages for all selected applications |
 | `d` | Delete | Remove configs and packages for all selected items |
@@ -229,9 +230,9 @@ When the operation finishes, a popup overlay appears showing all results (succes
 2. Navigate to the applications you want to restore
 3. Press `tab` on each application to select it
 4. Press `r` to start batch restore, or `R` for Force Restore when rendered-template edits should be discarded
-5. Review the summary of symlinks to be created
+5. Review the summary of deployments to be made
 6. Press `enter` to confirm
-7. Watch the progress bar as symlinks are created
+7. Watch the progress bar as deployments are applied
 
 ## Editing applications and entries
 
@@ -344,7 +345,9 @@ Press `s` or `ctrl+s` to save your changes to the `tidydots.yaml` configuration 
 
 ## Template diff & edit
 
-When a config entry uses templates (`.tmpl` files) and you have manually edited the rendered output, the entry shows a **Modified** status in blue. For an entry with a `files` list, status and diff discovery inspect only listed `.tmpl` source names; an unlisted template does not affect the row. List the `.tmpl` source name (not its suffix-free target name) to render and deploy a single template. You can view a diff of your changes and edit the source template to incorporate them.
+When a config entry uses templates (`.tmpl` files) and you have manually edited the generated output, the entry shows a **Modified** status in blue. For `method: copy`, this check reads the live suffix-free target file; it does not use a `.tmpl.rendered` cache. A changed source or missing render history shows **Outdated**. If the source or target cannot be read safely, the entry shows **Unavailable** in red and is included by the action filter.
+
+For an entry with a `files` list, status and diff discovery inspect only listed `.tmpl` source names; an unlisted template does not affect the row. List the `.tmpl` source name (not its suffix-free target name) to render and deploy a single template. Template status checks never request `sudo` interactively. Run the TUI in an appropriately authorized environment when protected content is unavailable.
 
 ### Viewing diffs
 
@@ -352,7 +355,7 @@ When a config entry uses templates (`.tmpl` files) and you have manually edited 
 2. Press `i` to launch the diff viewer
 3. If the entry contains multiple modified template files, a picker appears -- select the file you want to inspect
 4. Your editor opens with two panes:
-    - **Left pane**: A unified diff showing your edits (read-only)
+    - **Left pane**: A unified diff showing your edits (read-only); copy-mode diffs read the real deployed target
     - **Right pane**: The `.tmpl` source file (editable)
 5. Edit the template to backport your changes, then save and quit your editor
 6. The TUI resumes and refreshes the entry status
@@ -368,7 +371,7 @@ tidydots automatically detects the best way to launch the editor:
 | **Fallback** | Neither nvim nor tmux available | Opens just the template in `$EDITOR` (or `vim`/`vi`/`nano`) |
 
 !!! tip
-    The diff compares the **pure render** (what the template produced) against the **current file on disk** (with your edits). This helps you see exactly what you changed so you can update the template source accordingly.
+    The diff compares the **pure render** (what the template produced) against the **current file on disk** (with your edits). For symlink entries that current file is `.tmpl.rendered`; for copy entries it is the live suffix-free target. In both cases the editor opens the `.tmpl` source, not the deployed file, so you can backport changes safely. `--force-render` applies to copy templates as well and overwrites the deployed target on restore.
 
 ## Help text
 

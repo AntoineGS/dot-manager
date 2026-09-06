@@ -26,7 +26,8 @@ type RenderRecord struct {
 
 // Store manages the SQLite database for template render history.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	path string
 }
 
 // Open opens or creates the SQLite database at the given path and runs migrations.
@@ -49,13 +50,20 @@ func Open(ctx context.Context, dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("setting journal mode: %w", err)
 	}
 
-	s := &Store{db: db}
+	s := &Store{db: db, path: dbPath}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close() //nolint:errcheck,gosec // best-effort cleanup on error path
 		return nil, fmt.Errorf("running migrations: %w", err)
 	}
 
 	return s, nil
+}
+
+// Path returns the database path used by the store, including any relative
+// spelling supplied to Open. Callers use it to protect the active database and
+// its sidecars from filesystem operations that must remain repository-safe.
+func (s *Store) Path() string {
+	return s.path
 }
 
 // Close closes the database connection.

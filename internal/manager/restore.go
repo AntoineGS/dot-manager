@@ -333,7 +333,11 @@ func (m *Manager) RestoreFolder(subEntry config.SubEntry, source, target string)
 //
 //nolint:gocyclo // complexity acceptable for restore logic
 func (m *Manager) RestoreFiles(subEntry config.SubEntry, source, target string) error {
-	if !subEntry.IsCopy() {
+	if subEntry.IsCopy() {
+		if err := m.preflightCopyTemplateFiles(subEntry, source, target); err != nil {
+			return err
+		}
+	} else {
 		if err := m.preflightTemplateFiles(subEntry, source, target); err != nil {
 			return err
 		}
@@ -364,6 +368,13 @@ func (m *Manager) RestoreFiles(subEntry config.SubEntry, source, target string) 
 	}
 
 	for _, file := range subEntry.Files {
+		if subEntry.IsCopy() && tmpl.IsTemplateFile(file) {
+			if err := m.restoreCopyTemplateFile(subEntry, source, target, file); err != nil {
+				return err
+			}
+			continue
+		}
+
 		if subEntry.IsCopy() {
 			srcFile := filepath.Join(source, file)
 			dstFile := filepath.Join(target, file)

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/AntoineGS/tidydots/internal/cmdexec"
 	"github.com/AntoineGS/tidydots/internal/config"
+	"github.com/AntoineGS/tidydots/internal/fsys"
 	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/platform"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
@@ -103,7 +105,7 @@ func TestComputeStatusAmbiguousTemplateSelectionIsActionable(t *testing.T) {
 
 	root := t.TempDir()
 	backupPath := filepath.Join(root, "backup")
-	targetPath := filepath.Join(root, "target")
+	targetPath := filepath.Join(t.TempDir(), "target")
 	if err := os.MkdirAll(backupPath, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +239,7 @@ func TestComputeStatusSelectedTemplateStates(t *testing.T) {
 	}
 }
 
-func TestComputeStatusCopyTemplateRemainsLiteral(t *testing.T) {
+func TestComputeStatusCopyTemplateUsesRenderedTarget(t *testing.T) {
 	fixture := newStatusSelectedTemplateFixture(t, true)
 
 	report, err := ComputeStatus(fixture.config, fixture.platform, fixture.manager, false)
@@ -245,7 +247,106 @@ func TestComputeStatusCopyTemplateRemainsLiteral(t *testing.T) {
 		t.Fatalf("ComputeStatus: %v", err)
 	}
 	if got := report.Applications[0].Entries[0].State; got != StateLinked.String() {
-		t.Fatalf("copy template status = %q, want %q", got, StateLinked.String())
+		t.Fatalf("copy template status = %q, want healthy rendered target %q", got, StateLinked.String())
+	}
+}
+
+func TestComputeStatusCopyTemplateStates(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(t *testing.T, fixture statusTemplateFixture)
+		want   PathState
+	}{
+		{
+			name: "source drift",
+			mutate: func(t *testing.T, fixture statusTemplateFixture) {
+				writeStatusTemplateFile(t, fixture.selectedPath, "selected-v2")
+			},
+			want: StateOutdated,
+		},
+		{
+			name: "live target edit",
+			mutate: func(t *testing.T, fixture statusTemplateFixture) {
+				target := fixture.config.Applications[0].Entries[0].Targets["linux"]
+				writeStatusTemplateFile(t, filepath.Join(target, "selected"), "selected-user-edit")
+			},
+			want: StateModified,
+		},
+		{
+			name: "missing target",
+			mutate: func(t *testing.T, fixture statusTemplateFixture) {
+				target := fixture.config.Applications[0].Entries[0].Targets["linux"]
+				if err := os.Remove(filepath.Join(target, "selected")); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: StateReady,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newStatusSelectedTemplateFixture(t, true)
+			tt.mutate(t, fixture)
+			report, err := ComputeStatus(fixture.config, fixture.platform, fixture.manager, false)
+			if err != nil {
+				t.Fatalf("ComputeStatus: %v", err)
+			}
+			got := report.Applications[0].Entries[0].State
+			if got != tt.want.String() {
+				t.Fatalf("copy template state = %q, want %q", got, tt.want.String())
+			}
+		})
+	}
+}
+
+func TestComputeStatusCopyTemplateMissingHistoryIsOutdated(t *testing.T) {
+	fixture := newStatusSelectedTemplateFixture(t, true)
+	withoutHistory := manager.New(fixture.config, fixture.platform)
+
+	report, err := ComputeStatus(fixture.config, fixture.platform, withoutHistory, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := report.Applications[0].Entries[0].State; got != StateOutdated.String() {
+		t.Fatalf("copy template state without history = %q, want %q", got, StateOutdated.String())
+	}
+}
+
+func TestComputeStatusCopyTemplateUnsafeSelectionIsUnavailable(t *testing.T) {
+	fixture := newStatusSelectedTemplateFixture(t, true)
+	fixture.config.Applications[0].Entries[0].Files = []string{"selected.tmpl", "selected"}
+
+	report, err := ComputeStatus(fixture.config, fixture.platform, fixture.manager, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := report.Applications[0].Entries[0]
+	if entry.State != StateUnavailable.String() || !entry.Actionable {
+		t.Fatalf("unsafe copy selection status = %+v, want actionable Unavailable", entry)
+	}
+}
+
+func TestComputeStatusCopyTemplateDeniedReadIsUnavailableWithoutSudo(t *testing.T) {
+	fixture := newStatusSelectedTemplateFixture(t, true)
+	target := fixture.config.Applications[0].Entries[0].Targets["linux"]
+	fixture.config.Applications[0].Entries[0].Sudo = true
+	stub := cmdexec.NewStubRunner()
+	fixture.manager = fixture.manager.WithFS(deniedStatusReadFS{
+		FS:     fsys.OsFS{},
+		denied: filepath.Join(target, "selected"),
+	}).WithRunner(stub)
+
+	report, err := ComputeStatus(fixture.config, fixture.platform, fixture.manager, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := report.Applications[0].Entries[0]
+	if entry.State != StateUnavailable.String() || !entry.Actionable {
+		t.Fatalf("denied copy target status = %+v, want actionable Unavailable", entry)
+	}
+	if len(stub.Calls) != 0 {
+		t.Fatalf("status inspection spawned privileged commands: %+v", stub.Calls)
 	}
 }
 
@@ -261,7 +362,7 @@ func newStatusSelectedTemplateFixture(t *testing.T, copyMode bool) statusTemplat
 	t.Helper()
 	root := t.TempDir()
 	backupPath := filepath.Join(root, "backup")
-	targetPath := filepath.Join(root, "target")
+	targetPath := filepath.Join(t.TempDir(), "target")
 	if err := os.MkdirAll(backupPath, 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -329,4 +430,16 @@ func writeStatusTemplateFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type deniedStatusReadFS struct {
+	fsys.FS
+	denied string
+}
+
+func (f deniedStatusReadFS) ReadFile(name string) ([]byte, error) {
+	if name == f.denied {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrPermission}
+	}
+	return f.FS.ReadFile(name)
 }

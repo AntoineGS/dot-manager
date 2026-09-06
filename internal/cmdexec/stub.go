@@ -1,16 +1,18 @@
 package cmdexec
 
 import (
+	"bytes"
 	"context"
 	"os/exec"
 )
 
 // Call records a single invocation of Run, RunWithSudo, or RunIn.
 type Call struct {
-	Name string
-	Args []string
-	Dir  string
-	Sudo bool
+	Name  string
+	Args  []string
+	Dir   string
+	Sudo  bool
+	Stdin []byte
 }
 
 // StubRunner is a test fake that records calls and returns pre-configured results.
@@ -57,7 +59,13 @@ func (s *StubRunner) RunWithSudo(_ context.Context, name string, args ...string)
 
 // RunIn records the call with its options and returns the next queued Result.
 func (s *StubRunner) RunIn(_ context.Context, opts RunOptions, name string, args ...string) (Result, error) {
-	s.Calls = append(s.Calls, Call{Name: name, Args: args, Dir: opts.Dir, Sudo: opts.Sudo})
+	s.Calls = append(s.Calls, Call{
+		Name:  name,
+		Args:  args,
+		Dir:   opts.Dir,
+		Sudo:  opts.Sudo,
+		Stdin: bytes.Clone(opts.Stdin),
+	})
 
 	return s.popResult(name), nil
 }

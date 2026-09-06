@@ -150,3 +150,24 @@ func TestStubRunner_RunIn_RecordsDirAndSudo(t *testing.T) {
 		t.Error("Call.Sudo = false, want true")
 	}
 }
+
+func TestStubRunner_RunIn_SnapshotsStdin(t *testing.T) {
+	stub := cmdexec.NewStubRunner()
+	input := []byte("private input")
+
+	if _, err := stub.RunIn(
+		context.Background(),
+		cmdexec.RunOptions{Stdin: input},
+		"private-command",
+	); err != nil {
+		t.Fatalf("RunIn returned error: %v", err)
+	}
+
+	input[0] = 'X'
+	if len(stub.Calls) != 1 {
+		t.Fatalf("expected 1 recorded call, got %d", len(stub.Calls))
+	}
+	if got, want := string(stub.Calls[0].Stdin), "private input"; got != want {
+		t.Errorf("Call.Stdin = %q, want snapshot %q", got, want)
+	}
+}

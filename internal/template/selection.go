@@ -48,6 +48,18 @@ func HasSelectionCollisions(files []string, caseInsensitive bool) bool {
 	return ValidateSelectionCollisions(files, caseInsensitive) != nil
 }
 
+// ValidateCopySelectionCollisions rejects path claims that can interfere with
+// copy-template deployment. Copy templates do not create the symlink-mode
+// rendered cache or suffix-free repository alias, so those paths are
+// intentionally not reserved here.
+func ValidateCopySelectionCollisions(files []string, caseInsensitive bool) error {
+	sourceClaims, targetClaims := copySelectionPathClaims(files)
+	if err := validatePathClaimsIncludingAncestors(sourceClaims, caseInsensitive); err != nil {
+		return err
+	}
+	return validatePathClaimsIncludingAncestors(targetClaims, caseInsensitive)
+}
+
 func selectionPathClaims(files []string) (sourceClaims, targetClaims []selectionPathClaim) {
 	for _, file := range files {
 		cleanPath := filepath.Clean(file)
@@ -82,6 +94,34 @@ func selectionPathClaims(files []string) (sourceClaims, targetClaims []selection
 	return sourceClaims, targetClaims
 }
 
+func copySelectionPathClaims(files []string) (sourceClaims, targetClaims []selectionPathClaim) {
+	for _, file := range files {
+		cleanPath := filepath.Clean(file)
+		if !IsTemplateFile(file) {
+			owner := fmt.Sprintf("literal source %q", file)
+			sourceClaims = append(sourceClaims, selectionPathClaim{path: cleanPath, owner: owner})
+			targetClaims = append(targetClaims, selectionPathClaim{
+				path:  cleanPath,
+				owner: fmt.Sprintf("literal target %q", file),
+			})
+			continue
+		}
+
+		targetPath := filepath.Join(filepath.Dir(cleanPath), TargetName(cleanPath))
+		owner := fmt.Sprintf("template %q", cleanPath)
+		sourceClaims = append(sourceClaims,
+			selectionPathClaim{path: cleanPath, owner: owner},
+			selectionPathClaim{path: filepath.Clean(ConflictPath(cleanPath)), owner: owner},
+		)
+		targetClaims = append(targetClaims,
+			selectionPathClaim{path: filepath.Clean(targetPath), owner: owner},
+			selectionPathClaim{path: filepath.Clean(targetPath + ".tidydots.bak"), owner: owner},
+		)
+	}
+
+	return sourceClaims, targetClaims
+}
+
 func validatePathClaims(claims []selectionPathClaim, caseInsensitive bool) error {
 	owners := make(map[string]selectionPathClaim, len(claims))
 	for _, claim := range claims {
@@ -93,4 +133,36 @@ func validatePathClaims(claims []selectionPathClaim, caseInsensitive bool) error
 		owners[key] = claim
 	}
 	return nil
+}
+
+func validatePathClaimsIncludingAncestors(claims []selectionPathClaim, caseInsensitive bool) error {
+	for i, claim := range claims {
+		for _, previous := range claims[:i] {
+			if !pathClaimsOverlap(claim.path, previous.path, caseInsensitive) {
+				continue
+			}
+
+			return fmt.Errorf("selected path %q is claimed by both %q and %q",
+				claim.path, previous.owner, claim.owner)
+		}
+	}
+	return nil
+}
+
+func pathClaimsOverlap(first, second string, caseInsensitive bool) bool {
+	first = PathClaimKey(first, caseInsensitive)
+	second = PathClaimKey(second, caseInsensitive)
+	if first == second {
+		return true
+	}
+
+	return pathClaimContains(first, second) || pathClaimContains(second, first)
+}
+
+func pathClaimContains(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil || rel == "." || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

@@ -373,7 +373,7 @@ func TestBackupFilesSubEntry_SkipsTemplateSources(t *testing.T) {
 	}
 }
 
-func TestRestoreFiles_CopyTemplateRemainsLiteral(t *testing.T) {
+func TestRestoreFiles_CopyTemplateRendersIntoSuffixFreeTarget(t *testing.T) {
 	backup, target, mgr, _ := setupTemplateTest(t)
 	literal := "Host={{ .Hostname }}"
 	writeTemplateFile(t, filepath.Join(backup, "config.tmpl"), literal)
@@ -387,12 +387,19 @@ func TestRestoreFiles_CopyTemplateRemainsLiteral(t *testing.T) {
 	if err := mgr.RestoreFiles(entry, backup, target); err != nil {
 		t.Fatalf("RestoreFiles copy mode: %v", err)
 	}
-	path := filepath.Join(target, "config.tmpl")
-	if got := readTemplateTestFile(t, path); got != literal {
-		t.Fatalf("copy target = %q, want literal template bytes", got)
+	path := filepath.Join(target, "config")
+	if got := readTemplateTestFile(t, path); got != "Host=testhost" {
+		t.Fatalf("copy target = %q, want rendered content", got)
 	}
 	if testIsSymlink(path) {
 		t.Fatal("copy mode created a symlink")
+	}
+	if testPathExists(filepath.Join(target, "config.tmpl")) {
+		t.Fatal("copy mode retained the template suffix at the target")
+	}
+	if testPathExists(filepath.Join(backup, "config")) ||
+		testPathExists(tmpl.RenderedPath(filepath.Join(backup, "config.tmpl"))) {
+		t.Fatal("copy mode created a repository alias or rendered cache")
 	}
 }
 

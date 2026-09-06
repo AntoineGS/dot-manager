@@ -11,6 +11,8 @@ type FS interface {
 	Lstat(name string) (fs.FileInfo, error)
 	ReadFile(name string) ([]byte, error)
 	WriteFile(name string, data []byte, perm fs.FileMode) error
+	WriteFileExclusive(name string, data []byte, perm fs.FileMode) error
+	Chmod(name string, mode fs.FileMode) error
 	MkdirAll(path string, perm fs.FileMode) error
 	Remove(name string) error
 	RemoveAll(path string) error

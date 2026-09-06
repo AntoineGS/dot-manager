@@ -55,3 +55,21 @@ func TestOsRunner_RunIn_NonZeroExitReportsExitCode(t *testing.T) {
 		t.Errorf("ExitCode = %d, want 3", res.ExitCode)
 	}
 }
+
+func TestOsRunner_RunIn_ForwardsStdin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("cat is not available on Windows")
+	}
+
+	res, err := cmdexec.OsRunner{}.RunIn(
+		context.Background(),
+		cmdexec.RunOptions{Stdin: []byte("private input")},
+		"cat",
+	)
+	if err != nil {
+		t.Fatalf("RunIn returned error: %v", err)
+	}
+	if string(res.Stdout) != "private input" {
+		t.Errorf("stdout = %q, want %q", res.Stdout, "private input")
+	}
+}

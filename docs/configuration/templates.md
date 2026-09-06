@@ -13,6 +13,13 @@ Template files use the `.tmpl` suffix. During restore, tidydots generates siblin
 | `config.toml.tmpl.conflict` | Conflict markers from merge (generated, gitignored) |
 | `config.toml` | Relative symlink pointing to `config.toml.tmpl.rendered` |
 
+The `.tmpl.rendered` cache and relative alias are used by symlink-mode entries.
+For `method: copy`, a selected template is rendered directly to the real target
+(`config.toml`); the repository cache and alias are not created. A first
+deployment that replaces an existing target may create the exclusive target-side
+recovery file `config.toml.tidydots.bak`; `--force-render` explicitly bypasses
+that no-history backup.
+
 The symlink target on your system (e.g., `~/.config/alacritty/alacritty.toml`) points into your backup directory, where `alacritty.toml` is itself a relative symlink to `alacritty.toml.tmpl.rendered`.
 
 ## Template Context Variables
@@ -177,7 +184,7 @@ applications:
 
 ## How Template Restore Works
 
-When `tidydots restore` encounters a `.tmpl` file in a backup directory:
+When symlink-mode `tidydots restore` encounters a `.tmpl` file in a backup directory:
 
 1. **Read** the template source file (`config.toml.tmpl`)
 2. **Render** it using the template engine with the current platform context
@@ -187,6 +194,37 @@ When `tidydots restore` encounters a `.tmpl` file in a backup directory:
 6. **Store** the pure render output in the SQLite state database (`.tidydots.db`)
 
 Non-template files in the same backup directory get normal symlinks as usual.
+
+#### Copy-mode template deployment
+
+With `method: copy` and an explicit `.tmpl` selection, restore follows the same
+rendering and history policy but deploys the result as a real target file:
+
+1. Read and hash the `.tmpl` source and read the current target.
+2. Look up the normalized source path in `.tidydots.db`.
+3. If the source hash is unchanged and the target exists, retain the target
+   content without inventing a new base (while repairing a migration symlink or
+   sudo ownership when necessary; existing regular-file modes are retained).
+4. Otherwise render the source and merge `base` (the prior pure render),
+   `theirs` (the current target), and `ours` (the new render).
+5. Deploy the merged result. On conflict, deploy the pure render and write the
+   full recovery content to the `.tmpl.conflict` artifact before changing the
+   target.
+6. Save the pure render and source hash only after deployment and artifact work
+   succeeds.
+
+The template source remains the source of truth for generated lines, while
+unchanged user edits in the target are preserved by the three-way merge. An
+ordinary copy entry still overwrites target drift rather than merging it. The
+`--force-render` flag bypasses the merge and overwrites the target with the fresh
+render. Without an initialized state database, copy templates use no-history
+semantics, save an exclusive `<target>.tidydots.bak` before replacing an
+existing target, and do not create a second cache or state mechanism; the
+explicit `--force-render` path bypasses that backup. Matching content alone is
+not a no-op when the required target type or sudo ownership needs repair.
+Existing regular modes are retained, native-created files use source
+permissions, sudo-enabled Linux new or symlink-replacement files use `0600`,
+and conflict/recovery artifacts use `0600`.
 
 ### Explicit file selections
 
@@ -224,12 +262,15 @@ relative alias in the backup directory keeps the source template and the
 generated content distinct while the target uses the expected suffix-free name.
 
 Template status and rendered-file diff discovery also use only the listed
-templates. Folder entries continue to discover templates recursively, and a
-missing rendered output is reported as needing a re-render rather than healthy.
+templates. For symlink entries, folder entries continue to discover templates
+recursively, and a missing rendered output is reported as needing a re-render
+rather than healthy. Copy entries inspect their live suffix-free targets instead
+of a rendered repository file.
 
-Entries using `method: copy` keep their literal behavior: a selected `.tmpl`
-file is copied to a `.tmpl` target without rendering. During backup, symlink
-entries skip selected `.tmpl` sources so an installed file cannot overwrite the
+Entries using `method: copy` deliberately render selected `.tmpl` files into
+suffix-free real targets. This is a deliberate compatibility change from the
+former literal-copy behavior. During backup, selected `.tmpl` sources are
+skipped in both symlink and copy modes so an installed file cannot overwrite the
 template source in the repository.
 
 #### Restore safety for selected templates
@@ -238,10 +279,12 @@ Before a selected-template restore mutates the entry, tidydots validates all
 selected template sources and template-derived paths together. A selected
 source must be a regular, renderable file within the entry; selected template
 and literal paths may not collide; generated output aliases may not conflict
-with sources or each other; and source/target aliases and unsafe symlink
-parents are rejected. Literal selections still go through their normal restore
-checks as they are deployed, so a missing literal source or disallowed target
-can fail later.
+with sources or each other; concrete targets may not overlap the repository,
+state database, or generated artifacts; and source/target aliases and unsafe
+symlink parents are rejected. A target root above a nested repository is valid
+when its concrete deployed files are outside the repository. Literal selections
+still go through their normal restore checks as they are deployed, so a missing
+literal source or disallowed target can fail later.
 
 Run the narrowest restore as a dry run first to inspect the intended work:
 
@@ -251,14 +294,16 @@ tidydots restore <app> gitconfig -n
 
 #### Backup behavior
 
-For symlink entries with explicit selections, `tidydots backup` deliberately
-skips selected `.tmpl` paths. The deployed suffix-free target is a link through
-the backup alias, not a replacement template source. Copy entries retain their
-normal literal backup and restore behavior.
+For entries with explicit selections, `tidydots backup` deliberately skips
+selected `.tmpl` paths in both symlink and copy modes. In symlink mode, the
+deployed suffix-free target is a link through the backup alias; in copy mode, it
+is a generated real file. Neither may replace the template source in the repo.
+Ordinary non-template copy files retain their normal literal backup behavior.
 
 ## 3-Way Merge
 
-The 3-way merge system preserves manual edits you make to rendered files. It uses three inputs:
+The 3-way merge system preserves manual edits you make to rendered files. For
+symlink-mode templates it uses these inputs:
 
 | Input | Source | Description |
 |-------|--------|-------------|
@@ -283,7 +328,9 @@ If none of the fast paths apply, the merge proceeds line-by-line:
 
 ### Conflict Markers
 
-When a conflict is detected, the merged output contains markers:
+When a conflict is detected, the merged output contains markers. In symlink
+mode, tidydots writes those markers to `.tmpl.conflict` and keeps the valid
+pure render in `.tmpl.rendered`:
 
 ```
 <<<<<<< user-edits
@@ -293,10 +340,12 @@ font_size = 12
 >>>>>>> template
 ```
 
-When a conflict occurs, tidydots writes the full merged content, including
-conflict markers, to `.tmpl.conflict`. It overwrites `.tmpl.rendered` with the
-fresh template output so the configuration consumed by applications remains
-valid. Any manual edits that could not be merged remain available in the
+For symlink mode, tidydots writes the full merged content, including conflict
+markers, to `.tmpl.conflict`. It overwrites `.tmpl.rendered` with the fresh
+template output so the configuration consumed by applications remains valid.
+For copy mode, the same recovery content is saved beside the source while the
+suffix-free target receives the pure render; copy mode has no `.tmpl.rendered`
+cache. Any manual edits that could not be merged remain available in the
 conflict file.
 
 !!! tip "Resolving Conflicts"
@@ -306,11 +355,13 @@ conflict file.
 
 ### Skip Optimization
 
-If the template source has not changed (detected via SHA-256 hash comparison against the database), and the rendered file already exists on disk, tidydots skips re-rendering entirely and just ensures the relative symlink is correct.
+If the template source has not changed (detected via SHA-256 hash comparison against the database), and the rendered file already exists on disk, symlink mode skips re-rendering entirely and just ensures the relative symlink is correct. Copy mode uses the same source-byte hash fast path when its suffix-free target exists, preserving target edits without creating a repository cache. The hash does not include hostname, OS, user, or environment context; use `--force-render` to refresh output when context changes.
 
 ## Force Render
 
-The `--force-render` flag bypasses the 3-way merge and overwrites the rendered file with the new template output, discarding any user edits.
+The `--force-render` flag bypasses the 3-way merge and overwrites the rendered
+file, or the suffix-free copy target, with the new template output, discarding
+any user edits.
 
 In the interactive TUI, this behavior is labeled **Force Restore** and is
 available with `R`. The normal `r` Restore action preserves rendered-template
@@ -323,7 +374,7 @@ tidydots restore --force-render
 ```
 
 !!! warning
-    Using `--force-render` permanently discards any manual edits to `.tmpl.rendered` files. There is no undo.
+    Using `--force-render` permanently discards any manual edits to `.tmpl.rendered` files or copy-mode targets. There is no undo.
 
 ## Live Preview
 

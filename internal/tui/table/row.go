@@ -29,6 +29,8 @@ const (
 	StateSetupOk
 	// StateSetupNeeded indicates a setup entry whose check command fails.
 	StateSetupNeeded
+	// StateUnavailable indicates status could not be inspected safely.
+	StateUnavailable
 )
 
 // stateLinkedLabel is the display label for StateLinked.
@@ -55,6 +57,8 @@ func (s PathState) String() string {
 		return "Set up"
 	case StateSetupNeeded:
 		return "Needs setup"
+	case StateUnavailable:
+		return "Unavailable"
 	}
 
 	return "Unknown"
@@ -73,6 +77,8 @@ func (s PathState) Severity() int {
 		return 1
 	case StateLoading, StateLinked, StateSetupOk:
 		return 0
+	case StateUnavailable:
+		return 3
 	}
 
 	return 0

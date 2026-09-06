@@ -1,14 +1,17 @@
 package tui
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/AntoineGS/tidydots/internal/cmdexec"
 	"github.com/AntoineGS/tidydots/internal/config"
+	"github.com/AntoineGS/tidydots/internal/fsys"
 	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/platform"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
@@ -354,7 +357,7 @@ func TestDetectSubEntryState_SelectedTemplateIgnoresUnselectedNeighborSyncAndAsy
 	}
 }
 
-func TestDetectSubEntryState_CopyTemplateRemainsLiteral(t *testing.T) {
+func TestDetectSubEntryState_CopyTemplateUsesLiveTargetStatus(t *testing.T) {
 	fixture := newTUICopyTemplateFixture(t)
 
 	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateLinked {
@@ -363,6 +366,175 @@ func TestDetectSubEntryState_CopyTemplateRemainsLiteral(t *testing.T) {
 	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateLinked {
 		t.Fatalf("async copy state = %v, want StateLinked", got)
 	}
+}
+
+func TestDetectSubEntryState_CopyTemplateSourceDriftIsOutdated(t *testing.T) {
+	fixture := newTUICopyTemplateFixture(t)
+	writeTUITemplateFile(t, fixture.templatePath, "changed {{ .Hostname }}")
+
+	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateOutdated {
+		t.Fatalf("sync copy state = %v, want StateOutdated", got)
+	}
+	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateOutdated {
+		t.Fatalf("async copy state = %v, want StateOutdated", got)
+	}
+}
+
+func TestDetectSubEntryState_CopyTemplateTargetEditIsModified(t *testing.T) {
+	fixture := newTUICopyTemplateFixture(t)
+	writeTUITemplateFile(t, filepath.Join(fixture.item.Target, "config"), "user edit")
+
+	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateModified {
+		t.Fatalf("sync copy state = %v, want StateModified", got)
+	}
+	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateModified {
+		t.Fatalf("async copy state = %v, want StateModified", got)
+	}
+}
+
+func TestDetectSubEntryState_CopyTemplateWithoutManagerIsUnavailable(t *testing.T) {
+	fixture := newTUICopyTemplateFixture(t)
+	fixture.model.Manager = nil
+
+	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateUnavailable {
+		t.Fatalf("sync copy state = %v, want StateUnavailable", got)
+	}
+	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, nil); got != StateUnavailable {
+		t.Fatalf("async copy state = %v, want StateUnavailable", got)
+	}
+}
+
+func TestDetectSubEntryState_CopyTemplateDeniedReadIsUnavailableWithoutSudo(t *testing.T) {
+	fixture := newTUICopyTemplateFixture(t)
+	fixture.item.SubEntry.Sudo = true
+	stub := cmdexec.NewStubRunner()
+	denied := fixture.manager.WithFS(deniedTUIReadFS{
+		FS:     fsys.OsFS{},
+		denied: filepath.Join(fixture.item.Target, "config"),
+	}).WithRunner(stub)
+	fixture.model.Manager = denied
+
+	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateUnavailable {
+		t.Fatalf("sync copy state = %v, want StateUnavailable", got)
+	}
+	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, denied); got != StateUnavailable {
+		t.Fatalf("async copy state = %v, want StateUnavailable", got)
+	}
+	if len(stub.Calls) != 0 {
+		t.Fatalf("status inspection spawned privileged commands: %+v", stub.Calls)
+	}
+}
+
+func TestCopyTemplateStateMatrixMatchesSyncStaticAndStatus(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("copy state matrix requires symlinks")
+	}
+	tests := []struct {
+		name       string
+		mutate     func(t *testing.T, fixture *tuiTemplateFixture) *manager.Manager
+		want       PathState
+		wantAction bool
+	}{
+		{
+			name: "healthy",
+			mutate: func(_ *testing.T, fixture *tuiTemplateFixture) *manager.Manager {
+				return fixture.manager
+			},
+			want: StateLinked,
+		},
+		{
+			name: "missing target",
+			mutate: func(t *testing.T, fixture *tuiTemplateFixture) *manager.Manager {
+				if err := os.Remove(filepath.Join(fixture.item.Target, "config")); err != nil {
+					t.Fatal(err)
+				}
+				return fixture.manager
+			},
+			want:       StateReady,
+			wantAction: true,
+		},
+		{
+			name: "wrong link",
+			mutate: func(t *testing.T, fixture *tuiTemplateFixture) *manager.Manager {
+				destination := filepath.Join(fixture.item.Target, "config")
+				if err := os.Remove(destination); err != nil {
+					t.Fatal(err)
+				}
+				outside := filepath.Join(t.TempDir(), "wrong-target")
+				writeTUITemplateFile(t, outside, "wrong")
+				if err := os.Symlink(outside, destination); err != nil {
+					t.Fatal(err)
+				}
+				return fixture.manager
+			},
+			want:       StateReady,
+			wantAction: true,
+		},
+		{
+			name: "missing history",
+			mutate: func(_ *testing.T, fixture *tuiTemplateFixture) *manager.Manager {
+				withoutHistory := manager.New(fixture.config, fixture.platform)
+				fixture.model.Manager = withoutHistory
+				return withoutHistory
+			},
+			want:       StateOutdated,
+			wantAction: true,
+		},
+		{
+			name: "unsafe selection",
+			mutate: func(_ *testing.T, fixture *tuiTemplateFixture) *manager.Manager {
+				fixture.item.SubEntry.Files = []string{"config.tmpl", "config"}
+				return fixture.manager
+			},
+			want:       StateUnavailable,
+			wantAction: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newTUICopyTemplateFixture(t)
+			inspectionManager := tt.mutate(t, &fixture)
+			fixture.config.Applications = []config.Application{{
+				Name:    "tool",
+				Entries: []config.SubEntry{fixture.item.SubEntry},
+			}}
+
+			if got := fixture.model.detectSubEntryState(&fixture.item); got != tt.want {
+				t.Fatalf("sync state = %v, want %v", got, tt.want)
+			}
+			if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, inspectionManager); got != tt.want {
+				t.Fatalf("static state = %v, want %v", got, tt.want)
+			}
+
+			report, err := ComputeStatus(fixture.config, fixture.platform, inspectionManager, tt.wantAction)
+			if err != nil {
+				t.Fatalf("ComputeStatus: %v", err)
+			}
+			if len(report.Applications) != 1 || len(report.Applications[0].Entries) != 1 {
+				t.Fatalf("status report = %+v, want one actionable entry", report)
+			}
+			entry := report.Applications[0].Entries[0]
+			if entry.State != tt.want.String() || entry.Actionable != tt.wantAction {
+				t.Fatalf("status entry = %+v, want state %q/actionable %v", entry, tt.want.String(), tt.wantAction)
+			}
+			if tt.want.Actionable() && !report.Actionable {
+				t.Fatalf("status report = %+v, want actionable report", report)
+			}
+		})
+	}
+}
+
+type deniedTUIReadFS struct {
+	fsys.FS
+	denied string
+}
+
+func (f deniedTUIReadFS) ReadFile(name string) ([]byte, error) {
+	if name == f.denied {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrPermission}
+	}
+	return f.FS.ReadFile(name)
 }
 
 type tuiTemplateFixture struct {
@@ -422,7 +594,7 @@ func newTUICopyTemplateFixture(t *testing.T) tuiTemplateFixture {
 	t.Helper()
 	root := t.TempDir()
 	backupPath := filepath.Join(root, "backup")
-	targetPath := filepath.Join(root, "target")
+	targetPath := filepath.Join(t.TempDir(), "target")
 	if err := os.MkdirAll(backupPath, 0o750); err != nil {
 		t.Fatal(err)
 	}

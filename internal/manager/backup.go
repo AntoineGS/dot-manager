@@ -139,7 +139,7 @@ func (m *Manager) backupFilesSubEntry(_ string, subEntry config.SubEntry, backup
 	}
 
 	for _, file := range subEntry.Files {
-		if !subEntry.IsCopy() && tmpl.IsTemplateFile(file) {
+		if tmpl.IsTemplateFile(file) {
 			m.logger.Debug("skipping template source during backup", slog.String("file", file))
 			continue
 		}

@@ -19,15 +19,14 @@ func skipIfNoSymlink(t *testing.T) {
 	}
 }
 
-// skipIfNoSudo skips tests that assert on the sudo code path. copyFileTo,
-// removePath and filesEqual all gate that path behind runtime.GOOS != Windows,
-// so on Windows they silently fall through to the filesystem abstraction and
-// the runner records no calls.
+// skipIfNoSudo skips tests that assert on the Linux sudo code path. The
+// template-copy primitives use native access on Windows and reject elevated
+// copy-template operations on unsupported Unix platforms.
 func skipIfNoSudo(t *testing.T) {
 	t.Helper()
 
-	if runtime.GOOS == platform.OSWindows {
-		t.Skip("sudo code paths are not taken on Windows")
+	if runtime.GOOS != platform.OSLinux {
+		t.Skip("sudo code paths are Linux-only")
 	}
 }
 
