@@ -407,6 +407,9 @@ func TestNeedsAttention(t *testing.T) {
 		if !needsAttention(StateAdopt.String()) {
 			t.Errorf("StateAdopt should need attention")
 		}
+		if !needsAttention(StateCheckFailed.String()) {
+			t.Errorf("StateCheckFailed should need attention")
+		}
 	})
 
 	t.Run("sub-entry state does not need attention when Linked", func(t *testing.T) {
@@ -730,5 +733,39 @@ func TestAppInfoMaxState_SetupNeeded(t *testing.T) {
 	}
 	if got := appInfoMaxState(app); got != StateSetupNeeded {
 		t.Errorf("expected StateSetupNeeded, got %v", got)
+	}
+}
+
+func TestAppInfoMaxState_CheckFailedBeatsOutdated(t *testing.T) {
+	app := ApplicationItem{
+		SubItems: []SubEntryItem{
+			{State: StateOutdated},
+			{State: StateCheckFailed},
+		},
+	}
+	if got := appInfoMaxState(app); got != StateCheckFailed {
+		t.Errorf("expected StateCheckFailed, got %v", got)
+	}
+}
+
+func TestFlattenApplications_SetupDiagnosticReplacesGenericInfo(t *testing.T) {
+	apps := []ApplicationItem{
+		{
+			Application: config.Application{Name: "tool"},
+			SubItems: []SubEntryItem{{
+				SubEntry:   config.SubEntry{Name: "remote-check", Check: map[string]string{"linux": "check"}, Run: map[string]string{"linux": "run"}},
+				State:      StateCheckFailed,
+				CheckError: "remote unavailable",
+			}},
+			Expanded: true,
+		},
+	}
+
+	rows := flattenApplications(apps, "linux", false)
+	if len(rows) != 2 {
+		t.Fatalf("flattenApplications returned %d rows, want 2", len(rows))
+	}
+	if got := rows[1].Data[2]; got != "remote unavailable" {
+		t.Errorf("setup diagnostic info = %q, want %q", got, "remote unavailable")
 	}
 }

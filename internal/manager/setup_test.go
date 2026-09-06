@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -148,12 +149,143 @@ func TestRunSetupEntry_DryRun_RunsCheckButNeverRun(t *testing.T) {
 	}
 }
 
+func TestRunSetupStatusCheckErrorNeverRuns(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dry-run=%t", dryRun), func(t *testing.T) {
+			stub := cmdexec.NewStubRunner()
+			stub.AddResult("sh", cmdexec.Result{ExitCode: 3, Stderr: []byte("remote unavailable")})
+			entry := setupEntry()
+			entry.CheckMode = config.CheckModeStatus
+
+			err := newSetupManager(stub, dryRun).RunSetup("tool", entry)
+			if err == nil || !strings.Contains(err.Error(), "remote unavailable") {
+				t.Fatalf("error = %v", err)
+			}
+			if calls := shellCalls(stub); len(calls) != 1 {
+				t.Fatalf("executed beyond pre-check: %+v", calls)
+			}
+		})
+	}
+}
+
+func TestRunSetupStatusSequences(t *testing.T) {
+	for _, tt := range []struct {
+		name                    string
+		check, run              int
+		checkStderr             string
+		postCheck               int
+		postStderr              string
+		wantErr                 bool
+		wantPostCheckDiagnostic string
+		wantCalls               int
+	}{
+		{
+			name:        "missing then applied",
+			check:       1,
+			checkStderr: "not installed",
+			postCheck:   0,
+			wantCalls:   3,
+		},
+		{
+			name:        "outdated then applied",
+			check:       2,
+			checkStderr: "refresh available",
+			postCheck:   0,
+			wantCalls:   3,
+		},
+		{
+			name:                    "missing remains missing with diagnostic",
+			check:                   1,
+			postCheck:               1,
+			postStderr:              "still not installed",
+			wantErr:                 true,
+			wantPostCheckDiagnostic: "still not installed",
+			wantCalls:               3,
+		},
+		{name: "outdated remains outdated", check: 2, run: 0, postCheck: 2, wantErr: true, wantCalls: 3},
+		{
+			name:                    "outdated remains outdated with diagnostic",
+			check:                   2,
+			postCheck:               2,
+			postStderr:              "refresh still pending",
+			wantErr:                 true,
+			wantPostCheckDiagnostic: "refresh still pending",
+			wantCalls:               3,
+		},
+		{
+			name:                    "outdated becomes indeterminate",
+			check:                   2,
+			run:                     0,
+			postCheck:               3,
+			postStderr:              "remote unavailable",
+			wantErr:                 true,
+			wantPostCheckDiagnostic: "remote unavailable",
+			wantCalls:               3,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			stub := cmdexec.NewStubRunner()
+			stub.AddResult("sh", cmdexec.Result{ExitCode: tt.check, Stderr: []byte(tt.checkStderr)})
+			stub.AddResult("sh", cmdexec.Result{ExitCode: tt.run})
+			stub.AddResult("sh", cmdexec.Result{ExitCode: tt.postCheck, Stderr: []byte(tt.postStderr)})
+
+			entry := setupEntry()
+			entry.CheckMode = config.CheckModeStatus
+			err := newSetupManager(stub, false).RunSetup("tool", entry)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("error = %v, wantErr = %t", err, tt.wantErr)
+			}
+			if tt.wantPostCheckDiagnostic != "" &&
+				(err == nil || !strings.Contains(err.Error(), tt.wantPostCheckDiagnostic)) {
+				t.Fatalf("error = %v, want post-check diagnostic %q", err, tt.wantPostCheckDiagnostic)
+			}
+			if calls := shellCalls(stub); len(calls) != tt.wantCalls {
+				t.Fatalf("calls = %d, want %d: %+v", len(calls), tt.wantCalls, calls)
+			}
+		})
+	}
+}
+
+func TestRunSetupStatusPostCheckWithoutDiagnosticKeepsGenericError(t *testing.T) {
+	stub := cmdexec.NewStubRunner()
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 1})
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 0})
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 2})
+
+	entry := setupEntry()
+	entry.CheckMode = config.CheckModeStatus
+	err := newSetupManager(stub, false).RunSetup("tool", entry)
+	if err == nil {
+		t.Fatal("expected an error when the post-check remains outdated, got nil")
+	}
+
+	want := "setup tool/enable-service: command succeeded but check still fails"
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestRunSetupStatusDryRunOutdatedOnlyChecks(t *testing.T) {
+	stub := cmdexec.NewStubRunner()
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 2})
+
+	entry := setupEntry()
+	entry.CheckMode = config.CheckModeStatus
+	if err := newSetupManager(stub, true).RunSetup("tool", entry); err != nil {
+		t.Fatalf("RunSetup returned error: %v", err)
+	}
+	if calls := shellCalls(stub); len(calls) != 1 {
+		t.Fatalf("calls = %+v, want only the pre-check", calls)
+	}
+}
+
 func TestRunSetupEntry_OSNotInRunMap_SkipsEntirely(t *testing.T) {
 	stub := cmdexec.NewStubRunner()
 
 	e := setupEntry()
 	e.Check = map[string]string{"windows": "check"}
 	e.Run = map[string]string{"windows": "run"}
+	e.CheckMode = config.CheckModeStatus
 
 	m := newSetupManager(stub, false) // Linux
 
@@ -246,7 +378,7 @@ func TestRestore_SetupEntryFailure_DoesNotAbortRestore(t *testing.T) {
 func TestRestore_EntryWhenSkipsExcludedSetup(t *testing.T) {
 	stub := cmdexec.NewStubRunner()
 	cfg := &config.Config{Version: 3, BackupRoot: "/repo", Applications: []config.Application{{Name: "app", Entries: []config.SubEntry{
-		{Name: "excluded-setup", When: `{{ eq .Hostname "other" }}`, Check: map[string]string{"linux": "check"}, Run: map[string]string{"linux": "run"}},
+		{Name: "excluded-setup", When: `{{ eq .Hostname "other" }}`, Check: map[string]string{"linux": "check"}, Run: map[string]string{"linux": "run"}, CheckMode: config.CheckModeStatus},
 	}}}}
 	m := New(cfg, &platform.Platform{OS: platform.OSLinux, Hostname: "testhost", EnvVars: map[string]string{}}).WithRunner(stub)
 	if err := m.Restore(); err != nil {

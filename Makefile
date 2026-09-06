@@ -1,8 +1,5 @@
 .PHONY: help build test lint lint-fix clean install coverage
 
-TIDYDOTS_SETUP_SCRIPT ?= $(HOME)/gits/configurations/Both/Tidydots/setup-tidydots.sh
-GIT_COMMIT := $(shell git rev-parse HEAD)
-
 # Default target
 help:
 	@echo "Available targets:"
@@ -57,7 +54,3 @@ clean:
 # Install the application
 install:
 	go install ./cmd/tidydots
-	@if [ -f "$(TIDYDOTS_SETUP_SCRIPT)" ]; then \
-		grep -q '^latest_commit=' "$(TIDYDOTS_SETUP_SCRIPT)" || { printf 'missing latest_commit in %s\n' "$(TIDYDOTS_SETUP_SCRIPT)" >&2; exit 1; }; \
-		sed -i 's/^latest_commit=.*/latest_commit="$(GIT_COMMIT)"/' "$(TIDYDOTS_SETUP_SCRIPT)"; \
-	fi

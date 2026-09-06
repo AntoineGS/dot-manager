@@ -159,6 +159,9 @@ func getTypeInfo(subItem SubEntryItem) string {
 	// A setup entry deploys no files; reporting a file count would describe it
 	// as an empty config entry ("0 files").
 	if subItem.SubEntry.IsSetup() {
+		if subItem.CheckError != "" {
+			return subItem.CheckError
+		}
 		return TypeSetup
 	}
 

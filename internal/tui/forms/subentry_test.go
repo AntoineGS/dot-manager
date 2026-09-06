@@ -679,7 +679,8 @@ func TestSubEntryForm_GetFieldType(t *testing.T) {
 		want := []forms.SubEntryFieldType{
 			forms.SubFieldName, forms.SubFieldIsSetup, forms.SubFieldWhen,
 			forms.SubFieldLinuxCheck, forms.SubFieldLinuxRun,
-			forms.SubFieldWindowsCheck, forms.SubFieldWindowsRun, forms.SubFieldIsSudo,
+			forms.SubFieldWindowsCheck, forms.SubFieldWindowsRun,
+			forms.SubFieldCheckMode, forms.SubFieldIsSudo,
 		}
 		if form.MaxIndex() != len(want)-1 {
 			t.Fatalf("MaxIndex() = %d, want %d", form.MaxIndex(), len(want)-1)
@@ -737,6 +738,7 @@ func TestSubEntryForm_IsTextInputField(t *testing.T) {
 		name       string
 		focusIndex int
 		isFolder   bool
+		isSetup    bool
 		want       bool
 	}{
 		{name: "name_is_text_input", focusIndex: 0, want: true},
@@ -747,6 +749,7 @@ func TestSubEntryForm_IsTextInputField(t *testing.T) {
 		{name: "isFolder_is_not_text_input", focusIndex: 6, want: false},
 		{name: "files_is_not_text_input", focusIndex: 7, isFolder: false, want: false},
 		{name: "sudo_in_folder_mode_is_not_text_input", focusIndex: 7, isFolder: true, want: false},
+		{name: "check_mode_is_not_text_input", focusIndex: 7, isSetup: true, want: false},
 	}
 
 	for _, tt := range tests {
@@ -754,6 +757,7 @@ func TestSubEntryForm_IsTextInputField(t *testing.T) {
 			form := forms.NewSubEntryForm(config.SubEntry{})
 			form.FocusIndex = tt.focusIndex
 			form.IsFolder = tt.isFolder
+			form.IsSetup = tt.isSetup
 
 			got := form.IsTextInputField()
 			if got != tt.want {
@@ -790,6 +794,16 @@ func TestSubEntryForm_IsToggleField(t *testing.T) {
 				t.Errorf("IsToggleField() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+
+	setup := forms.NewSubEntryForm(config.SubEntry{
+		Name:  "setup",
+		Check: map[string]string{"linux": "check"},
+		Run:   map[string]string{"linux": "run"},
+	})
+	setup.FocusIndex = 7
+	if !setup.IsToggleField() {
+		t.Error("check mode is not classified as a toggle field")
 	}
 }
 

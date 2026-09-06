@@ -47,13 +47,27 @@ mismatch error.
 
 ```
 1. no `run` command for this OS  -> skip
-2. `check` exits 0               -> skip, report "Set up"
-3. --dry-run                     -> report what would run; never runs it
-4. execute `run`                 -> a non-zero exit is an error
-5. re-run `check`                -> still failing is an error
+2. `check` reports applied        -> skip, report "Set up"
+3. `check` reports an error       -> report the error; never run setup
+4. --dry-run                     -> report what would run; never runs it
+5. execute `run`                 -> a non-zero exit is an error
+6. re-run `check`                -> a non-applied result is an error
 ```
 
-Step 5 catches a script that exits 0 without doing its job.
+An indeterminate or failed status check blocks the run even during `--dry-run`.
+This prevents a remote or otherwise unavailable check from being mistaken for a
+missing setup. Step 6 catches a script that exits 0 without doing its job. A
+post-check diagnostic is surfaced as an error, while a legacy `exit-code` check
+continues to treat every nonzero exit as "still failing."
+
+For a status check, a nonblank diagnostic on **stderr** from exit 1 or 2 is kept
+as a sanitized, bounded diagnostic. These exits remain non-errors for the
+initial check and still authorize `run`; if the post-check returns 1 or 2, its
+diagnostic is appended to the existing "command succeeded but check still
+fails" message. With no diagnostic, that legacy generic message is unchanged.
+Status diagnostics do not use stdout. For Check failed results, tidydots keeps
+the existing stderr-first behavior, then uses the execution error or a fixed
+exit-code fallback.
 
 ## Editing in the TUI
 
@@ -62,13 +76,15 @@ The TUI application form can create and edit setup entries. On the sub-entry for
 
 - `Check (linux)` and `Run (linux)`
 - `Check (windows)` and `Run (windows)`
+- `Check mode` — `exit-code` (default) or `status`
 - `Sudo`
 - `When` — optional condition for this individual setup entry
 
 Each configured OS must have both a check and a run command, and at least one OS must be
 configured. The form refuses to save a partial pair or an entry with no configured OS.
 Setup entries cannot have `backup` or `targets`; choose the config-entry mode to edit those
-fields instead. Saving writes the resulting `check` and `run` maps to `tidydots.yaml`.
+fields instead. Saving writes the resulting `check` and `run` maps plus the optional
+`check_mode` and `when` values to `tidydots.yaml`.
 
 For the **When** field, `enter` or `e` opens the hostname chooser when saved hostname
 choices are available in `tidydots.yaml`. Select hosts with `space` or `tab`, then
@@ -87,6 +103,7 @@ checks also run during TUI state detection, so keep them read-only and fast.
 | `when` | string | Optional. Go-template condition for this setup entry. |
 | `check` | map: OS → command | Required. Exit 0 means "already set up". |
 | `run` | map: OS → command | Required. Runs only when `check` fails. |
+| `check_mode` | string | Optional. `exit-code` (default) or opt-in `status`; setup entries only. |
 | `sudo` | bool | Optional. Runs `run` with elevated privileges. `check` never uses sudo. |
 
 A sub-entry is either a **config entry** (it has a `backup`) or a **setup entry** (it has
@@ -94,6 +111,30 @@ a `run`). It cannot be both, and a setup entry cannot declare `targets`.
 
 Every OS listed under `run` must also be listed under `check`, and vice versa. This is
 enforced at load time.
+
+### Check mode
+
+By default, or when `check_mode` is omitted, checks use `exit-code` mode: exit code 0
+means the setup is already applied, and any nonzero exit code means setup is needed. This
+preserves the standard setup-entry behavior.
+
+Set `check_mode: status` to opt into status mode. The check command's exit code then has
+the following meaning:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Set up |
+| `1` | Needs setup |
+| `2` | Outdated |
+| `3` or higher | Check failed (indeterminate or error) |
+
+Negative process exit codes and failures to launch the check are errors. The `run` command
+always keeps ordinary success/failure semantics: exit code 0 means success and any nonzero
+exit code means failure; `check_mode` does not assign status meanings to `run`.
+
+A **Check failed** result is attention-worthy, but it is not permission to run `run`: the
+check must safely resolve to **Needs setup** or **Outdated** first. Status reporting never
+runs setup commands.
 
 ## The OS map is the platform gate
 

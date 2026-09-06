@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -91,31 +92,6 @@ func (m *Manager) setupWorkDir() string {
 	return config.ExpandPathWithTemplate(m.Config.BackupRoot, m.Platform.EnvVars, m.templateEngine)
 }
 
-// runCheck executes a check command and reports whether the desired system
-// state already holds. A non-zero exit means "not set up" and is NOT an error.
-func (m *Manager) runCheck(command string) bool {
-	name, args := shellCommand(m.Platform.OS, command)
-
-	res, err := m.runner.RunIn(m.ctx, cmdexec.RunOptions{Dir: m.setupWorkDir()}, name, args...) //nolint:gosec // command from trusted config
-
-	return commandSucceeded(res, err)
-}
-
-// IsSetupApplied runs the entry's check command for the current OS and reports
-// whether it passes. An entry that declares no check for this OS does not apply
-// here, and is reported as applied (nothing outstanding).
-//
-// The check command is executed every time this is called. Checks must therefore
-// be side-effect free and fast; see docs/configuration/setup.md.
-func (m *Manager) IsSetupApplied(e config.SubEntry) bool {
-	check := e.GetCheck(m.Platform.OS)
-	if check == "" {
-		return true
-	}
-
-	return m.runCheck(check)
-}
-
 // RunSetup executes a single setup sub-entry: it runs the entry's check and,
 // if the check fails, the setup command, then re-runs the check to confirm the
 // effect landed. It is the exported entry point for callers outside this
@@ -160,7 +136,12 @@ func (m *Manager) runSetupEntry(appName string, e config.SubEntry) error {
 			appName, e.Name, m.Platform.OS)
 	}
 
-	if m.runCheck(check) {
+	checkResult := m.CheckSetup(e)
+	if checkResult.Err != nil {
+		return fmt.Errorf("setup %s/%s: %w", appName, e.Name, checkResult.Err)
+	}
+
+	if checkResult.State == SetupApplied {
 		m.logger.Info("setup already applied",
 			slog.String("app", appName),
 			slog.String("entry", e.Name))
@@ -188,9 +169,17 @@ func (m *Manager) runSetupEntry(appName string, e config.SubEntry) error {
 
 	// Confirm the command actually achieved what it claimed. A script can exit 0
 	// without doing its job; without this, that failure would be invisible.
-	if !m.runCheck(check) {
-		return fmt.Errorf("setup %s/%s: command succeeded but check still fails",
+	postCheck := m.CheckSetup(e)
+	if postCheck.Err != nil {
+		return fmt.Errorf("setup %s/%s: %w", appName, e.Name, postCheck.Err)
+	}
+	if postCheck.State != SetupApplied {
+		message := fmt.Sprintf("setup %s/%s: command succeeded but check still fails",
 			appName, e.Name)
+		if postCheck.Diagnostic != "" {
+			message += ": " + postCheck.Diagnostic
+		}
+		return errors.New(message)
 	}
 
 	m.logger.Info("setup applied",

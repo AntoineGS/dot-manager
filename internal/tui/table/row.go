@@ -21,16 +21,20 @@ const (
 	StateMissing
 	// StateLinked indicates already symlinked.
 	StateLinked
-	// StateOutdated indicates linked but template source changed since last render.
+	// StateOutdated indicates linked but a template source changed since last
+	// render, or a setup entry needs an update.
 	StateOutdated
 	// StateModified indicates linked but rendered file has user edits.
 	StateModified
 	// StateSetupOk indicates a setup entry whose check command passes.
 	StateSetupOk
-	// StateSetupNeeded indicates a setup entry whose check command fails.
+	// StateSetupNeeded indicates a setup entry whose check reports setup is needed.
 	StateSetupNeeded
 	// StateUnavailable indicates status could not be inspected safely.
 	StateUnavailable
+	// StateCheckFailed indicates a setup entry whose check could not determine
+	// the current state.
+	StateCheckFailed
 )
 
 // stateLinkedLabel is the display label for StateLinked.
@@ -59,6 +63,8 @@ func (s PathState) String() string {
 		return "Needs setup"
 	case StateUnavailable:
 		return "Unavailable"
+	case StateCheckFailed:
+		return "Check failed"
 	}
 
 	return "Unknown"
@@ -69,7 +75,7 @@ func (s PathState) String() string {
 // choosing an application's highest-severity entry state.
 func (s PathState) Severity() int {
 	switch s {
-	case StateMissing, StateReady, StateAdopt, StateSetupNeeded:
+	case StateMissing, StateReady, StateAdopt, StateSetupNeeded, StateCheckFailed:
 		return 3
 	case StateOutdated:
 		return 2

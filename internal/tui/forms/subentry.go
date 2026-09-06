@@ -25,11 +25,12 @@ const (
 	SubFieldLinuxRun
 	SubFieldWindowsCheck
 	SubFieldWindowsRun
-	SubFieldBackup   // Config-specific
-	SubFieldIsFolder // Config-specific toggle
-	SubFieldFiles    // Config-specific list
-	SubFieldIsSudo   // Sudo toggle
-	SubFieldIsCopy   // Deployment method toggle: copy instead of symlink
+	SubFieldBackup    // Config-specific
+	SubFieldIsFolder  // Config-specific toggle
+	SubFieldFiles     // Config-specific list
+	SubFieldIsSudo    // Sudo toggle
+	SubFieldIsCopy    // Deployment method toggle: copy instead of symlink
+	SubFieldCheckMode // Setup-specific check exit-code interpretation
 )
 
 // AddFileMode represents the current mode for adding files to the files list
@@ -73,6 +74,7 @@ type SubEntryForm struct {
 	BackupInput        textinput.Model
 	NewFileInput       textinput.Model
 	FilePicker         filepicker.Model
+	CheckMode          string
 	EditingFileIndex   int
 	TargetAppIdx       int
 	EditSubIdx         int
@@ -124,6 +126,8 @@ func (f *SubEntryForm) GetFieldType() SubEntryFieldType {
 		case 6:
 			return SubFieldWindowsRun
 		case 7:
+			return SubFieldCheckMode
+		case 8:
 			return SubFieldIsSudo
 		}
 		return SubFieldName
@@ -174,7 +178,7 @@ func (f *SubEntryForm) MaxIndex() int {
 	}
 
 	if f.IsSetup {
-		return 7
+		return 8
 	}
 
 	// Common fields: name, entry type, when, linux, windows = 5 fields (0-4)
@@ -216,7 +220,7 @@ func (f *SubEntryForm) IsTextInputField() bool {
 	case SubFieldName, SubFieldWhen, SubFieldLinux, SubFieldWindows, SubFieldBackup,
 		SubFieldLinuxCheck, SubFieldLinuxRun, SubFieldWindowsCheck, SubFieldWindowsRun:
 		return true
-	case SubFieldIsSetup, SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy:
+	case SubFieldIsSetup, SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy, SubFieldCheckMode:
 		// These fields don't have suggestions
 	}
 
@@ -231,7 +235,7 @@ func (f *SubEntryForm) IsToggleField() bool {
 
 	ft := f.GetFieldType()
 
-	return ft == SubFieldIsSetup || ft == SubFieldIsFolder || ft == SubFieldIsSudo || ft == SubFieldIsCopy
+	return ft == SubFieldIsSetup || ft == SubFieldIsFolder || ft == SubFieldIsSudo || ft == SubFieldIsCopy || ft == SubFieldCheckMode
 }
 
 // UpdateFocus updates which input field is focused
@@ -271,7 +275,7 @@ func (f *SubEntryForm) UpdateFocus() {
 		f.WindowsRunInput.Focus()
 	case SubFieldBackup:
 		f.BackupInput.Focus()
-	case SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy:
+	case SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy, SubFieldCheckMode:
 		// Boolean and list fields don't use text input focus
 	}
 }
@@ -322,7 +326,7 @@ func (f *SubEntryForm) EnterFieldEditMode() {
 		f.OriginalValue = f.BackupInput.Value()
 		f.BackupInput.Focus()
 		f.BackupInput.SetCursor(len(f.BackupInput.Value()))
-	case SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy:
+	case SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy, SubFieldCheckMode:
 		// Boolean and list fields don't use text input editing
 	}
 }
@@ -353,7 +357,7 @@ func (f *SubEntryForm) CancelFieldEdit() {
 		f.WindowsRunInput.SetValue(f.OriginalValue)
 	case SubFieldBackup:
 		f.BackupInput.SetValue(f.OriginalValue)
-	case SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy:
+	case SubFieldIsFolder, SubFieldFiles, SubFieldIsSudo, SubFieldIsCopy, SubFieldCheckMode:
 		// Boolean and list fields don't use text input restoration
 	}
 
@@ -389,6 +393,12 @@ func (f *SubEntryForm) Validate() error {
 }
 
 func (f *SubEntryForm) buildSetupEntry(name string) (config.SubEntry, error) {
+	switch f.CheckMode {
+	case "", config.CheckModeExitCode, config.CheckModeStatus:
+	default:
+		return config.SubEntry{}, errors.New("check mode must be \"exit-code\" or \"status\"")
+	}
+
 	check := make(map[string]string)
 	run := make(map[string]string)
 	fields := []struct {
@@ -414,7 +424,14 @@ func (f *SubEntryForm) buildSetupEntry(name string) (config.SubEntry, error) {
 	if len(run) == 0 {
 		return config.SubEntry{}, errors.New("at least one OS must have both setup check and run commands")
 	}
-	return config.SubEntry{Name: name, When: strings.TrimSpace(f.WhenInput.Value()), Check: check, Run: run, Sudo: f.IsSudo}, nil
+	return config.SubEntry{
+		Name:      name,
+		When:      strings.TrimSpace(f.WhenInput.Value()),
+		Check:     check,
+		Run:       run,
+		CheckMode: f.CheckMode,
+		Sudo:      f.IsSudo,
+	}, nil
 }
 
 // buildMethod resolves the toggle back to a method string. Turning copy off
@@ -529,6 +546,7 @@ func NewSubEntryForm(entry config.SubEntry) *SubEntryForm {
 		WindowsCheckInput:  windowsCheckInput,
 		WindowsRunInput:    windowsRunInput,
 		BackupInput:        backupInput,
+		CheckMode:          entry.CheckMode,
 		IsSudo:             entry.Sudo,
 		IsCopy:             entry.IsCopy(),
 		Method:             entry.Method,

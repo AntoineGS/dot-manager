@@ -34,15 +34,18 @@ The main screen displays a table view of all your applications and their entries
 | Linked | Symlink is correct, or a copy target is present and in sync |
 | Adopt | Target exists but backup does not -- symlink mode can adopt the existing file |
 | Missing | Neither backup nor target exist |
-| Outdated | A listed `.tmpl` source or its render history requires an update; symlink entries inspect rendered output and copy entries inspect the suffix-free target |
+| Outdated | A listed `.tmpl` source or its render history requires an update; symlink entries inspect rendered output and copy entries inspect the suffix-free target; for a setup entry using `check_mode: status`, the check returned `2` (the setup is present but needs updating) |
 | Modified | A rendered template file or suffix-free copy target differs from its pure render; folder entries inspect discovered templates recursively |
 | Unavailable | tidydots could not safely inspect a selected template source or live target; review access and run the TUI in an environment that can read the file |
 | Loading... | State not yet resolved -- shown briefly for [setup entries](../configuration/setup.md) while their check command runs |
 | Set up | Setup entry: the check command passed -- nothing to do |
-| Needs setup | Setup entry: the check command failed -- restore will run the setup command |
+| Needs setup | Setup entry: the check reports setup is needed -- restore will run the setup command |
+| Check failed | Setup entry: the status check could not determine whether setup is applied; the diagnostic is shown in the info column |
 
 !!! info
-    Setup entries can't be resolved by inspecting the filesystem the way config entries can -- their state comes from actually running the entry's `check` command. tidydots runs that check in a background goroutine rather than on the UI thread, so a setup entry's row may briefly show **Loading...** before settling on **Set up** or **Needs setup**.
+    Setup entries can't be resolved by inspecting the filesystem the way config entries can -- their state comes from actually running the entry's `check` command. tidydots runs that check in a background goroutine rather than on the UI thread, so a setup entry's row may briefly show **Loading...** before settling on **Set up**, **Needs setup**, **Outdated**, or **Check failed**. With `check_mode: status`, check exits `0`, `1`, and `2` mean **Set up**, **Needs setup**, and **Outdated**; other exits and launch/cancellation failures are **Check failed**. A failed check's stderr is cleaned up to a single, bounded diagnostic and shown in the row's info column; the diagnostic is cleared while a refresh is running.
+
+    In status mode, the code mapping is **0 = Set up**, **1 = Needs setup**, **2 = Outdated**, and **3 or higher = Check failed**. A failed check is actionable so it remains visible for diagnosis, but the TUI never treats it as permission to run the setup command.
 
 For config entries with an explicit `files` list, “listed” means only the
 selected `.tmpl` source names participate in template status. An entry with an
@@ -116,7 +119,7 @@ their application-level `when` expression are hidden. When disabled, those appli
 are shown. Entries excluded by their own `when` are removed before table filtering and
 remain absent in either mode.
 
-Press `x` to toggle the action filter. It keeps applications with an uninstalled package and entries whose state needs attention (`Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, `Modified`, or `Unavailable`). The filter composes with search and the `f` platform filter. If enabling it would hide selected items, tidydots asks for confirmation; answer `y` to enable it or `n` to leave the current view and selections unchanged. Confirming does not clear selections.
+Press `x` to toggle the action filter. It keeps applications with an uninstalled package and entries whose state needs attention (`Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, `Check failed`, `Modified`, or `Unavailable`). The filter composes with search and the `f` platform filter. If enabling it would hide selected items, tidydots asks for confirmation; answer `y` to enable it or `n` to leave the current view and selections unchanged. Confirming does not clear selections. A **Check failed** entry is actionable for visibility and diagnosis, but its setup command is not run until the check can safely determine the current state.
 
 The TUI can start with this filter already enabled by running `tidydots --actions`. This keeps the normal interactive behavior while showing actionable work as soon as status checks settle.
 
@@ -292,7 +295,15 @@ saved on that entry, so it combines with the parent application's condition.
 
 ### Edit a setup entry
 
- Navigate to an entry and press `e`, then toggle **Setup entry**. The form exposes paired `Check` and `Run` fields for Linux and Windows, **Sudo**, and **When**. The **When** editor and hostname chooser work the same way as for config entries. Each OS must have both commands or neither, and at least one OS must be configured. Save writes the `check`, `run`, and optional `when` string to `tidydots.yaml`. A setup entry cannot also have backup or target fields. You can run it from the TUI with `r` and delete it with `d`.
+ Navigate to an entry and press `e`, then toggle **Setup entry**. The form exposes paired `Check` and `Run` fields for Linux and Windows, **Check mode**, **Sudo**, and **When**. The **When** editor and hostname chooser work the same way as for config entries. Each OS must have both commands or neither, and at least one OS must be configured. Save writes the `check`, `run`, optional `check_mode`, and optional `when` values to `tidydots.yaml`. A setup entry cannot also have backup or target fields. You can run it from the TUI with `r` and delete it with `d`.
+
+The **Check mode** selector is setup-only. It displays `exit-code` when `check_mode` is
+omitted, preserving the legacy behavior where exit `0` means applied and any nonzero
+exit means setup is needed. Use `←`/`h` to choose `exit-code`, `→`/`l` to choose
+`status`, or `space`/`enter` to toggle between them. An untouched omitted value remains
+omitted when the form is saved. In `status` mode, exit codes `0`, `1`, and `2` mean
+Set up, Needs setup, and Outdated; `3` or higher is Check failed. See the
+[status-code table](../configuration/setup.md#check-mode) for the complete contract.
 
 Check commands must remain read-only and fast because they run during every TUI state refresh; see [Setup Entries](../configuration/setup.md).
 

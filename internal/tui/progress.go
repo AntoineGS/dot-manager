@@ -24,9 +24,10 @@ type pkgCheckResultMsg struct {
 
 // stateCheckResultMsg is sent when a single sub-entry state check completes.
 type stateCheckResultMsg struct {
-	appIndex int
-	subIndex int
-	state    PathState
+	appIndex   int
+	subIndex   int
+	state      PathState
+	checkError string
 }
 
 // subEntryAppliesToOS reports whether a sub-entry has anything to do on this OS.
@@ -34,7 +35,7 @@ type stateCheckResultMsg struct {
 // A setup entry qualifies when it declares a run command for the OS — the same
 // condition manager.runSetupEntry uses to decide whether to act. Listing an
 // entry that does not apply here would report it as "Set up" (its check is
-// absent, so IsSetupApplied has nothing outstanding to report), which is a
+// absent, so CheckSetup has nothing outstanding to report), which is a
 // claim about a machine the entry never targeted.
 //
 // A config entry qualifies when it declares a target path for the OS.
@@ -115,8 +116,13 @@ func (m *Model) initApplicationItems() {
 // existing states for all apps except the edited one. The edited app gets its
 // sub-entry states synchronously refreshed. Pass empty string to preserve all states.
 func (m *Model) reinitPreservingState(editedAppName string) {
+	type savedSubState struct {
+		state      PathState
+		checkError string
+	}
+
 	type savedAppState struct {
-		subStates    map[string]PathState // subEntry name -> state
+		subStates    map[string]savedSubState // subEntry name -> state and diagnostic
 		pkgMethod    string
 		pkgInstalled *bool
 		expanded     bool
@@ -125,9 +131,12 @@ func (m *Model) reinitPreservingState(editedAppName string) {
 	// Save existing states by app name
 	saved := make(map[string]savedAppState)
 	for _, app := range m.Applications {
-		subStates := make(map[string]PathState)
+		subStates := make(map[string]savedSubState)
 		for _, sub := range app.SubItems {
-			subStates[sub.SubEntry.Name] = sub.State
+			subStates[sub.SubEntry.Name] = savedSubState{
+				state:      sub.State,
+				checkError: sub.CheckError,
+			}
 		}
 		saved[app.Application.Name] = savedAppState{
 			subStates:    subStates,
@@ -165,7 +174,8 @@ func (m *Model) reinitPreservingState(editedAppName string) {
 			// For other apps, restore previous sub-entry states
 			for j, sub := range app.SubItems {
 				if state, exists := prev.subStates[sub.SubEntry.Name]; exists {
-					m.Applications[i].SubItems[j].State = state
+					m.Applications[i].SubItems[j].State = state.state
+					m.Applications[i].SubItems[j].CheckError = state.checkError
 				}
 			}
 		}
@@ -182,6 +192,7 @@ func (m *Model) refreshApplicationStates() {
 	for i := range m.Applications {
 		for j := range m.Applications[i].SubItems {
 			m.Applications[i].SubItems[j].State = m.detectSubEntryState(&m.Applications[i].SubItems[j])
+			m.Applications[i].SubItems[j].CheckError = ""
 		}
 	}
 }

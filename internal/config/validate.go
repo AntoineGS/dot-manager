@@ -39,6 +39,11 @@ func validateSetupEntry(appName string, entry SubEntry) []error {
 	entryPath := fmt.Sprintf("%s/%s", appName, entry.Name)
 
 	if !entry.IsSetup() {
+		if entry.CheckMode != "" {
+			errs = append(errs, NewFieldError(entryPath, "check_mode", entry.CheckMode,
+				fmt.Errorf("check_mode is only valid for setup entries")))
+		}
+
 		// Not a setup entry. A stray `check` with no `run` is dead config.
 		if len(entry.Check) > 0 {
 			errs = append(errs, NewFieldError(entryPath, "check", "",
@@ -46,6 +51,13 @@ func validateSetupEntry(appName string, entry SubEntry) []error {
 		}
 
 		return errs
+	}
+
+	switch entry.CheckMode {
+	case "", CheckModeExitCode, CheckModeStatus:
+	default:
+		errs = append(errs, NewFieldError(entryPath, "check_mode", entry.CheckMode,
+			fmt.Errorf("must be %q or %q", CheckModeExitCode, CheckModeStatus)))
 	}
 
 	// A setup entry deploys nothing, so backup and targets are meaningless on it.

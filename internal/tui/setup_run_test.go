@@ -98,7 +98,7 @@ func TestInitApplicationItems_SetupOnlyApp_IsNotDropped(t *testing.T) {
 
 // TestInitApplicationItems_SkipsSetupEntryForOtherOS mirrors runSetupEntry,
 // which skips an entry with no run command for the current OS. Listing such an
-// entry would report it as "Set up" (its check is absent, so IsSetupApplied
+// entry would report it as "Set up" (its check is absent, so CheckSetup
 // reports nothing outstanding), which is a claim about a machine it never
 // applied to.
 func TestInitApplicationItems_SkipsSetupEntryForOtherOS(t *testing.T) {
@@ -625,8 +625,8 @@ func TestSetupRun_EndToEnd_RealSubprocess(t *testing.T) {
 	sub := m.Applications[0].SubItems[0]
 
 	// Before: the check fails, so the row is flagged as needing setup.
-	if got := detectSubEntryStateStatic(sub, plat, cfg, mgr); got != StateSetupNeeded {
-		t.Fatalf("state before running = %v, want StateSetupNeeded", got)
+	if got, diagnostic := detectSubEntryStateStatic(sub, plat, cfg, mgr); got != StateSetupNeeded || diagnostic != "" {
+		t.Fatalf("state before running = (%v, %q), want (StateSetupNeeded, \"\")", got, diagnostic)
 	}
 
 	// Restore the row: the setup entry runs for real, through the same

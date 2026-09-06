@@ -420,7 +420,11 @@ func writeHumanStatus(out io.Writer, report tui.StatusReport) error {
 			return err
 		}
 		for _, entry := range app.Entries {
-			if _, err := fmt.Fprintf(out, "  %s: %s\n", entry.Name, entry.State); err != nil {
+			detail := entry.State
+			if entry.Error != "" {
+				detail += ": " + entry.Error
+			}
+			if _, err := fmt.Fprintf(out, "  %s: %s\n", entry.Name, detail); err != nil {
 				return err
 			}
 		}

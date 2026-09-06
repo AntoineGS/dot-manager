@@ -382,6 +382,58 @@ func TestStatusJSONIsStableAndActionableDoesNotChangeExitStatus(t *testing.T) {
 	}
 }
 
+func TestStatusCommandReportsFailedSetupCheckInTextAndJSON(t *testing.T) {
+	preserveCommandGlobals(t)
+
+	dir := t.TempDir()
+	configYAML := `version: 3
+applications:
+  - name: tool
+    entries:
+      - name: remote-check
+        check_mode: status
+        check:
+          linux: "printf 'remote unavailable' >&2; exit 3"
+        run:
+          linux: "printf 'setup should not run' >&2; exit 0"
+`
+	if err := os.WriteFile(filepath.Join(dir, "tidydots.yaml"), []byte(configYAML), 0o600); err != nil {
+		t.Fatalf("writing failed-check config: %v", err)
+	}
+
+	textOutput, err := executeStatusCommandArgs(t, dir, "status")
+	if err != nil {
+		t.Fatalf("text status command error = %v", err)
+	}
+	if !strings.Contains(textOutput, "remote-check: Check failed: remote unavailable") {
+		t.Fatalf("text status omitted failed-check diagnostic:\n%s", textOutput)
+	}
+
+	jsonOutput, err := executeStatusCommandArgs(t, dir, "status", "--json")
+	if err != nil {
+		t.Fatalf("JSON status command error = %v", err)
+	}
+	var report tui.StatusReport
+	if err := json.Unmarshal([]byte(jsonOutput), &report); err != nil {
+		t.Fatalf("failed-check status output is not JSON: %v\n%s", err, jsonOutput)
+	}
+	entry := findStatusEntry(t, report, "remote-check")
+	if entry.State != tui.StateCheckFailed.String() || entry.Error != "remote unavailable" || !entry.Actionable {
+		t.Fatalf("failed-check status entry = %+v, want state, diagnostic, and actionable", entry)
+	}
+
+	actionsOutput, err := executeStatusCommandArgs(t, dir, "status", "--actions", "--json")
+	if err != nil {
+		t.Fatalf("actionable status command returned an error: %v", err)
+	}
+	if err := json.Unmarshal([]byte(actionsOutput), &report); err != nil {
+		t.Fatalf("actionable status output is not JSON: %v\n%s", err, actionsOutput)
+	}
+	if !report.Actionable || len(report.Applications) != 1 || len(report.Applications[0].Entries) != 1 {
+		t.Fatalf("actionable report = %+v, want one actionable application and entry", report)
+	}
+}
+
 func TestStatusFailureReturnsError(t *testing.T) {
 	preserveCommandGlobals(t)
 

@@ -52,6 +52,7 @@ type StatusEntry struct {
 	Name       string `json:"name"`
 	Kind       string `json:"kind"`
 	State      string `json:"state"`
+	Error      string `json:"error,omitempty"`
 	Actionable bool   `json:"actionable"`
 	Target     string `json:"target"`
 	Backup     string `json:"backup"`
@@ -213,6 +214,7 @@ func buildStatusApplication(app ApplicationItem, osType string) StatusApplicatio
 			Name:       sub.SubEntry.Name,
 			Kind:       kind,
 			State:      sub.State.String(),
+			Error:      sub.CheckError,
 			Actionable: sub.State.Actionable(),
 			Target:     sub.SubEntry.GetTarget(osType),
 			Backup:     sub.SubEntry.Backup,

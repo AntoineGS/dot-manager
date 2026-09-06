@@ -69,16 +69,20 @@ const (
 	StateMissing = tuitable.StateMissing
 	// StateLinked indicates already symlinked.
 	StateLinked = tuitable.StateLinked
-	// StateOutdated indicates linked but template source changed since last render.
+	// StateOutdated indicates linked but a template source changed since last
+	// render, or a setup entry needs an update.
 	StateOutdated = tuitable.StateOutdated
 	// StateModified indicates linked but rendered file has user edits.
 	StateModified = tuitable.StateModified
 	// StateSetupOk indicates a setup entry whose check command passes.
 	StateSetupOk = tuitable.StateSetupOk
-	// StateSetupNeeded indicates a setup entry whose check command fails.
+	// StateSetupNeeded indicates a setup entry whose check reports setup is needed.
 	StateSetupNeeded = tuitable.StateSetupNeeded
 	// StateUnavailable indicates status could not be inspected safely.
 	StateUnavailable = tuitable.StateUnavailable
+	// StateCheckFailed indicates a setup entry whose check could not determine
+	// the current state.
+	StateCheckFailed = tuitable.StateCheckFailed
 )
 
 // TableRow is an alias for tuitable.Row so that all existing code in
@@ -221,6 +225,8 @@ type SubEntryItem struct {
 	Target   string
 	SubEntry config.SubEntry
 	State    PathState
+	// CheckError contains a bounded diagnostic when a setup status check fails.
+	CheckError string
 	// Index is this entry's position in its application's SubItems. It is carried
 	// on the item because the search filter (getSearchedApplications) hands the
 	// table a compacted copy of SubItems holding only the matching entries: a
@@ -644,6 +650,7 @@ func (m Model) handlePkgCheckResult(msg pkgCheckResultMsg) (tea.Model, tea.Cmd) 
 func (m Model) handleStateCheckResult(msg stateCheckResultMsg) (tea.Model, tea.Cmd) {
 	if msg.appIndex < len(m.Applications) && msg.subIndex < len(m.Applications[msg.appIndex].SubItems) {
 		m.Applications[msg.appIndex].SubItems[msg.subIndex].State = msg.state
+		m.Applications[msg.appIndex].SubItems[msg.subIndex].CheckError = msg.checkError
 	}
 	m.decrementPendingAndRebuild()
 	return m, nil

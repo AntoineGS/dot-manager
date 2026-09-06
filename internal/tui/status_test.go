@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"encoding/json"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/AntoineGS/tidydots/internal/cmdexec"
@@ -95,6 +97,62 @@ func TestComputeStatusResolvesChecksAndUsesActionFilter(t *testing.T) {
 	}
 	if actions.Applications[0].Entries[0].Name != "ready" || actions.Applications[0].Entries[1].Name != "setup" {
 		t.Fatalf("action entries = %+v, want ready and setup", actions.Applications[0].Entries)
+	}
+}
+
+func TestComputeStatusPropagatesSetupDiagnosticsAndOmitsSuccessfulErrors(t *testing.T) {
+	failed := config.SubEntry{
+		Name:      "remote-check",
+		CheckMode: config.CheckModeStatus,
+		Check:     map[string]string{"linux": "check"},
+		Run:       map[string]string{"linux": "run"},
+	}
+	successful := config.SubEntry{
+		Name:      "local-check",
+		CheckMode: config.CheckModeStatus,
+		Check:     map[string]string{"linux": "check"},
+		Run:       map[string]string{"linux": "run"},
+	}
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: t.TempDir(),
+		Applications: []config.Application{{
+			Name:    "tool",
+			Entries: []config.SubEntry{failed, successful},
+		}},
+	}
+	plat := linuxPlatform()
+	stub := cmdexec.NewStubRunner()
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 3, Stderr: []byte("remote unavailable")})
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 0})
+	mgr := manager.New(cfg, plat).WithRunner(stub)
+
+	report, err := ComputeStatus(cfg, plat, mgr, false)
+	if err != nil {
+		t.Fatalf("ComputeStatus() error = %v", err)
+	}
+	if len(report.Applications) != 1 || len(report.Applications[0].Entries) != 2 {
+		t.Fatalf("report entries = %+v, want two setup entries", report.Applications)
+	}
+
+	failedEntry := report.Applications[0].Entries[0]
+	if failedEntry.State != StateCheckFailed.String() || failedEntry.Error != "remote unavailable" || !failedEntry.Actionable {
+		t.Fatalf("failed entry = %+v, want check failed, diagnostic, actionable", failedEntry)
+	}
+	successfulEntry := report.Applications[0].Entries[1]
+	if successfulEntry.Error != "" {
+		t.Fatalf("successful entry error = %q, want empty", successfulEntry.Error)
+	}
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("json.Marshal(report): %v", err)
+	}
+	if !strings.Contains(string(data), `"error":"remote unavailable"`) {
+		t.Fatalf("JSON omitted failed diagnostic: %s", data)
+	}
+	if strings.Contains(string(data), `"error":""`) {
+		t.Fatalf("JSON encoded an empty successful diagnostic: %s", data)
 	}
 }
 

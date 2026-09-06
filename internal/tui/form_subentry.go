@@ -39,6 +39,7 @@ const (
 	subFieldFiles        = forms.SubFieldFiles
 	subFieldIsSudo       = forms.SubFieldIsSudo
 	subFieldIsCopy       = forms.SubFieldIsCopy
+	subFieldCheckMode    = forms.SubFieldCheckMode
 )
 
 // Mode constants from forms package.
@@ -172,6 +173,7 @@ func (m *Model) initSubEntryFormWithType(appIdx, subIdx int, entryType newSubEnt
 		IsCopy:             isCopy,
 		IsSetup:            isSetup,
 		Method:             sub.Method,
+		CheckMode:          sub.CheckMode,
 		BackupInput:        backupInput,
 		// Retain the original maps for callers that inspect the form state; setup
 		// command inputs are the source of truth when IsSetup is enabled.
@@ -334,6 +336,10 @@ func (m Model) updateSubEntryForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
+	case m.getSubEntryFieldType() == subFieldCheckMode && key.Matches(msg, subEntryCheckModeToggleKey):
+		m.subEntryForm.ToggleCheckMode()
+		return m, nil
+
 	case key.Matches(msg, FormNavKeys.Toggle):
 		// Handle toggles
 		ft := m.getSubEntryFieldType()
@@ -353,6 +359,14 @@ func (m Model) updateSubEntryForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case subFieldName, subFieldLinux, subFieldWindows, subFieldBackup, subFieldFiles:
 			// Text and list fields don't toggle
 		}
+
+	case m.getSubEntryFieldType() == subFieldCheckMode && key.Matches(msg, subEntryCheckModeExitCodeKey):
+		m.subEntryForm.CheckMode = config.CheckModeExitCode
+		return m, nil
+
+	case m.getSubEntryFieldType() == subFieldCheckMode && key.Matches(msg, subEntryCheckModeStatusKey):
+		m.subEntryForm.CheckMode = config.CheckModeStatus
+		return m, nil
 
 	case key.Matches(msg, FormNavKeys.Edit):
 		// Enter edit mode for text fields
@@ -384,6 +398,9 @@ func (m Model) updateSubEntryForm(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case subFieldIsCopy:
 			m.subEntryForm.IsCopy = !m.subEntryForm.IsCopy
+			return m, nil
+		case subFieldCheckMode:
+			m.subEntryForm.ToggleCheckMode()
 			return m, nil
 		case subFieldName, subFieldLinux, subFieldWindows, subFieldBackup, subFieldFiles:
 			// Text and list fields don't toggle
@@ -826,7 +843,7 @@ func (m Model) renderSubEntryFieldValue(fieldType subEntryFieldType, placeholder
 		input = m.subEntryForm.BackupInput
 	case subFieldWhen:
 		input = m.subEntryForm.WhenInput
-	case subFieldIsSetup, subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy:
+	case subFieldIsSetup, subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy, subFieldCheckMode:
 		return placeholder
 	default:
 		return placeholder
@@ -942,6 +959,15 @@ func (m Model) renderSubEntryFormHelp() string {
 		// Text field focused (not editing)
 		return RenderHelpFromBindings(m.width,
 			FormNavKeys.Edit,
+			FormNavKeys.Save,
+		)
+	}
+
+	if ft == subFieldCheckMode {
+		return RenderHelpFromBindings(m.width,
+			subEntryCheckModeExitCodeKey,
+			subEntryCheckModeStatusKey,
+			subEntryCheckModeToggleKey,
 			FormNavKeys.Save,
 		)
 	}

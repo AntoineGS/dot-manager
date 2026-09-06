@@ -265,7 +265,13 @@ tidydots status [flags]
 | `--actions` | Show only applications and entries that need action |
 | `--json` | Output stable structured JSON |
 
-Status waits for every package, config, template, and setup check used by the TUI before deciding whether an item is actionable. For selected templates in `method: copy` entries, it compares the source hash and render history with the live suffix-free target; target edits are `Modified`, source or history changes are `Outdated`, and missing targets are `Ready`. Status reads are native-only and never request `sudo` interactively, even when the entry has `sudo: true`; an unreadable source or target is reported as actionable `Unavailable`. An actionable result is still a successful command and exits `0`; configuration or status-computation failures exit nonzero. The command honors the global `--dir`, `--os`, and `--verbose` flags.
+Status waits for every package, config, template, and setup check used by the TUI before deciding whether an item is actionable. For selected templates in `method: copy` entries, it compares the source hash and render history with the live suffix-free target; target edits are `Modified`, source or history changes are `Outdated`, and missing targets are `Ready`. Status reads are native-only and never request `sudo` interactively, even when the entry has `sudo: true`; an unreadable source or target is reported as actionable `Unavailable`. An actionable result is still a successful command and exits `0`; configuration or status-computation failures exit nonzero. A failed setup check is reported as attention in the result, not as a failure of the `status` command, and `status` never executes setup/update commands. The command honors the global `--dir`, `--os`, and `--verbose` flags.
+
+Setup checks use legacy `exit-code` mode by default: exit `0` is **Set up** and any
+nonzero exit is **Needs setup**. A setup entry can opt into `check_mode: status`, where
+the meanings are **0 = Set up**, **1 = Needs setup**, **2 = Outdated**, and **3 or higher
+= Check failed**. A failed check is actionable attention, not permission to run setup;
+`status` reports it and remains read-only.
 
 With `--actions`, the `applications` array is reduced using the same predicate as the TUI `x` filter. `counts` always includes totals and actionable counts for all applications and entries that apply to the selected platform.
 
@@ -306,7 +312,28 @@ With `--actions`, the `applications` array is reduced using the same predicate a
 }
 ```
 
-`state` uses the same labels as the TUI. Actionable entry states are `Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, `Modified`, and `Unavailable`; an uninstalled package is actionable when its installation method is available. `Unavailable` means status could not safely read or validate the selected source or live target, rather than meaning the target is absent. `package` is an object when the application defines a package and contains its selected `name`, `method`, nullable `installed` value, and `actionable` flag.
+`state` uses the same labels as the TUI. Actionable entry states are `Missing`, `Ready`, `Adopt`, `Needs setup`, `Outdated`, `Check failed`, `Modified`, and `Unavailable`; an uninstalled package is actionable when its installation method is available. `Unavailable` means status could not safely read or validate the selected source or live target, rather than meaning the target is absent. A setup entry whose status check cannot determine the state includes an optional `error` field containing its bounded diagnostic, for example:
+
+```text
+  remote-check: Check failed: remote unavailable
+```
+
+The corresponding JSON entry includes the same diagnostic:
+
+```json
+{
+  "name": "remote-check",
+  "kind": "setup",
+  "state": "Check failed",
+  "error": "remote unavailable",
+  "actionable": true,
+  "target": "",
+  "backup": "",
+  "method": ""
+}
+```
+
+Successful entries omit `error` from JSON. `actionable` indicates attention is needed; it does not mean that the status command or a previous update failed. `package` is an object when the application defines a package and contains its selected `name`, `method`, nullable `installed` value, and `actionable` flag.
 
 ### Examples
 

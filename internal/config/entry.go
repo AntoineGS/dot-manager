@@ -14,6 +14,14 @@ const (
 	MethodCopy = "copy"
 )
 
+// Setup check modes for a setup SubEntry.
+const (
+	// CheckModeExitCode interprets a zero check exit code as already set up.
+	CheckModeExitCode = "exit-code"
+	// CheckModeStatus interprets check exit codes as setup status values.
+	CheckModeStatus = "status"
+)
+
 // managerGit is the managers-map key whose value is a GitPackage object rather
 // than a plain package name.
 const managerGit = "git"
@@ -272,9 +280,11 @@ type SubEntry struct {
 	Name    string            `yaml:"name"`
 	When    string            `yaml:"when,omitempty"`
 	Method  string            `yaml:"method,omitempty"` // "" | "symlink" (default) | "copy"
-	Backup  string            `yaml:"backup,omitempty"`
-	Files   []string          `yaml:"files,omitempty"`
-	Sudo    bool              `yaml:"sudo,omitempty"`
+	// CheckMode selects how a setup entry interprets check command exit codes.
+	CheckMode string   `yaml:"check_mode,omitempty"`
+	Backup    string   `yaml:"backup,omitempty"`
+	Files     []string `yaml:"files,omitempty"`
+	Sudo      bool     `yaml:"sudo,omitempty"`
 }
 
 // IsConfig returns true if this is a config type sub-entry

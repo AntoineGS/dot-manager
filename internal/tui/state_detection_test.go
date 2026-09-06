@@ -180,29 +180,232 @@ func newStubManager(stub *cmdexec.StubRunner) *manager.Manager {
 }
 
 func TestDetectSetupPathState_NilManager_ReturnsSetupOk(t *testing.T) {
-	got := detectSetupPathState(setupSubEntry(), nil)
-	if got != StateSetupOk {
-		t.Errorf("detectSetupPathState with nil manager = %v, want StateSetupOk (a nil manager cannot run the check, so it must not falsely flag the entry)", got)
+	got, diagnostic := detectSetupPathState(setupSubEntry(), nil)
+	if got != StateSetupOk || diagnostic != "" {
+		t.Errorf("detectSetupPathState with nil manager = (%v, %q), want (StateSetupOk, \"\") (a nil manager cannot run the check, so it must not falsely flag the entry)", got, diagnostic)
 	}
 }
 
-func TestDetectSetupPathState_CheckPasses_ReturnsSetupOk(t *testing.T) {
+func TestDetectSetupPathState_StatusModeMapsExitCodesAndDiagnostics(t *testing.T) {
+	for _, tt := range []struct {
+		code       int
+		state      PathState
+		diagnostic string
+	}{
+		{code: 0, state: StateSetupOk, diagnostic: ""},
+		{code: 1, state: StateSetupNeeded, diagnostic: ""},
+		{code: 2, state: StateOutdated, diagnostic: ""},
+		{code: 3, state: StateCheckFailed, diagnostic: "remote unavailable"},
+	} {
+		stub := cmdexec.NewStubRunner()
+		stub.AddResult("sh", cmdexec.Result{ExitCode: tt.code, Stderr: []byte("remote unavailable")})
+		cfg := &config.Config{Version: 3, BackupRoot: t.TempDir()}
+		plat := &platform.Platform{OS: platform.OSLinux}
+		mgr := manager.New(cfg, plat).WithRunner(stub)
+		entry := config.SubEntry{
+			Name:      "binary",
+			CheckMode: config.CheckModeStatus,
+			Check:     map[string]string{"linux": "check"},
+			Run:       map[string]string{"linux": "run"},
+		}
+
+		state, diagnostic := detectSetupPathState(entry, mgr)
+		if state != tt.state || diagnostic != tt.diagnostic {
+			t.Fatalf("code %d: got (%v, %q), want (%v, %q)", tt.code, state, diagnostic, tt.state, tt.diagnostic)
+		}
+	}
+}
+
+func TestStateCheckResult_RecheckClearsPreviousDiagnostic(t *testing.T) {
 	stub := cmdexec.NewStubRunner()
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 3, Stderr: []byte("remote unavailable")})
 	stub.AddResult("sh", cmdexec.Result{ExitCode: 0})
 
-	got := detectSetupPathState(setupSubEntry(), newStubManager(stub))
-	if got != StateSetupOk {
-		t.Errorf("detectSetupPathState with passing check = %v, want StateSetupOk", got)
+	entry := setupSubEntry()
+	entry.CheckMode = config.CheckModeStatus
+	cfg := setupOnlyConfig(entry)
+	plat := linuxPlatform()
+	mgr := manager.New(cfg, plat).WithRunner(stub)
+	m := NewModel(cfg, plat, false)
+	m.Manager = mgr
+
+	firstMsg := collectMsgs(m.subEntryStateCheckCmd(0, 0))
+	if len(firstMsg) != 1 {
+		t.Fatalf("first check produced %d messages, want 1", len(firstMsg))
+	}
+	updated, _ := m.Update(firstMsg[0])
+	first := updated.(Model)
+	if first.pendingStateChecks != 0 {
+		t.Fatalf("pendingStateChecks after failed check = %d, want 0", first.pendingStateChecks)
+	}
+	if got := first.Applications[0].SubItems[0].CheckError; got != "remote unavailable" {
+		t.Fatalf("failed check diagnostic = %q, want %q", got, "remote unavailable")
+	}
+
+	refreshCmd := first.refreshAllStates()
+	if first.pendingStateChecks != 1 {
+		t.Fatalf("pendingStateChecks during recheck = %d, want 1", first.pendingStateChecks)
+	}
+	if got := first.Applications[0].SubItems[0].CheckError; got != "" {
+		t.Fatalf("loading recheck retained stale diagnostic %q", got)
+	}
+
+	secondMsg := collectMsgs(refreshCmd)
+	if len(secondMsg) != 1 {
+		t.Fatalf("successful recheck produced %d messages, want 1", len(secondMsg))
+	}
+	updated, _ = first.Update(secondMsg[0])
+	final := updated.(Model)
+	if final.pendingStateChecks != 0 {
+		t.Fatalf("pendingStateChecks after successful recheck = %d, want 0", final.pendingStateChecks)
+	}
+	if got := final.Applications[0].SubItems[0].State; got != StateSetupOk {
+		t.Fatalf("state after successful recheck = %v, want StateSetupOk", got)
+	}
+	if got := final.Applications[0].SubItems[0].CheckError; got != "" {
+		t.Fatalf("successful recheck diagnostic = %q, want empty", got)
 	}
 }
 
-func TestDetectSetupPathState_CheckFails_ReturnsSetupNeeded(t *testing.T) {
-	stub := cmdexec.NewStubRunner()
-	stub.AddResult("sh", cmdexec.Result{ExitCode: 1})
+func TestReinitPreservingState_PreservesUneditedSetupDiagnostic(t *testing.T) {
+	failedEntry := setupSubEntry()
+	failedEntry.Name = "failed-check"
+	failedEntry.CheckMode = config.CheckModeStatus
 
-	got := detectSetupPathState(setupSubEntry(), newStubManager(stub))
-	if got != StateSetupNeeded {
-		t.Errorf("detectSetupPathState with failing check = %v, want StateSetupNeeded", got)
+	editedEntry := setupSubEntry()
+	editedEntry.Name = "existing-check"
+	editedEntry.CheckMode = config.CheckModeStatus
+
+	const failedAppName = "failed-app"
+	const editedAppName = "edited-app"
+	cfg := &config.Config{
+		Version:    3,
+		BackupRoot: t.TempDir(),
+		Applications: []config.Application{
+			{Name: failedAppName, Entries: []config.SubEntry{failedEntry}},
+			{Name: editedAppName, Entries: []config.SubEntry{editedEntry}},
+		},
+	}
+	stub := cmdexec.NewStubRunner()
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 3, Stderr: []byte("remote unavailable")})
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 0})
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 0})
+	stub.AddResult("sh", cmdexec.Result{ExitCode: 0})
+	plat := linuxPlatform()
+	mgr := manager.New(cfg, plat).WithRunner(stub)
+	m := NewModel(cfg, plat, false)
+	m.Manager = mgr
+
+	applyCheck := func(appName string) {
+		t.Helper()
+		appIndex := -1
+		for i, app := range m.Applications {
+			if app.Application.Name == appName {
+				appIndex = i
+				break
+			}
+		}
+		if appIndex == -1 {
+			t.Fatalf("application %q not found", appName)
+		}
+
+		messages := collectMsgs(m.subEntryStateCheckCmd(appIndex, 0))
+		if len(messages) != 1 {
+			t.Fatalf("%s check produced %d messages, want 1", appName, len(messages))
+		}
+		updated, _ := m.Update(messages[0])
+		next, ok := updated.(Model)
+		if !ok {
+			t.Fatalf("%s check returned model type %T, want Model", appName, updated)
+		}
+		m = next
+	}
+
+	applyCheck(failedAppName)
+	applyCheck(editedAppName)
+
+	failedAppIndex := -1
+	editedAppIndex := -1
+	for i, app := range m.Applications {
+		switch app.Application.Name {
+		case failedAppName:
+			failedAppIndex = i
+		case editedAppName:
+			editedAppIndex = i
+		}
+	}
+	if failedAppIndex == -1 || editedAppIndex == -1 {
+		t.Fatalf("rebuilt model omitted test applications: failed=%d edited=%d", failedAppIndex, editedAppIndex)
+	}
+	if got := m.Applications[failedAppIndex].SubItems[0].CheckError; got != "remote unavailable" {
+		t.Fatalf("initial failed diagnostic = %q, want %q", got, "remote unavailable")
+	}
+	if m.pendingStateChecks != 0 {
+		t.Fatalf("pending checks before rebuild = %d, want 0", m.pendingStateChecks)
+	}
+
+	for i, app := range m.Config.Applications {
+		if app.Name != editedAppName {
+			continue
+		}
+		m.Config.Applications[i].Description = "unrelated edit"
+		addedEntry := setupSubEntry()
+		addedEntry.Name = "added-check"
+		addedEntry.CheckMode = config.CheckModeStatus
+		m.Config.Applications[i].Entries = append(m.Config.Applications[i].Entries, addedEntry)
+	}
+	m.reinitPreservingState(editedAppName)
+
+	for _, app := range m.Applications {
+		switch app.Application.Name {
+		case failedAppName:
+			if got := app.SubItems[0].State; got != StateCheckFailed {
+				t.Fatalf("failed entry state after unrelated rebuild = %v, want StateCheckFailed", got)
+			}
+			if got := app.SubItems[0].CheckError; got != "remote unavailable" {
+				t.Fatalf("failed entry diagnostic after unrelated rebuild = %q, want %q", got, "remote unavailable")
+			}
+		case editedAppName:
+			if len(app.SubItems) != 2 {
+				t.Fatalf("edited app entries after add = %d, want 2", len(app.SubItems))
+			}
+			for _, sub := range app.SubItems {
+				if sub.State != StateLoading || sub.CheckError != "" {
+					t.Fatalf("edited entry after rebuild = (%v, %q), want Loading with an empty diagnostic", sub.State, sub.CheckError)
+				}
+			}
+		}
+	}
+
+	cmd := m.dispatchLoadingSubEntryStates()
+	if m.pendingStateChecks != 2 {
+		t.Fatalf("pending checks after edited-app rebuild = %d, want 2", m.pendingStateChecks)
+	}
+	for _, message := range collectMsgs(cmd) {
+		updated, _ := m.Update(message)
+		next, ok := updated.(Model)
+		if !ok {
+			t.Fatalf("recheck returned model type %T, want Model", updated)
+		}
+		m = next
+	}
+	if m.pendingStateChecks != 0 {
+		t.Fatalf("pending checks after edited-app recheck = %d, want 0", m.pendingStateChecks)
+	}
+
+	for _, app := range m.Applications {
+		switch app.Application.Name {
+		case failedAppName:
+			if got := app.SubItems[0].CheckError; got != "remote unavailable" {
+				t.Fatalf("failed entry diagnostic after edited-app recheck = %q, want %q", got, "remote unavailable")
+			}
+		case editedAppName:
+			for _, sub := range app.SubItems {
+				if sub.State != StateSetupOk || sub.CheckError != "" {
+					t.Fatalf("edited entry after successful recheck = (%v, %q), want SetupOk with an empty diagnostic", sub.State, sub.CheckError)
+				}
+			}
+		}
 	}
 }
 
@@ -211,7 +414,7 @@ func TestDetectSetupPathState_CheckFails_ReturnsSetupNeeded(t *testing.T) {
 // synchronously on the bubbletea UI goroutine (called from
 // refreshApplicationStates and reinitPreservingState). Resolving a setup
 // entry's state requires running its check command as a real subprocess
-// (detectSetupPathState -> manager.IsSetupApplied -> runner.RunIn), and doing
+// (detectSetupPathState -> manager.CheckSetup -> runner.RunIn), and doing
 // that here would visibly stall the UI. The sync path must therefore defer to
 // StateLoading without touching the runner at all — the strongest assertion
 // of that is that the stub recorded zero calls.
@@ -264,9 +467,9 @@ func TestDetectSubEntryStateStatic_SetupEntry_RoutesThroughSetupBranch(t *testin
 	cfg := &config.Config{Version: 3, BackupRoot: "/repo"}
 	item := SubEntryItem{AppName: "vicinae", SubEntry: setupSubEntry()}
 
-	got := detectSubEntryStateStatic(item, plat, cfg, nil)
-	if got != StateSetupOk {
-		t.Errorf("detectSubEntryStateStatic for a setup entry with nil manager = %v, want StateSetupOk", got)
+	got, diagnostic := detectSubEntryStateStatic(item, plat, cfg, nil)
+	if got != StateSetupOk || diagnostic != "" {
+		t.Errorf("detectSubEntryStateStatic for a setup entry with nil manager = (%v, %q), want (StateSetupOk, \"\")", got, diagnostic)
 	}
 }
 
@@ -278,9 +481,9 @@ func TestDetectSubEntryStateStatic_SetupEntryCheckPasses_ReturnsSetupOk(t *testi
 	cfg := &config.Config{Version: 3, BackupRoot: "/repo"}
 	item := SubEntryItem{AppName: "vicinae", SubEntry: setupSubEntry()}
 
-	got := detectSubEntryStateStatic(item, plat, cfg, newStubManager(stub))
-	if got != StateSetupOk {
-		t.Errorf("detectSubEntryStateStatic for a passing setup entry = %v, want StateSetupOk", got)
+	got, diagnostic := detectSubEntryStateStatic(item, plat, cfg, newStubManager(stub))
+	if got != StateSetupOk || diagnostic != "" {
+		t.Errorf("detectSubEntryStateStatic for a passing setup entry = (%v, %q), want (StateSetupOk, \"\")", got, diagnostic)
 	}
 }
 
@@ -328,9 +531,9 @@ func TestDetectSubEntryState_SelectedTemplateStatesSyncAndAsync(t *testing.T) {
 				t.Fatalf("sync state = %v, want %v", gotSync, tt.want)
 			}
 
-			gotAsync := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager)
-			if gotAsync != tt.want {
-				t.Errorf("async state = %v, want %v", gotAsync, tt.want)
+			gotAsync, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager)
+			if gotAsync != tt.want || diagnostic != "" {
+				t.Errorf("async state = (%v, %q), want (%v, \"\")", gotAsync, diagnostic, tt.want)
 			}
 		})
 	}
@@ -352,8 +555,8 @@ func TestDetectSubEntryState_SelectedTemplateIgnoresUnselectedNeighborSyncAndAsy
 	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateLinked {
 		t.Fatalf("sync selected state = %v, want StateLinked", got)
 	}
-	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateLinked {
-		t.Fatalf("async selected state = %v, want StateLinked", got)
+	if got, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateLinked || diagnostic != "" {
+		t.Fatalf("async selected state = (%v, %q), want (StateLinked, \"\")", got, diagnostic)
 	}
 }
 
@@ -363,8 +566,8 @@ func TestDetectSubEntryState_CopyTemplateUsesLiveTargetStatus(t *testing.T) {
 	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateLinked {
 		t.Fatalf("sync copy state = %v, want StateLinked", got)
 	}
-	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateLinked {
-		t.Fatalf("async copy state = %v, want StateLinked", got)
+	if got, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateLinked || diagnostic != "" {
+		t.Fatalf("async copy state = (%v, %q), want (StateLinked, \"\")", got, diagnostic)
 	}
 }
 
@@ -375,7 +578,7 @@ func TestDetectSubEntryState_CopyTemplateSourceDriftIsOutdated(t *testing.T) {
 	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateOutdated {
 		t.Fatalf("sync copy state = %v, want StateOutdated", got)
 	}
-	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateOutdated {
+	if got, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateOutdated || diagnostic != "" {
 		t.Fatalf("async copy state = %v, want StateOutdated", got)
 	}
 }
@@ -387,7 +590,7 @@ func TestDetectSubEntryState_CopyTemplateTargetEditIsModified(t *testing.T) {
 	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateModified {
 		t.Fatalf("sync copy state = %v, want StateModified", got)
 	}
-	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateModified {
+	if got, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, fixture.manager); got != StateModified || diagnostic != "" {
 		t.Fatalf("async copy state = %v, want StateModified", got)
 	}
 }
@@ -399,7 +602,7 @@ func TestDetectSubEntryState_CopyTemplateWithoutManagerIsUnavailable(t *testing.
 	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateUnavailable {
 		t.Fatalf("sync copy state = %v, want StateUnavailable", got)
 	}
-	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, nil); got != StateUnavailable {
+	if got, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, nil); got != StateUnavailable || diagnostic != "" {
 		t.Fatalf("async copy state = %v, want StateUnavailable", got)
 	}
 }
@@ -417,7 +620,7 @@ func TestDetectSubEntryState_CopyTemplateDeniedReadIsUnavailableWithoutSudo(t *t
 	if got := fixture.model.detectSubEntryState(&fixture.item); got != StateUnavailable {
 		t.Fatalf("sync copy state = %v, want StateUnavailable", got)
 	}
-	if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, denied); got != StateUnavailable {
+	if got, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, denied); got != StateUnavailable || diagnostic != "" {
 		t.Fatalf("async copy state = %v, want StateUnavailable", got)
 	}
 	if len(stub.Calls) != 0 {
@@ -503,7 +706,7 @@ func TestCopyTemplateStateMatrixMatchesSyncStaticAndStatus(t *testing.T) {
 			if got := fixture.model.detectSubEntryState(&fixture.item); got != tt.want {
 				t.Fatalf("sync state = %v, want %v", got, tt.want)
 			}
-			if got := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, inspectionManager); got != tt.want {
+			if got, diagnostic := detectSubEntryStateStatic(fixture.item, fixture.platform, fixture.config, inspectionManager); got != tt.want || diagnostic != "" {
 				t.Fatalf("static state = %v, want %v", got, tt.want)
 			}
 

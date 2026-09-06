@@ -197,6 +197,7 @@ func (m Model) handleSetupRunResult(msg setupRunMsg) (tea.Model, tea.Cmd) {
 	if msg.item.appIdx >= 0 && msg.item.appIdx < len(m.Applications) &&
 		msg.item.subIdx >= 0 && msg.item.subIdx < len(m.Applications[msg.item.appIdx].SubItems) {
 		m.Applications[msg.item.appIdx].SubItems[msg.item.subIdx].State = StateLoading
+		m.Applications[msg.item.appIdx].SubItems[msg.item.subIdx].CheckError = ""
 	}
 
 	m.currentSetupIndex++

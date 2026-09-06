@@ -13,11 +13,25 @@ import (
 // detectSetupPathState reports the state of a setup sub-entry by running its
 // check command. A nil manager means the check cannot be run, so the entry is
 // reported as satisfied rather than falsely flagged.
-func detectSetupPathState(sub config.SubEntry, mgr *manager.Manager) PathState {
-	if mgr == nil || mgr.IsSetupApplied(sub) {
-		return StateSetupOk
+func detectSetupPathState(sub config.SubEntry, mgr *manager.Manager) (PathState, string) {
+	if mgr == nil {
+		return StateSetupOk, ""
 	}
-	return StateSetupNeeded
+
+	result := mgr.CheckSetup(sub)
+	switch result.State {
+	case manager.SetupApplied:
+		return StateSetupOk, ""
+	case manager.SetupNeeded:
+		return StateSetupNeeded, ""
+	case manager.SetupOutdated:
+		return StateOutdated, ""
+	default:
+		if result.Err != nil {
+			return StateCheckFailed, result.Err.Error()
+		}
+		return StateCheckFailed, "check status unavailable"
+	}
 }
 
 // detectSubEntryState determines the state of a sub-entry item.
@@ -153,8 +167,13 @@ func (m Model) subEntryStateCheckCmd(appIndex, subIndex int) tea.Cmd {
 	subItem := m.Applications[appIndex].SubItems[subIndex]
 	plat, cfg, mgr := m.Platform, m.Config, m.Manager
 	return func() tea.Msg {
-		state := detectSubEntryStateStatic(subItem, plat, cfg, mgr)
-		return stateCheckResultMsg{appIndex: appIndex, subIndex: subIndex, state: state}
+		state, checkError := detectSubEntryStateStatic(subItem, plat, cfg, mgr)
+		return stateCheckResultMsg{
+			appIndex:   appIndex,
+			subIndex:   subIndex,
+			state:      state,
+			checkError: checkError,
+		}
 	}
 }
 
@@ -170,6 +189,7 @@ func (m *Model) refreshAllStates() tea.Cmd {
 		}
 		for j := range m.Applications[i].SubItems {
 			m.Applications[i].SubItems[j].State = StateLoading
+			m.Applications[i].SubItems[j].CheckError = ""
 			cmds = append(cmds, m.subEntryStateCheckCmd(i, j))
 		}
 	}
@@ -235,9 +255,10 @@ func (m Model) checkLoadingSubEntryStatesCmd() (tea.Cmd, int) {
 	return tea.Batch(cmds...), len(cmds)
 }
 
-// detectSubEntryStateStatic determines the state of a sub-entry item without using Model receiver.
-// This is safe to call from goroutines since it takes explicit dependencies.
-func detectSubEntryStateStatic(item SubEntryItem, plat *platform.Platform, cfg *config.Config, mgr *manager.Manager) PathState {
+// detectSubEntryStateStatic determines the state and optional diagnostic of a
+// sub-entry item without using Model receiver. This is safe to call from
+// goroutines since it takes explicit dependencies.
+func detectSubEntryStateStatic(item SubEntryItem, plat *platform.Platform, cfg *config.Config, mgr *manager.Manager) (PathState, string) {
 	if item.SubEntry.IsSetup() {
 		return detectSetupPathState(item.SubEntry, mgr)
 	}
@@ -248,19 +269,19 @@ func detectSubEntryStateStatic(item SubEntryItem, plat *platform.Platform, cfg *
 	st := detectConfigState(backupPath, targetPath, item.SubEntry.IsFolder(), item.SubEntry.Files, item.SubEntry.IsCopy())
 
 	if item.SubEntry.IsConfig() && item.SubEntry.IsCopy() && hasTemplateSelection(item.SubEntry.Files) {
-		return detectCopyTemplateState(st, item.SubEntry, backupPath, targetPath, mgr)
+		return detectCopyTemplateState(st, item.SubEntry, backupPath, targetPath, mgr), ""
 	}
 
 	if st == StateLinked && item.SubEntry.IsConfig() && !item.SubEntry.IsCopy() && mgr != nil {
 		if mgr.HasOutdatedTemplates(backupPath, item.SubEntry.Files) {
-			return StateOutdated
+			return StateOutdated, ""
 		}
 		if mgr.HasModifiedRenderedFiles(backupPath, item.SubEntry.Files) {
-			return StateModified
+			return StateModified, ""
 		}
 	}
 
-	return st
+	return st, ""
 }
 
 func hasTemplateSelection(files []string) bool {

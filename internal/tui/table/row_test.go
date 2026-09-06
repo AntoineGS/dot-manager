@@ -19,6 +19,9 @@ func TestPathStateString(t *testing.T) {
 		{"StateLinked", StateLinked, "Linked"},
 		{"StateOutdated", StateOutdated, "Outdated"},
 		{"StateModified", StateModified, "Modified"},
+		{"StateSetupOk", StateSetupOk, "Set up"},
+		{"StateSetupNeeded", StateSetupNeeded, "Needs setup"},
+		{"StateCheckFailed", StateCheckFailed, "Check failed"},
 		{"unknown value", PathState(99), "Unknown"},
 	}
 
@@ -54,6 +57,18 @@ func TestPathStateIota(t *testing.T) {
 	}
 	if StateModified != 6 {
 		t.Errorf("StateModified should be 6, got %d", StateModified)
+	}
+	if StateSetupOk != 7 {
+		t.Errorf("StateSetupOk should be 7, got %d", StateSetupOk)
+	}
+	if StateSetupNeeded != 8 {
+		t.Errorf("StateSetupNeeded should be 8, got %d", StateSetupNeeded)
+	}
+	if StateUnavailable != 9 {
+		t.Errorf("StateUnavailable should be 9, got %d", StateUnavailable)
+	}
+	if StateCheckFailed != 10 {
+		t.Errorf("StateCheckFailed should be 10, got %d", StateCheckFailed)
 	}
 }
 
@@ -139,6 +154,7 @@ func TestPathState_Actionable(t *testing.T) {
 		{StateModified, true, 1},
 		{StateSetupOk, false, 0},
 		{StateSetupNeeded, true, 3},
+		{StateCheckFailed, true, 3},
 		{PathState(99), false, 0},
 	}
 

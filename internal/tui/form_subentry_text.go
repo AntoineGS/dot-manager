@@ -110,7 +110,7 @@ func (m Model) updateSubEntryFieldInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		m.subEntryForm.WindowsCheckInput, cmd = m.subEntryForm.WindowsCheckInput.Update(msg)
 	case subFieldWindowsRun:
 		m.subEntryForm.WindowsRunInput, cmd = m.subEntryForm.WindowsRunInput.Update(msg)
-	case subFieldIsSetup, subFieldWhen, subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy:
+	case subFieldIsSetup, subFieldWhen, subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy, subFieldCheckMode:
 		// Boolean and list fields don't use text input
 	}
 
@@ -147,7 +147,7 @@ func (m *Model) updateSuggestionsSubEntry() {
 		input = m.subEntryForm.WindowsTargetInput.Value()
 	case subFieldBackup:
 		input = m.subEntryForm.BackupInput.Value()
-	case subFieldName, subFieldWhen, subFieldIsSetup, subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy,
+	case subFieldName, subFieldWhen, subFieldIsSetup, subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy, subFieldCheckMode,
 		subFieldLinuxCheck, subFieldLinuxRun, subFieldWindowsCheck, subFieldWindowsRun:
 		m.subEntryForm.ShowSuggestions = false
 		m.subEntryForm.Suggestions = nil
@@ -184,7 +184,7 @@ func (m *Model) acceptSuggestionSubEntry() {
 	case subFieldBackup:
 		m.subEntryForm.BackupInput.SetValue(suggestion)
 		m.subEntryForm.BackupInput.SetCursor(len(suggestion))
-	case subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy, subFieldName:
+	case subFieldIsFolder, subFieldFiles, subFieldIsSudo, subFieldIsCopy, subFieldCheckMode, subFieldName:
 		// Other fields don't use suggestions
 	}
 
