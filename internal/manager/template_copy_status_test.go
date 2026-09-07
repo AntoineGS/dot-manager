@@ -376,7 +376,7 @@ type deniedCopyParentLstatFS struct {
 }
 
 func (f deniedCopyParentLstatFS) Lstat(name string) (fs.FileInfo, error) {
-	if name == f.denied {
+	if filepath.Clean(name) == filepath.Clean(f.denied) {
 		return nil, &fs.PathError{Op: "lstat", Path: name, Err: fs.ErrPermission}
 	}
 	return f.FS.Lstat(name)

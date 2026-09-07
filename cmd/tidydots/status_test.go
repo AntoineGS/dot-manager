@@ -14,6 +14,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/platform"
+	"github.com/AntoineGS/tidydots/internal/testutil"
 	"github.com/AntoineGS/tidydots/internal/tui"
 )
 
@@ -97,9 +98,9 @@ func TestStatusCommandReportsOnlySelectedTemplateState(t *testing.T) {
 	}
 	preserveCommandGlobals(t)
 
-	dir := t.TempDir()
+	dir := testutil.CanonicalTempDir(t)
 	backup := filepath.Join(dir, "backup")
-	target := filepath.Join(t.TempDir(), "target")
+	target := filepath.Join(testutil.CanonicalTempDir(t), "target")
 	if err := os.MkdirAll(backup, 0o750); err != nil {
 		t.Fatal(err)
 	}

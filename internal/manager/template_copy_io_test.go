@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -106,6 +107,9 @@ func TestWriteTemplateCopyFile_NativeReplacementDoesNotModifySymlinkReferent(t *
 }
 
 func TestWriteTemplateCopyFile_NativePreservesRestrictiveMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not support POSIX permission bits")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "target")
 	mgr := newUtilityManager()
@@ -129,7 +133,12 @@ func TestWriteTemplateCopyFile_DryRunDoesNotWriteOrRunCommands(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := mgr.writeTemplateCopyFile("/target", []byte("new"), 0o600, true, false); err != nil {
+	err := mgr.writeTemplateCopyFile("/target", []byte("new"), 0o600, true, false)
+	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		if err == nil || !strings.Contains(err.Error(), "sudo operations are unsupported") {
+			t.Fatalf("dry-run must reject unsupported sudo runtime: %v", err)
+		}
+	} else if err != nil {
 		t.Fatalf("writeTemplateCopyFile dry-run: %v", err)
 	}
 	if len(runner.Calls) != 0 {
@@ -286,7 +295,12 @@ func TestRemoveTemplateCopyArtifact_DryRunDoesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := mgr.removeTemplateCopyArtifact("/artifact", true); err != nil {
+	err := mgr.removeTemplateCopyArtifact("/artifact", true)
+	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		if err == nil || !strings.Contains(err.Error(), "sudo operations are unsupported") {
+			t.Fatalf("dry-run must reject unsupported sudo runtime: %v", err)
+		}
+	} else if err != nil {
 		t.Fatalf("removeTemplateCopyArtifact dry-run: %v", err)
 	}
 	if len(runner.Calls) != 0 {

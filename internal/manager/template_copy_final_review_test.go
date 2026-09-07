@@ -16,6 +16,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/platform"
 	"github.com/AntoineGS/tidydots/internal/state"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
+	"github.com/AntoineGS/tidydots/internal/testutil"
 )
 
 func TestRestoreCopyTemplateRejectsConcreteRepositoryAndStateClaims(t *testing.T) {
@@ -29,7 +30,7 @@ func TestRestoreCopyTemplateRejectsConcreteRepositoryAndStateClaims(t *testing.T
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := t.TempDir()
+			repo := testutil.CanonicalTempDir(t)
 			source := filepath.Join(repo, "templates")
 			if err := os.MkdirAll(source, 0o750); err != nil {
 				t.Fatal(err)
@@ -111,7 +112,7 @@ func TestRestoreCopyTemplateRejectsAbsentGeneratedClaimInsideRepository(t *testi
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			home := t.TempDir()
+			home := testutil.CanonicalTempDir(t)
 			repo := filepath.Join(home, "repo")
 			if err := os.MkdirAll(filepath.Join(repo, "templates"), 0o750); err != nil {
 				t.Fatal(err)
@@ -136,7 +137,7 @@ func TestRestoreCopyTemplateRejectsAbsentGeneratedClaimInsideRepository(t *testi
 }
 
 func TestRestoreCopyTemplateAllowsTargetOutsideNestedRepository(t *testing.T) {
-	home := t.TempDir()
+	home := testutil.CanonicalTempDir(t)
 	repo := filepath.Join(home, "dotfiles")
 	if err := os.MkdirAll(repo, 0o750); err != nil {
 		t.Fatal(err)

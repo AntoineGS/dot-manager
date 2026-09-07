@@ -14,6 +14,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/platform"
 	"github.com/AntoineGS/tidydots/internal/state"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
+	"github.com/AntoineGS/tidydots/internal/testutil"
 )
 
 const expectedHostnameRender = "Host=testhost"
@@ -23,8 +24,8 @@ const expectedHostnameRender = "Host=testhost"
 func setupTemplateTest(t *testing.T) (string, string, *Manager, *state.Store) {
 	t.Helper()
 
-	backupRoot := t.TempDir()
-	targetDir := t.TempDir()
+	backupRoot := testutil.CanonicalTempDir(t)
+	targetDir := testutil.CanonicalTempDir(t)
 
 	plat := &platform.Platform{
 		OS:       "linux",

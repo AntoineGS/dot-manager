@@ -130,6 +130,31 @@ func TestFileOperations(t *testing.T) {
 
 ### Platform-Specific Tests
 
+Copy-template fixtures must use `testutil.CanonicalTempDir(t)` when they need
+symlink-free target ancestors. macOS's default temp root is under the `/var`
+symlink; passing that lexical path would correctly fail copy-template safety
+preflight before the behavior under test is reached. Canonicalize fixture roots
+before creating intentional test symlinks; do not canonicalize deployment paths
+in production to bypass the safety check.
+
+Setting a fixture's platform to Linux does not change `runtime.GOOS`. Tests that
+expect elevated Linux commands must use `skipIfNoSudo(t)`; unsupported-runtime
+tests should assert rejection and no mutations, including during dry-run.
+
+For Windows-portable fixtures, set both `HOME` and `USERPROFILE` with `t.Setenv`
+when overriding the home directory: `os.UserHomeDir` uses the runtime OS, not the
+fixture's platform. Build expected filesystem paths with `filepath.Join` and
+normalize paths with `filepath.Clean` in filesystem error-injection wrappers;
+database state keys should still be asserted with forward slashes. Avoid trailing
+spaces in Windows fixture filenames while retaining Unix coverage for them.
+Skip only POSIX-specific native permission tests on Windows, where `os.Chmod`
+controls the read-only attribute rather than full permission bits; keep MemFS
+permission tests and native error-propagation tests enabled.
+
+From Linux, `GOOS=windows CGO_ENABLED=0 go test -exec /usr/bin/true ./...` checks
+Windows test compilation only. It does not execute tests; Windows CI is still
+required to verify runtime behavior.
+
 Use build tags for platform-specific tests:
 
 ```go
@@ -253,7 +278,7 @@ CI enforces a coverage floor via `coverage-threshold.txt`. To raise the floor af
 golangci-lint run
 ```
 
-Use Go 1.26 or newer, as required by `go.mod`. The Makefile fallback installation
+Use Go 1.26.1 or newer, as required by `go.mod`. The Makefile fallback installation
 and CI pin golangci-lint to **v2.13.2**, compatible with Go 1.26 and the version-2
 `.golangci.yml` configuration. To install that version explicitly:
 

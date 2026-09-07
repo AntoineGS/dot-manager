@@ -15,6 +15,7 @@ import (
 	"github.com/AntoineGS/tidydots/internal/manager"
 	"github.com/AntoineGS/tidydots/internal/platform"
 	tmpl "github.com/AntoineGS/tidydots/internal/template"
+	"github.com/AntoineGS/tidydots/internal/testutil"
 )
 
 func entryWhenConfig(t *testing.T) *config.Config {
@@ -795,9 +796,9 @@ func newTUISelectedTemplateFixture(t *testing.T) tuiTemplateFixture {
 
 func newTUICopyTemplateFixture(t *testing.T) tuiTemplateFixture {
 	t.Helper()
-	root := t.TempDir()
+	root := testutil.CanonicalTempDir(t)
 	backupPath := filepath.Join(root, "backup")
-	targetPath := filepath.Join(t.TempDir(), "target")
+	targetPath := filepath.Join(testutil.CanonicalTempDir(t), "target")
 	if err := os.MkdirAll(backupPath, 0o750); err != nil {
 		t.Fatal(err)
 	}

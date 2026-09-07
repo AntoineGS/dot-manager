@@ -11,6 +11,7 @@ import (
 func TestSharedPathResolution(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	m := New(&config.Config{BackupRoot: "~/repo/{{ .Hostname }}"}, &platform.Platform{OS: "linux", Hostname: "host"})
 	for _, tc := range []struct {
 		path string

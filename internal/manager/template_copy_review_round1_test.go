@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/AntoineGS/tidydots/internal/cmdexec"
@@ -141,6 +142,7 @@ func TestPreflightCopyTemplateAllowsDeniedAbsentOrphanBackupWithSudo(t *testing.
 }
 
 func TestPreflightCopyTemplateChecksDeniedIntermediateAncestor(t *testing.T) {
+	skipIfNoSudo(t)
 	skipIfNoSymlink(t)
 	backup, target, mgr, _ := setupTemplateTest(t)
 	writeTemplateFile(t, filepath.Join(backup, "link", "existing", "root.tmpl"), "value=1")
@@ -212,6 +214,9 @@ func TestRestoreCopyTemplateDryRunPreservesCompleteStateAcrossVariants(t *testin
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.denied {
+				skipIfNoSudo(t)
+			}
 			backup, target, mgr, store := setupTemplateTest(t)
 			source := filepath.Join(backup, "root.tmpl")
 			destination := filepath.Join(target, "root")
@@ -300,6 +305,9 @@ func (f deniedCopyLstatPathsFS) Lstat(name string) (fs.FileInfo, error) {
 }
 
 func TestRestoreCopyTemplateRetainsRestrictiveTargetMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not support POSIX permission bits")
+	}
 	backup, target, mgr, _ := setupTemplateTest(t)
 	source := filepath.Join(backup, "root.tmpl")
 	destination := filepath.Join(target, "root")

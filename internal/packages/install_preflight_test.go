@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -30,7 +31,12 @@ func TestGitRejectsBlankExpandedTarget(t *testing.T) {
 }
 
 func TestGitPreservesSpacesAndValidatesBranchBeforePull(t *testing.T) {
-	target := filepath.Join(t.TempDir(), " repo with spaces ")
+	name := " repo with spaces "
+	if runtime.GOOS == "windows" {
+		// Windows normal path handling does not support trailing spaces.
+		name = " repo with spaces"
+	}
+	target := filepath.Join(t.TempDir(), name)
 	if err := os.MkdirAll(filepath.Join(target, ".git"), 0700); err != nil {
 		t.Fatal(err)
 	}

@@ -115,7 +115,7 @@ func TestSelectedTemplateDiscoveryVisitsOnlyListedTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk selected templates: %v", err)
 	}
-	if len(visited) != 1 || visited[0] != selectedPath+"|nested/selected.tmpl" {
+	if len(visited) != 1 || visited[0] != selectedPath+"|"+filepath.Join("nested", "selected.tmpl") {
 		t.Fatalf("visited templates = %v, want only selected source", visited)
 	}
 
@@ -212,8 +212,8 @@ func TestSelectedTemplateDiscoveryKeepsNormalizedNestedStateKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk nested template: %v", err)
 	}
-	if gotRelPath != "nested/config.tmpl" {
-		t.Fatalf("selected relative path = %q, want %q", gotRelPath, "nested/config.tmpl")
+	if want := filepath.Join("nested", "config.tmpl"); gotRelPath != want {
+		t.Fatalf("selected relative path = %q, want %q", gotRelPath, want)
 	}
 }
 

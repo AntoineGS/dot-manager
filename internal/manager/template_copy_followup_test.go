@@ -13,12 +13,13 @@ import (
 	"github.com/AntoineGS/tidydots/internal/config"
 	"github.com/AntoineGS/tidydots/internal/fsys"
 	"github.com/AntoineGS/tidydots/internal/state"
+	"github.com/AntoineGS/tidydots/internal/testutil"
 )
 
 func TestRestoreCopyTemplateRejectsAbsentStateSidecarThroughSymlinkedParent(t *testing.T) {
 	skipIfNoSymlink(t)
 
-	home := t.TempDir()
+	home := testutil.CanonicalTempDir(t)
 	repo := filepath.Join(home, "repo")
 	stateReal := filepath.Join(home, "state-real")
 	stateAlias := filepath.Join(home, "state-alias")
@@ -98,7 +99,7 @@ func TestRestoreCopyTemplateRejectsAbsentStateSidecarThroughSymlinkedParent(t *t
 func TestCopyTemplateStateAliasesRepresentOneProtectedArtifact(t *testing.T) {
 	skipIfNoSymlink(t)
 
-	home := t.TempDir()
+	home := testutil.CanonicalTempDir(t)
 	repo := filepath.Join(home, "repo")
 	stateReal := filepath.Join(home, "state-real")
 	stateAlias := filepath.Join(home, "state-alias")
@@ -136,7 +137,7 @@ func TestCopyTemplateStateAliasesRepresentOneProtectedArtifact(t *testing.T) {
 }
 
 func TestRestoreCopyTemplatePropagatesStateParentCanonicalizationFailure(t *testing.T) {
-	home := t.TempDir()
+	home := testutil.CanonicalTempDir(t)
 	repo := filepath.Join(home, "repo")
 	stateDir := filepath.Join(home, "state")
 	target := filepath.Join(home, "target")

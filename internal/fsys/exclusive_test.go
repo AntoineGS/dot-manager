@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/AntoineGS/tidydots/internal/fsys"
@@ -210,6 +211,9 @@ func TestMemFS_ChmodPreservesExplicitZeroMode(t *testing.T) {
 }
 
 func TestOsFS_ChmodPreservesExplicitZeroMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not support POSIX permission bits")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "file")
 	filesystem := fsys.OsFS{}

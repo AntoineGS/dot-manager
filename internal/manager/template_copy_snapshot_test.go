@@ -3,6 +3,7 @@ package manager
 import (
 	"errors"
 	"io/fs"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -207,7 +208,7 @@ type deniedCopyLstatFS struct {
 }
 
 func (f deniedCopyLstatFS) Lstat(name string) (fs.FileInfo, error) {
-	if name == f.denied {
+	if filepath.Clean(name) == filepath.Clean(f.denied) {
 		return nil, &fs.PathError{Op: "lstat", Path: name, Err: fs.ErrPermission}
 	}
 	return f.FS.Lstat(name)

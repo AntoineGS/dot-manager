@@ -14,6 +14,7 @@ import (
 func TestTemplatePathParity(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	root := t.TempDir()
 	plat := &platform.Platform{OS: "linux", Hostname: "test-host"}
 	sub := config.SubEntry{Name: "config", Backup: "./{{ .Hostname }}/nvim", Targets: map[string]string{"linux": "~/.config/{{ .Hostname }}/nvim"}}
