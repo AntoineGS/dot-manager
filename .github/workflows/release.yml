@@ -68,7 +68,7 @@ jobs:
               aur/PKGBUILD > ${{ github.workspace }}/PKGBUILD
 
       - name: Publish to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
         with:
           pkgname: tidydots-bin
           pkgbuild: ${{ github.workspace }}/PKGBUILD
